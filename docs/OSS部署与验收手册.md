@@ -95,15 +95,17 @@ OSS模式不保存实体缩略图。短时签名中包含 `x-oss-process=image/a
 
 ### 1. 准备目录与配置
 
-在ECS准备 `/opt/image-admin/prod`，放入 `server/deploy/prod/compose.yml`。从 `.env.oss.example` 复制生成 `.env.prod`，在服务器填写真实数据库业务用户、密码、Redis密码、健康检查随机密码、镜像版本、已有订单接口配置。不要提交或分享 `.env.prod`。
+在ECS准备 `/data/app/image-admin`，放入固定的 `compose.yml`。从 `.env.oss.example` 复制生成 `.env`，在服务器填写真实数据库业务用户、密码、Redis密码、健康检查随机密码、镜像版本、已有订单接口配置。不要提交或分享 `.env`。
 
-模型放在 `/opt/image-admin/models/sscd_disc_mixup.torchscript.pt`。项目仍是全Java业务，模型文件不能删除。
+模型放在 `/data/app/image-admin/models/sscd_disc_mixup.torchscript.pt`。项目仍是全Java业务，模型文件不能删除。
 
 Compose只启动backend/frontend，复用image-admin-net基础服务。示例中的容器名按本次只读检查填写，1Panel重建容器后要重新核对。
 
 ### 2. 数据库与旧图库
 
 全新业务库需要 `wuzh_vue.sql`、`image.sql`、当前订单模块的 `order.sql`；已有库先备份再执行适用增量，不要盲目重跑初始化SQL。
+
+首次导入必须为每条 MySQL 命令显式添加 `--default-character-set=utf8mb4`，并确认目标库为 `utf8mb4`；否则用户名、菜单和分类等中文会以乱码写入数据库。导入后至少检查一次管理员昵称和菜单名称，再开放登录。
 
 本次新增图片字段 `cleanup_key`、`cleanup_thumbnail_key`，增量语句在image.sql末尾，按列是否存在检查后添加。
 

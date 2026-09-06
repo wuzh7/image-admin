@@ -67,7 +67,7 @@ public class ImageController {
     @GetMapping("/images/{id}/access")
     public ResponseEntity<R<String>> access(@PathVariable long id,
         @RequestParam(defaultValue = "false") boolean thumbnail) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(R.ok(imageService.accessUrl(id, thumbnail)));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(R.data(imageService.accessUrl(id, thumbnail)));
     }
 
     @Log(title = "创建图片批次", businessType = BusinessType.INSERT)

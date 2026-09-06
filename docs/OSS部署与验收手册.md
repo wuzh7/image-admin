@@ -148,7 +148,15 @@ docker compose --env-file .env.prod up -d --no-deps backend frontend
 
 ## 五、验证记录与上线门禁
 
-2026-09-06已验证：Workbench连接ECS；角色真实OSS协议测试（公网签名PUT、禁止覆盖409、内网HEAD/GET、签名缩略图、复制校验、删除）通过，测试对象均清理；后端40项测试中38通过、2项模型基线条件测试跳过；前端lint、TypeScript、生产构建通过。
+2026-09-06已验证：Workbench连接ECS；角色真实OSS协议测试（公网签名PUT、禁止覆盖409、内网HEAD/GET、签名缩略图、复制校验、删除）通过，测试对象均清理；项目实际Java OSS实现分别在ECS宿主机、image-admin-net网络中的非root临时容器运行通过，验证了容器IMDSv2角色凭证、上传、下载、签名缩略图、复制校验与删除；前端lint、TypeScript、生产构建通过。
+
+本地新版本已使用 `compose.yml + compose.oss-verify.yml` 启动，MySQL、Redis、Qdrant、后端、前端均健康，模型校验和预热完成。验证镜像复用了本机已有运行环境（Docker Hub认证地址连接超时），生产正式镜像仍需在网络正常时完成标准构建及漏洞检查。ECS只运行临时OSS测试，没有部署完整业务或停改基础服务。
+
+本轮后端local标签全链路构建的Surefire报告共69项：67通过、2项需要额外基线配置的模型测试跳过，失败/错误为0。图片模块41项中39通过、2跳过。新增接口回归测试曾复现预览URL误入msg字段的问题，现改为R.data返回并通过测试。
+
+浏览器本地测试记录：`2096483392090771458`（test_green.jpg，检测完成待审核，相似度0.82989）；`2096483837836234753`（程序生成的oss-local-smoke-20260906.png，检测后人工确认成功）。后者图片ID为 `2096483839706894337`，MySQL为APPROVED、批次COMPLETED，Qdrant Point存在，暂存源清理Key已清空。两条本地测试批次保留供复核，没有操作其他历史待审核批次。
+
+ECS Java测试包临时保存在 `/tmp/image-admin-java-oss-20260906`，是一次性验证文件，不是已部署的业务服务；所有 `oss-smoke` OSS测试对象均已删除。
 
 仍需验证：正式域名/CORS/私有ACL确认；完整Java业务接入生产数据；模型内存和批量并发；浏览器直传→去重→审核→图库→删除；生产备份恢复。上述小文件协议测试不等于这些已通过。
 

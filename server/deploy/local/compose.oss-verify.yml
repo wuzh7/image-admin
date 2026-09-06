@@ -1,0 +1,5 @@
+services:
+  backend:
+    image: image-admin-backend:oss-verify
+  frontend:
+    image: image-admin-frontend:oss-verify

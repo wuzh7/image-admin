@@ -1,0 +1,18 @@
+package org.dromara.image.service;
+
+import org.dromara.image.controller.ImageController;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+@Tag("local")
+class ImageAccessContractTest {
+    @Test void previewAddressIsResponseDataNotMessage() {
+        var service = mock(ImageService.class);
+        when(service.accessUrl(7L, true)).thenReturn("/images/7/content?thumbnail=true");
+        var response = new ImageController(service, mock(ImageUploadService.class)).access(7L, true);
+        assertEquals("/images/7/content?thumbnail=true", response.getBody().getData());
+        assertEquals("no-store", response.getHeaders().getCacheControl());
+    }
+}

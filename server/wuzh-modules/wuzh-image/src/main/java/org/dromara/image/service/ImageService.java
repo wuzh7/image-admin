@@ -378,6 +378,7 @@ public class ImageService {
         supportedValues.add("其他");
         while (true) {
             List<ImageAsset> assets = assetMapper.selectList(Wrappers.<ImageAsset>lambdaQuery()
+                .gt(ImageAsset::getWidth, 0).gt(ImageAsset::getHeight, 0)
                 .and(query -> query.isNull(ImageAsset::getAspectRatio)
                     .or()
                     .notIn(ImageAsset::getAspectRatio, supportedValues))

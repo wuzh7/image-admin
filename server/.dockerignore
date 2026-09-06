@@ -1,0 +1,9 @@
+.git
+.idea
+.vscode
+**/target
+models/*.pt
+deploy/local
+data
+*.log
+deploy/prod/.env.prod

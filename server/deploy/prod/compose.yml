@@ -1,0 +1,52 @@
+name: image-admin-prod
+
+# Reuse 1Panel MySQL/Redis and the existing Qdrant. No database services or data volumes are recreated.
+services:
+  backend:
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE}
+    environment:
+      TZ: Asia/Shanghai
+      SPRING_PROFILES_ACTIVE: prod
+      MYSQL_HOST: ${MYSQL_HOST:?}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?}
+      MYSQL_USER: ${MYSQL_USER:?}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?}
+      REDIS_HOST: ${REDIS_HOST:?}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+      QDRANT_URL: ${QDRANT_URL:?}
+      OSS_BUCKET: ${OSS_BUCKET:?}
+      OSS_REGION: ${OSS_REGION:?}
+      OSS_ROLE_NAME: ${OSS_ROLE_NAME:?}
+      OSS_ENDPOINT: ${OSS_ENDPOINT:?}
+      OSS_PUBLIC_ENDPOINT: ${OSS_PUBLIC_ENDPOINT:?}
+      SSCD_MODEL_PATH: /models/sscd_disc_mixup.torchscript.pt
+      IMAGE_TASK_WORKERS: ${IMAGE_TASK_WORKERS:-1}
+      JAVA_TOOL_OPTIONS: ${BACKEND_JAVA_OPTS:?}
+      MANAGEMENT_USERNAME: ${HEALTH_USER:?}
+      MANAGEMENT_PASSWORD: ${HEALTH_PASSWORD:?}
+      ORDER_DETAIL_API_KEY: ${ORDER_DETAIL_API_KEY:?}
+    volumes:
+      - ${SSCD_MODEL_HOST_PATH:?}:/models/sscd_disc_mixup.torchscript.pt:ro
+    networks: [image-admin-net]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -u \"$${MANAGEMENT_USERNAME}:$${MANAGEMENT_PASSWORD}\" http://127.0.0.1:8080/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      start_period: 120s
+      retries: 20
+    restart: unless-stopped
+
+  frontend:
+    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE}
+    ports: ["127.0.0.1:8088:8080"]
+    networks: [image-admin-net]
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  image-admin-net:
+    external: true

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>wuzh-image-admin</artifactId>
+        <groupId>org.dromara</groupId>
+        <version>${revision}</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+    <artifactId>wuzh-common</artifactId>
+    <packaging>pom</packaging>
+
+    <description>
+        common 通用模块
+    </description>
+
+    <modules>
+        <module>wuzh-common-bom</module>
+        <module>wuzh-common-core</module>
+        <module>wuzh-common-doc</module>
+        <module>wuzh-common-excel</module>
+        <module>wuzh-common-log</module>
+        <module>wuzh-common-mybatis</module>
+        <module>wuzh-common-oss</module>
+        <module>wuzh-common-redis</module>
+        <module>wuzh-common-satoken</module>
+        <module>wuzh-common-security</module>
+        <module>wuzh-common-web</module>
+        <module>wuzh-common-translation</module>
+        <module>wuzh-common-sensitive</module>
+        <module>wuzh-common-json</module>
+        <module>wuzh-common-encrypt</module>
+        <module>wuzh-common-push</module>
+    </modules>
+
+</project>

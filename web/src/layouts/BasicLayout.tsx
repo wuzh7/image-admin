@@ -1,0 +1,451 @@
+﻿import type { CSSProperties } from 'react';
+import { HomeOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
+import { ProLayout } from '@ant-design/pro-components';
+import { history, Outlet, useLocation } from '@umijs/max';
+import { Avatar, Button, ConfigProvider, Dropdown, message, Spin, theme as antdTheme, type MenuProps } from 'antd';
+import zhCN from 'antd/locale/zh_CN';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { RuntimeMenuItem } from '@/api/types';
+import { logout } from '@/api/login';
+import { isHandledRequestError } from '@/api/request';
+import defaultAvatar from '@/assets/images/profile.jpg';
+import MenuSearch from '@/components/layout/MenuSearch';
+import MessageBox from '@/components/layout/MessageBox';
+import Screenfull from '@/components/layout/Screenfull';
+import { useAppStore } from '@/stores/appStore';
+import { usePermissionStore } from '@/stores/permissionStore';
+import { useTagsViewStore } from '@/stores/tagsViewStore';
+import { useUserStore } from '@/stores/userStore';
+import { getToken, removeToken } from '@/utils/auth';
+import { appEnv } from '@/utils/env';
+import { appendRouteQuery, flattenBackendRoutes } from '@/utils/menu';
+import { closePush, initMessageBox, initPush } from '@/utils/push';
+import { isHttp } from '@/utils/wuzh';
+
+function resolveMenuPath(item: RuntimeMenuItem) {
+  if (!item.path) return '';
+  return appendRouteQuery(item.path, item.backendRoute?.query);
+}
+
+function menuNode(item: RuntimeMenuItem) {
+  return (
+    <span className="layout-menu-node">
+      {item.icon && <span className="layout-menu-node-icon">{item.icon}</span>}
+      <span className="layout-menu-node-title">{item.name}</span>
+    </span>
+  );
+}
+
+export default function BasicLayout() {
+  const location = useLocation();
+  const [loading, setLoading] = useState(true);
+  const pushStartedRef = useRef(false);
+  const userInfo = useUserStore(state => state.userInfo);
+  const clearUserInfo = useUserStore(state => state.clearUserInfo);
+  const backendRoutes = usePermissionStore(state => state.backendRoutes);
+  const menuData = usePermissionStore(state => state.menuData);
+  const reloadMenus = usePermissionStore(state => state.reloadMenus);
+  const clearMenus = usePermissionStore(state => state.clearMenus);
+  const resetTags = useTagsViewStore(state => state.resetTags);
+  const layoutSettings = useAppStore(state => state.layoutSettings);
+
+  useEffect(() => {
+    if (!getToken()) {
+      closePush();
+      pushStartedRef.current = false;
+      history.replace(`/login?redirect=${encodeURIComponent(`${location.pathname}${location.search}`)}`);
+      return;
+    }
+    reloadMenus()
+      .then(async () => {
+        if (!pushStartedRef.current) {
+          await initMessageBox();
+          initPush();
+          pushStartedRef.current = true;
+        }
+      })
+      .catch(error => {
+        if (!isHandledRequestError(error)) {
+          message.error(error.message || '加载用户信息失败');
+        }
+        closePush();
+        pushStartedRef.current = false;
+        const hadToken = Boolean(getToken());
+        if (hadToken) {
+          removeToken();
+        }
+        clearUserInfo();
+        clearMenus();
+        resetTags();
+        if (hadToken) {
+          history.replace('/login');
+        }
+      })
+      .finally(() => setLoading(false));
+  }, [clearMenus, clearUserInfo, location.pathname, reloadMenus, resetTags]);
+
+  useEffect(() => () => closePush(), []);
+
+  const appTitle = appEnv.title;
+  const effectiveNavDark = layoutSettings.darkMode || layoutSettings.sideTheme === 'realDark';
+  const appColors = useMemo(
+    () =>
+      layoutSettings.darkMode
+        ? {
+            bg: '#0f172a',
+            surface: '#111827',
+            surfaceMuted: '#1f2937',
+            elevated: '#1f2937',
+            border: '#334155',
+            text: '#e5e7eb',
+            textSecondary: '#94a3b8',
+            primarySoft: 'rgba(64, 158, 255, 0.18)',
+            link: '#409eff',
+            linkStrong: '#69b1ff',
+            linkSoft: 'rgba(64, 158, 255, 0.18)',
+            linkBorder: 'rgba(64, 158, 255, 0.42)',
+            textMuted: '#94a3b8',
+            textDisabled: '#64748b',
+            danger: '#ff7875',
+            borderStrong: '#475569',
+            borderSubtle: '#334155'
+          }
+        : {
+            bg: '#f5f7fb',
+            surface: '#fff',
+            surfaceMuted: '#f8fafc',
+            elevated: '#fff',
+            border: '#edf0f5',
+            text: '#172033',
+            textSecondary: '#5d6b82',
+            primarySoft: '#eaf3ff',
+            link: '#1677ff',
+            linkStrong: '#0958d9',
+            linkSoft: '#e6f4ff',
+            linkBorder: '#91caff',
+            textMuted: '#8c8c8c',
+            textDisabled: '#bfbfbf',
+            danger: '#ff4d4f',
+            borderStrong: '#d9d9d9',
+            borderSubtle: '#e5e7eb'
+          },
+    [layoutSettings.darkMode]
+  );
+  const navColors = useMemo(() => {
+    if (effectiveNavDark) {
+      return {
+        bg: '#111827',
+        border: 'rgba(255, 255, 255, 0.08)',
+        text: 'rgba(255, 255, 255, 0.72)',
+        title: 'rgba(255, 255, 255, 0.92)',
+        activeText: '#fff',
+        actionHoverBg: 'rgba(255, 255, 255, 0.1)',
+        menuHoverBg: 'rgba(255, 255, 255, 0.08)',
+        menuSelectedBg: layoutSettings.theme,
+        badgeShadow: '#111827'
+      };
+    }
+
+    return {
+      bg: '#fff',
+      border: '#edf0f5',
+      text: '#5d6b82',
+      title: '#172033',
+      activeText: layoutSettings.theme,
+      actionHoverBg: 'rgba(23, 32, 51, 0.04)',
+      menuHoverBg: 'rgba(23, 32, 51, 0.04)',
+      menuSelectedBg: '#eaf3ff',
+      badgeShadow: '#fff'
+    };
+  }, [layoutSettings.theme, effectiveNavDark]);
+  const proLayoutKey = [
+    layoutSettings.sideTheme,
+    layoutSettings.darkMode ? 'dark' : 'light',
+    layoutSettings.fixedHeader ? 'fixed' : 'static'
+  ].join(':');
+  const proLayoutClassName =
+    [
+      layoutSettings.fixedHeader ? undefined : 'layout-header-static-react',
+      effectiveNavDark ? 'layout-nav-dark-react' : 'layout-nav-light-react',
+      layoutSettings.fullHeightTable ? 'layout-full-height-table-react' : undefined
+    ]
+      .filter(Boolean)
+      .join(' ') || undefined;
+  const proLayoutStyle = {
+    '--layout-primary-react': layoutSettings.theme,
+    '--layout-nav-bg-react': navColors.bg,
+    '--layout-nav-border-react': navColors.border,
+    '--layout-nav-text-react': navColors.text,
+    '--layout-nav-title-react': navColors.title,
+    '--layout-nav-active-text-react': navColors.activeText,
+    '--layout-nav-action-hover-bg-react': navColors.actionHoverBg,
+    '--layout-nav-menu-hover-bg-react': navColors.menuHoverBg,
+    '--layout-nav-menu-selected-bg-react': navColors.menuSelectedBg,
+    '--layout-nav-badge-shadow-react': navColors.badgeShadow,
+    '--layout-collapsed-button-bg-react': effectiveNavDark ? navColors.bg : appColors.surface,
+    '--layout-collapsed-button-hover-bg-react': effectiveNavDark ? '#1f2937' : navColors.actionHoverBg,
+    backgroundColor: appColors.bg
+  } as CSSProperties;
+  const proLayoutContentStyle = {
+    backgroundColor: appColors.bg,
+    transition: 'background-color 0.2s ease'
+  } as CSSProperties;
+  const navigationMenuData = useMemo<RuntimeMenuItem[]>(
+    () => [
+      { path: '/index', name: '工作台', icon: <HomeOutlined /> },
+      ...menuData.filter(item => item.path !== '/index')
+    ],
+    [menuData]
+  );
+  const proLayoutToken = useMemo(() => {
+    const pageContainerToken = {
+      bgLayout: appColors.bg,
+      pageContainer: {
+        colorBgPageContainer: appColors.bg,
+        colorBgPageContainerFixed: appColors.surface
+      }
+    };
+
+    if (!effectiveNavDark) {
+      return {
+        ...pageContainerToken,
+        header: {
+          colorBgHeader: navColors.bg,
+          colorBgScrollHeader: navColors.bg,
+          colorHeaderTitle: navColors.title,
+          colorTextMenu: navColors.text,
+          colorTextMenuSecondary: '#697386',
+          colorTextMenuSelected: navColors.title,
+          colorTextMenuActive: navColors.title,
+          colorBgMenuItemHover: navColors.menuHoverBg,
+          colorBgMenuItemSelected: 'transparent',
+          colorTextRightActionsItem: navColors.text,
+          colorBgRightActionsItemHover: navColors.actionHoverBg
+        },
+        sider: {
+          colorBgCollapsedButton: appColors.surface,
+          colorTextCollapsedButton: navColors.text,
+          colorTextCollapsedButtonHover: navColors.title,
+          colorMenuBackground: navColors.bg,
+          colorMenuItemDivider: navColors.border,
+          colorBgMenuItemHover: navColors.menuHoverBg,
+          colorBgMenuItemSelected: navColors.menuSelectedBg,
+          colorTextMenuItemHover: navColors.title,
+          colorTextMenuSelected: layoutSettings.theme,
+          colorTextMenuActive: navColors.title,
+          colorTextMenu: navColors.text,
+          colorTextMenuSecondary: '#697386',
+          colorTextMenuTitle: navColors.title,
+          colorTextSubMenuSelected: layoutSettings.theme
+        }
+      };
+    }
+
+    return {
+      ...pageContainerToken,
+      header: {
+        colorBgHeader: navColors.bg,
+        colorBgScrollHeader: navColors.bg,
+        colorHeaderTitle: navColors.title,
+        colorTextMenu: navColors.text,
+        colorTextMenuSecondary: 'rgba(255, 255, 255, 0.48)',
+        colorTextMenuSelected: navColors.activeText,
+        colorTextMenuActive: navColors.activeText,
+        colorBgMenuItemHover: navColors.menuHoverBg,
+        colorBgMenuItemSelected: 'rgba(255, 255, 255, 0.12)',
+        colorTextRightActionsItem: navColors.text,
+        colorBgRightActionsItemHover: navColors.actionHoverBg
+      },
+      sider: {
+        colorBgCollapsedButton: appColors.surface,
+        colorTextCollapsedButton: navColors.text,
+        colorTextCollapsedButtonHover: navColors.activeText,
+        colorMenuBackground: navColors.bg,
+        colorMenuItemDivider: navColors.border,
+        colorBgMenuItemHover: navColors.menuHoverBg,
+        colorBgMenuItemSelected: navColors.menuSelectedBg,
+        colorTextMenuItemHover: navColors.activeText,
+        colorTextMenuSelected: navColors.activeText,
+        colorTextMenuActive: navColors.activeText,
+        colorTextMenu: navColors.text,
+        colorTextMenuSecondary: 'rgba(255, 255, 255, 0.48)',
+        colorTextMenuTitle: navColors.title,
+        colorTextSubMenuSelected: navColors.activeText
+      }
+    };
+  }, [appColors, layoutSettings.theme, navColors, effectiveNavDark]);
+  const currentRoute = useMemo(
+    () => flattenBackendRoutes(backendRoutes).find(item => item.fullPath === location.pathname),
+    [backendRoutes, location.pathname]
+  );
+  const currentTitle = useMemo(() => {
+    return currentRoute?.meta?.title || (location.pathname === '/index' ? '工作台' : undefined);
+  }, [currentRoute, location.pathname]);
+
+  useEffect(() => {
+    document.title = layoutSettings.dynamicTitle && currentTitle ? `${currentTitle} - ${appTitle}` : appTitle;
+  }, [appTitle, currentTitle, layoutSettings.dynamicTitle]);
+
+  useLayoutEffect(() => {
+    document.documentElement.style.setProperty('--layout-primary-react', layoutSettings.theme);
+    document.documentElement.style.setProperty('--layout-radius-react', `${layoutSettings.radiusBase}px`);
+    document.documentElement.style.setProperty('--layout-nav-bg-react', navColors.bg);
+    document.documentElement.style.setProperty('--layout-nav-border-react', navColors.border);
+    document.documentElement.style.setProperty('--layout-nav-text-react', navColors.text);
+    document.documentElement.style.setProperty('--layout-nav-title-react', navColors.title);
+    document.documentElement.style.setProperty('--layout-nav-active-text-react', navColors.activeText);
+    document.documentElement.style.setProperty('--layout-nav-action-hover-bg-react', navColors.actionHoverBg);
+    document.documentElement.style.setProperty('--layout-nav-menu-hover-bg-react', navColors.menuHoverBg);
+    document.documentElement.style.setProperty('--layout-nav-menu-selected-bg-react', navColors.menuSelectedBg);
+    document.documentElement.style.setProperty('--layout-nav-badge-shadow-react', navColors.badgeShadow);
+    document.documentElement.style.setProperty('--app-bg-react', appColors.bg);
+    document.documentElement.style.setProperty('--app-surface-react', appColors.surface);
+    document.documentElement.style.setProperty('--app-surface-muted-react', appColors.surfaceMuted);
+    document.documentElement.style.setProperty('--app-border-react', appColors.border);
+    document.documentElement.style.setProperty('--app-text-react', appColors.text);
+    document.documentElement.style.setProperty('--app-text-secondary-react', appColors.textSecondary);
+    document.documentElement.style.setProperty('--app-primary-soft-react', appColors.primarySoft);
+    document.documentElement.style.setProperty('--app-link-react', appColors.link);
+    document.documentElement.style.setProperty('--app-link-strong-react', appColors.linkStrong);
+    document.documentElement.style.setProperty('--app-link-soft-react', appColors.linkSoft);
+    document.documentElement.style.setProperty('--app-link-border-react', appColors.linkBorder);
+    document.documentElement.style.setProperty('--app-text-muted-react', appColors.textMuted);
+    document.documentElement.style.setProperty('--app-text-disabled-react', appColors.textDisabled);
+    document.documentElement.style.setProperty('--app-danger-react', appColors.danger);
+    document.documentElement.style.setProperty('--app-border-strong-react', appColors.borderStrong);
+    document.documentElement.style.setProperty('--app-border-subtle-react', appColors.borderSubtle);
+    document.body.style.backgroundColor = appColors.bg;
+  }, [appColors, layoutSettings.radiusBase, layoutSettings.theme, navColors]);
+
+  useLayoutEffect(() => {
+    document.body.classList.remove(
+      'layout-nav-dark-react',
+      'layout-nav-light-react',
+      'layout-dark-mode-react',
+      'layout-light-mode-react'
+    );
+    document.body.classList.add(effectiveNavDark ? 'layout-nav-dark-react' : 'layout-nav-light-react');
+    document.body.classList.add(layoutSettings.darkMode ? 'layout-dark-mode-react' : 'layout-light-mode-react');
+    document.documentElement.classList.toggle('dark', layoutSettings.darkMode);
+    document.documentElement.dataset.theme = layoutSettings.darkMode ? 'dark' : 'light';
+    return () => {
+      document.body.classList.remove(
+        'layout-nav-dark-react',
+        'layout-nav-light-react',
+        'layout-dark-mode-react',
+        'layout-light-mode-react'
+      );
+      document.documentElement.classList.remove('dark');
+      delete document.documentElement.dataset.theme;
+    };
+  }, [layoutSettings.darkMode, effectiveNavDark]);
+
+  const userMenu: MenuProps['items'] = [
+    {
+      key: 'profile',
+      icon: <UserOutlined />,
+      label: '个人中心',
+      onClick: () => history.push('/user/profile')
+    },
+    { type: 'divider' },
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: '退出登录',
+      onClick: async () => {
+        try {
+          await logout();
+        } finally {
+          closePush();
+          pushStartedRef.current = false;
+          removeToken();
+          clearUserInfo();
+          clearMenus();
+          resetTags();
+          history.replace('/login');
+        }
+      }
+    }
+  ];
+
+  if (loading) {
+    return (
+      <div style={{ display: 'grid', minHeight: '100vh', placeItems: 'center' }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  return (
+    <ConfigProvider
+      key={layoutSettings.darkMode ? 'app-dark' : 'app-light'}
+      locale={zhCN}
+      theme={{
+        algorithm: layoutSettings.darkMode ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+        token: {
+          colorPrimary: layoutSettings.theme,
+          borderRadius: layoutSettings.radiusBase,
+          colorBgLayout: appColors.bg,
+          colorBgContainer: appColors.surface,
+          colorBgElevated: appColors.elevated
+        }
+      }}
+    >
+      <ProLayout
+        key={proLayoutKey}
+        className={proLayoutClassName}
+        style={proLayoutStyle}
+        title={false}
+        logo={false}
+        colorPrimary={layoutSettings.theme}
+        token={proLayoutToken}
+        layout="mix"
+        contentStyle={proLayoutContentStyle}
+        navTheme="light"
+        theme={effectiveNavDark ? 'dark' : 'light'}
+        menuProps={{ theme: effectiveNavDark ? 'dark' : 'light' }}
+        fixedHeader={layoutSettings.fixedHeader}
+        menuHeaderRender={false}
+        headerTitleRender={false}
+        location={{
+          pathname: currentRoute?.meta?.activeMenu || location.pathname
+        }}
+        route={{ path: '/', routes: navigationMenuData }}
+        menuItemRender={(item, _dom) => (
+          <button
+            type="button"
+            className="layout-menu-link"
+            onClick={() => {
+              const targetPath = resolveMenuPath(item as RuntimeMenuItem);
+              if (!targetPath) return;
+              if (isHttp(targetPath)) {
+                window.open(targetPath, '_blank', 'noopener,noreferrer');
+                return;
+              }
+              history.push(targetPath);
+            }}
+          >
+            {menuNode(item as RuntimeMenuItem)}
+          </button>
+        )}
+        subMenuItemRender={(item, _dom) => menuNode(item as RuntimeMenuItem)}
+        actionsRender={false}
+        headerContentRender={() => (
+          <div className="layout-header-actions">
+            <MenuSearch />
+            <MessageBox userId={userInfo?.user.userId} />
+            <Screenfull />
+            <Dropdown menu={{ items: userMenu }} placement="bottomRight" trigger={['click']}>
+              <Button type="text" className="layout-user-trigger">
+                <Avatar size={24} src={userInfo?.user.avatarUrl || defaultAvatar} />
+                <span className="layout-user-name">{userInfo?.user.nickName || userInfo?.user.userName}</span>
+              </Button>
+            </Dropdown>
+          </div>
+        )}
+      >
+        <Outlet key={location.pathname} />
+      </ProLayout>
+    </ConfigProvider>
+  );
+}

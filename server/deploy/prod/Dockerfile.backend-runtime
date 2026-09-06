@@ -1,0 +1,19 @@
+FROM eclipse-temurin:21-jre-jammy
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 --create-home --home-dir /home/app app \
+    && mkdir -p /app/logs /data/images /tmp/djl \
+    && chown -R app:app /app /data/images /tmp/djl
+
+WORKDIR /app
+COPY --chown=app:app wuzh-admin.jar /app/app.jar
+
+ENV TZ=Asia/Shanghai \
+    LANG=C.UTF-8 \
+    DJL_CACHE_DIR=/tmp/djl
+
+USER app
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

@@ -158,6 +158,14 @@ docker compose --env-file .env.prod up -d --no-deps backend frontend
 
 ECS Java测试包临时保存在 `/tmp/image-admin-java-oss-20260906`，是一次性验证文件，不是已部署的业务服务；所有 `oss-smoke` OSS测试对象均已删除。
 
+### 2026-09-06 首次ECS部署记录
+
+已在 `/data/app/image-admin/releases/20260906-oss-4f5a3e5` 用已验证的 Jar 与前端静态产物构建并启动 `image-admin-prod-backend-1`、`image-admin-prod-frontend-1`。基础服务继续复用 1Panel 的 MySQL、Redis、Qdrant、OpenResty，未停止或重建它们；应用数据库为 `image_admin_prod`，应用使用独立的最小权限 MySQL 用户。后端健康检查、MySQL、Redis、ECS RAM 角色、OSS 初始化、SSCD 模型校验和 Qdrant 集合初始化均通过，稳定内存约 0.8GB。
+
+`hytpod.com` 的 1Panel HTTP 反向代理已实际返回图片管理后台登录页。初始管理员密码已随机化，保存在发布目录的 `INITIAL_ADMIN_CREDENTIALS.txt`（权限600），不写入日志或仓库；首次登录后应立即修改。
+
+OSS 对 `Origin: http://hytpod.com` 的 PUT 预检当前返回403，因此员工登录、查询等功能可用，但浏览器直传图片在配置 CORS 前不可用。Bucket 控制台应新增仅允许 `http://hytpod.com` 的规则，允许方法 `PUT、GET、HEAD`，允许请求头 `Content-Type、x-oss-forbid-overwrite`，暴露头 `ETag、Content-Length`，预检缓存600秒。备案与HTTPS完成后，将 Origin 收紧为 `https://hytpod.com` 并移除HTTP规则。
+
 仍需验证：正式域名/CORS/私有ACL确认；完整Java业务接入生产数据；模型内存和批量并发；浏览器直传→去重→审核→图库→删除；生产备份恢复。上述小文件协议测试不等于这些已通过。
 
 验收入库必须检查任务完成、MySQL为APPROVED、OSS正式对象可读、Qdrant存在Point，再用新批次验证召回；不能只看接口“已提交”就认定成功。

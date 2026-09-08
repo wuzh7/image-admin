@@ -2,7 +2,7 @@
 
 ## 1. 目标与边界
 
-在现有图片去重和人工复核流程中加入 Gemini 图片侵权风险检测。员工确认图片与正式图库不重复后，系统创建异步侵权检测任务；只有 Gemini 成功返回可解析的 `HIGH` 或 `LOW`，图片才进入正式图库并写入 Qdrant。任何网络、配额、超时或解析失败都不得被记录为低风险。
+在现有图片去重和人工复核流程中加入 Gemini 图片侵权风险检测。员工确认图片与正式图库不重复后，图片立即进入现有正式入库流程并写入 Qdrant，同时创建独立的异步侵权检测任务。Gemini 结果不作为正式入库门禁；任何网络、配额、超时或解析失败都记录为“检测失败”，风险等级保持为空，绝不伪装成低风险。
 
 本次实现包含主站任务管理、独立 AI Gateway、Gemini 调用、HMAC 鉴权、数据库状态、失败重试与恢复、风险结果展示、配置示例和本地自动化测试。不直接操作阿里云 ECS、1Panel、DNS、证书、安全组或真实生产密钥，也不建设 IP/TRO 知识库、搜索 Grounding、AI 结果缓存、Embedding、Kafka、Nacos 或 Kubernetes。
 
@@ -25,28 +25,29 @@
 
 ### 3.1 状态
 
-图片状态新增：
+侵权检测 item 状态：
 
-- `INFRINGEMENT_PENDING`：人工确认通过，等待 AI 检测。
-- `INFRINGEMENT_PROCESSING`：Worker 已抢占并正在调用 Gateway。
-- `INFRINGEMENT_RETRY`：技术失败，等待下次重试。
-- `MANUAL_REQUIRED`：达到最大重试次数，不能自动入库。
+- `PENDING`：等待 AI 检测。
+- `PROCESSING`：Worker 已抢占并正在调用 Gateway。
+- `SUCCESS`：成功解析为 `HIGH` 或 `LOW`。
+- `RETRY`：技术失败，等待自动重试。
+- `FAILED`：达到最大重试次数，页面显示“检测失败”。
 
-现有 `APPROVING` 仅表示 AI 检测已成功、正在执行 OSS 提升和 Qdrant 写入；`APPROVED` 仍表示正式入库完成。
+图片入库状态与侵权检测状态完全分离。现有 `APPROVING` 继续表示正在执行 OSS 提升和 Qdrant 写入，`APPROVED` 表示正式入库完成；无论侵权检测最终是 `SUCCESS` 还是 `FAILED`，都不回退或阻止图片入库。
 
-批次在人工确认后进入 `INFRINGEMENT_CHECKING`。全部选中图片完成后：全部成功为 `COMPLETED`；存在 `MANUAL_REQUIRED` 或入库失败为 `PARTIAL_FAILED`。未选择图片仍进入现有 `DELETE_PENDING` 清理流程。
+原图片批次在人工确认后继续进入现有 `CONFIRMING`，由入库 Worker 独立完成。侵权检测 task 单独维护 `PENDING / PROCESSING / COMPLETED / PARTIAL_FAILED / FAILED`；存在检测失败不会把已经成功入库的原图片批次改成失败。未选择图片仍进入现有 `DELETE_PENDING` 清理流程。
 
 ### 3.2 表
 
 新增最小三表：
 
-- `infringement_scan_task`：批次对应任务、汇总计数、状态和配置快照。
+- `infringement_scan_task`：初次检测或批量重检任务、汇总计数、状态和配置快照。
 - `infringement_scan_item`：每张图片的处理状态、风险结果、原始响应、尝试次数、下次重试时间和错误信息。
 - `ai_call_log`：每次 Gateway 调用的 requestId、模型、耗时、HTTP 状态、Token 和错误码。
 
 第一版不新增可编辑的运行时配置表和 Prompt 表。模型、Prompt、thinking、resolution、超时、重试次数及并发通过环境配置加载，并在创建任务时序列化到 `infringement_scan_task.config_snapshot`。这满足“运行中任务配置不漂移”，同时避免为当前唯一 Prompt 和 Provider 增加六张配置表及管理页面。需要在线修改配置时再引入版本表。
 
-`img_asset` 新增最终风险字段：风险等级、原因、英文图片描述、对应 scan item、检测时间。任务明细保存完整 AI 响应，正式图库只保存展示所需字段。
+`img_asset` 新增当前侵权检测状态、风险等级、原因、英文图片描述、对应最新 scan item 和检测时间。任务明细保存每次完整 AI 响应与错误；正式图库只保存当前展示所需字段。失败时状态写为 `FAILED`，风险等级、原因和描述保持为空。
 
 ## 4. 主站流程
 
@@ -56,31 +57,37 @@
 
 1. 保留现有批次归属、失败图片和相似度上限校验。
 2. 未选择图片写为 `DELETE_PENDING`。
-3. 选择图片写为 `INFRINGEMENT_PENDING`。
-4. 创建一个 task 和对应 items，并保存配置快照。
-5. 批次写为 `INFRINGEMENT_CHECKING`，HTTP 立即返回。
+3. 选择图片继续写为现有 `APPROVING`，立即进入 OSS 提升和 Qdrant 入库流程。
+4. 同时创建一个初次检测 task 和对应 `PENDING` items，保存配置快照，并把图片当前侵权检测状态写为 `PENDING`。
+5. 批次继续写为现有 `CONFIRMING`，HTTP 立即返回。
 
-重复提交继续由现有批次条件更新阻止；任务表对 `source_batch_id` 设置唯一约束。
+重复提交继续由现有批次条件更新阻止。入库和侵权任务创建处于同一个数据库事务，保证不会出现已经确认但没有检测任务的图片。
 
 ### 4.2 Worker
 
-定时 Worker 每次领取少量到期的 `PENDING/RETRY` item，通过条件更新将状态原子地改为 `PROCESSING`。并发由配置控制，初始值为 8。
+定时 Worker 每次领取少量到期且图片已为 `APPROVED` 的 `PENDING/RETRY` item，通过条件更新将状态原子地改为 `PROCESSING`。并发由配置控制，初始值为 8。图片入库失败时 item 保持 `PENDING`，待现有入库重试成功后再检测。
 
 单项处理流程：
 
-1. 从现有 `ImageStorage` 读取审核图片。
+1. 从现有 `ImageStorage` 读取正式图库图片。
 2. 生成 AI 检测副本：修复方向、移除非必要元数据、最长边不超过 2048、JPEG 质量 85；若原图已在限制内且格式受支持，可直接发送原始字节，避免重复转码损失。
 3. 计算图片 SHA-256 并生成 requestId、timestamp、nonce 和 HMAC。
 4. multipart 调用 Gateway。
 5. 严格解析 `高风险` 或 `低风险`；任何缺字段、歧义或超长内容都作为技术失败。
-6. 成功时在事务内写 item 结果与 `img_asset` 风险字段，并把图片改为 `APPROVING`，由现有 `ImageAdmissionWorker` 完成 OSS 提升和 Qdrant 写入。
-7. 可重试异常按照 `2s、5s、15s、60s、300s` 与随机抖动设置 `next_retry_at`；达到 5 次后写为 `MANUAL_REQUIRED`。
+6. 成功时在事务内写 item 结果与 `img_asset` 当前风险字段，不修改图片的正式入库状态。
+7. 可重试异常按照 `2s、5s、15s、60s、300s` 与随机抖动设置 `next_retry_at`；达到 5 次后把 item 和图片当前侵权检测状态写为 `FAILED`，风险等级保持为空。
 
 定时恢复任务把超过 10 分钟的 `PROCESSING` item 改回 `RETRY`。状态更新必须带旧状态条件，确保多实例不会同时处理同一 item。
 
-### 4.3 入库一致性
+### 4.3 入库与检测一致性
 
-Gemini 成功不等于正式入库成功。AI 成功后图片才进入现有 `APPROVING`，继续复用 `ImageAdmissionWorker` 的 OSS Copy、Qdrant upsert 和数据库条件更新。入库失败仍使用 `APPROVAL_FAILED`，不会覆盖已经保存的风险结果；用户可以从任务页面重试入库或重新检测。
+人工确认不重复后，正式入库继续复用 `ImageAdmissionWorker` 的 OSS Copy、Qdrant upsert 和数据库条件更新，不等待 Gemini。侵权 Worker 只处理已经 `APPROVED` 的图片，因而始终从稳定的正式图库对象读取。入库失败仍使用 `APPROVAL_FAILED`，检测任务保持待处理；入库重试成功后会自动进入检测。检测失败只影响侵权状态，不影响图片的 `APPROVED` 状态、OSS 对象或 Qdrant 向量。
+
+### 4.4 批量重新检测全部失败图片
+
+页面按钮作用于当前登录用户所有历史任务中“当前侵权检测状态为 `FAILED`”的正式图片，不局限于当前任务。点击后，服务端在事务内重新查询符合权限的失败图片，创建一个新的批量重检 task 和 items，并把这些图片的当前侵权检测状态改为 `PENDING`。
+
+历史失败 item 不修改、不删除；新 task 使用点击时的最新配置快照。连续点击通过重复提交保护和条件更新避免同一张图片同时进入多个重检任务。若当前用户没有失败图片，接口返回成功且创建数量为 0，不产生空任务或 Gemini 调用。
 
 ## 5. AI Gateway
 
@@ -104,7 +111,7 @@ Gateway 使用固定版本的 Google Gen AI Java SDK，模型默认为 `gemini-3
 
 - 任务分页与汇总查询。
 - 单任务明细分页，支持 HIGH、LOW、处理中、失败筛选。
-- 对 `MANUAL_REQUIRED` item 发起重新检测；保留历史 item，不覆盖旧结果。
+- “重新检测全部失败”接口：批量纳入当前登录用户所有历史任务中当前状态为 `FAILED` 的正式图片，并返回新 taskId 和图片数量。
 - 图片详情返回风险等级、原因、描述、模型、Prompt 版本和检测时间。
 
 新增“图片侵权检测”动态菜单页面，并同步加入 `web/src/pages/dynamicPage.tsx`。页面展示任务总数、完成数、高低风险数、失败数、进度和明细图片。不会在浏览器中暴露 Gateway 地址、Google Key 或 HMAC Secret。
@@ -119,13 +126,14 @@ Gateway 使用固定版本的 Google Gen AI Java SDK，模型默认为 `gemini-3
 
 后端最小自动化验证：
 
-- 确认批次会创建任务，未选择图片仍进入删除流程，选择图片不会提前入库。
+- 确认批次会同时创建检测任务和启动正式入库；未选择图片仍进入删除流程。
 - HMAC 正常、过期、篡改和重复 nonce。
 - HIGH/LOW 文本解析及歧义、缺字段、超长响应失败。
-- 429、5xx、超时按计划重试；技术失败绝不写 LOW；第五次失败进入 `MANUAL_REQUIRED`。
+- 429、5xx、超时按计划重试；技术失败绝不写 LOW；第五次失败进入 `FAILED`，图片仍保持正式入库。
 - 超时 `PROCESSING` 可以恢复。
-- 成功结果先写风险再进入 `APPROVING`，最终复用现有入库链路。
-- 多次调度不会重复处理或重复正式入库。
+- AI 成功或失败都不会修改 `APPROVED` 状态、OSS 正式对象或 Qdrant 向量。
+- 批量重检覆盖当前用户所有历史失败图片，保留旧 item，并阻止并发重复创建。
+- 入库和检测多次调度都不会重复处理或重复正式入库。
 - Gateway 测试使用假 Gemini Client，不需要真实 Key。
 
 前端运行 `pnpm lint` 和生产构建。后端运行相关模块测试与 `wuzh-admin` clean test/package。数据库、菜单和容器配置变更后重建本地容器，并验证任务页可见、创建任务立即返回、模拟 HIGH/LOW/失败链路均符合状态机。

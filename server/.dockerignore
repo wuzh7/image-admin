@@ -7,3 +7,4 @@ deploy/local
 data
 *.log
 deploy/prod/.env.prod
+deploy/prod/releases

@@ -46,13 +46,15 @@ public class ImageController {
 
     @SaCheckPermission("image:dedup:upload")
     @GetMapping("/image/storage")
-    public R<Boolean> storageMode() { return R.ok(uploadService.directUpload()); }
+    public R<org.dromara.image.service.ImageUploadService.StorageMode> storageMode() {
+        return R.ok(uploadService.storageMode());
+    }
 
     @SaCheckPermission("image:dedup:upload")
-    @PostMapping("/image/batches/{id}/upload-tickets")
-    public R<List<org.dromara.image.service.ImageUploadService.Ticket>> uploadTickets(@PathVariable long id,
+    @PostMapping("/image/batches/{id}/upload-session")
+    public R<org.dromara.image.service.ImageUploadService.UploadSession> uploadSession(@PathVariable long id,
         @Valid @RequestBody org.dromara.image.service.ImageUploadService.PrepareRequest request) {
-        return R.ok(uploadService.prepare(id, request));
+        return R.ok(uploadService.createSession(id, request));
     }
 
     @SaCheckPermission("image:dedup:upload")

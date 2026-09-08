@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -486,6 +487,23 @@ class ImageServiceTest {
         login.when(LoginHelper::getUserId).thenReturn(userId);
         login.when(() -> LoginHelper.isSuperAdmin(userId)).thenReturn(administrator);
         return login;
+    }
+
+    @Test
+    void approvedLibraryImageCanBeViewedByAnotherAuthorizedUser() {
+        ImageAssetMapper assetMapper = mock(ImageAssetMapper.class);
+        LocalImageStorage storage = mock(LocalImageStorage.class);
+        ImageAsset approved = asset(1001L, 100L, new byte[0]);
+        approved.setStatus(ImageStatus.APPROVED.name());
+        approved.setCreateBy(2L);
+        when(assetMapper.selectById(1001L)).thenReturn(approved);
+        when(storage.accessUrl(approved.getStorageKey(), true)).thenReturn(Optional.of("https://example.test/thumb"));
+        ImageService service = new ImageService(new ImageProperties(), mock(ImageBatchMapper.class), assetMapper,
+            mock(ImageCategoryMapper.class), storage, mock(QdrantVectorStore.class), mock(ImageTaskRunner.class), mock(UserService.class));
+
+        try (MockedStatic<LoginHelper> login = loginAs(1L, false)) {
+            assertEquals("https://example.test/thumb", service.accessUrl(1001L, true));
+        }
     }
 
     private static ImageAsset asset(long id, long batchId, byte[] vector) {

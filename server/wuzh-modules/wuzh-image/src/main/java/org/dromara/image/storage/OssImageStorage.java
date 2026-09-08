@@ -10,11 +10,23 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.OutputStream;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 
 @Component
 @ConditionalOnProperty(name = "image.storage.type", havingValue = "oss")
@@ -36,16 +48,70 @@ public class OssImageStorage implements ImageStorage {
         throw new ServiceException("OSS模式请使用浏览器直传");
     }
 
-    @Override public String signUpload(String key, String contentType, long size) {
-        return external.presignPutUrl(key, Duration.ofMinutes(15), contentType, size);
+    @Override public UploadPolicy signUploadPolicy(String keyPrefix, Duration expiry) {
+        ImageProperties.Oss config = properties.getStorage().getOss();
+        AwsCredentials credentials = resolveCredentials(config);
+        Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        Instant expiresAt = now.plus(expiry);
+        String date = DateTimeFormatter.ofPattern("yyyyMMdd").withZone(ZoneOffset.UTC).format(now);
+        String requestTime = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
+            .withZone(ZoneOffset.UTC).format(now);
+        String credential = "%s/%s/%s/oss/aliyun_v4_request"
+            .formatted(credentials.accessKeyId(), date, config.getRegion());
+        String tokenCondition = credentials instanceof AwsSessionCredentials session
+            ? ",[\"eq\",\"$x-oss-security-token\",\"%s\"]".formatted(session.sessionToken()) : "";
+        String policyJson = "{\"expiration\":\"%s\",\"conditions\":[[\"eq\",\"$bucket\",\"%s\"],"
+            + "[\"eq\",\"$x-oss-signature-version\",\"OSS4-HMAC-SHA256\"],"
+            + "[\"eq\",\"$x-oss-credential\",\"%s\"],[\"eq\",\"$x-oss-date\",\"%s\"]%s,"
+            + "[\"starts-with\",\"$key\",\"%s\"],[\"content-length-range\",1,%d],"
+            + "[\"in\",\"$content-type\",[\"image/jpeg\",\"image/png\",\"image/webp\"]],"
+            + "[\"eq\",\"$x-oss-forbid-overwrite\",\"true\"]]}";
+        policyJson = policyJson.formatted(expiresAt, config.getBucket(), credential, requestTime,
+            tokenCondition, keyPrefix, properties.getMaxFileBytes());
+        String policy = Base64.getEncoder().encodeToString(policyJson.getBytes(StandardCharsets.UTF_8));
+        byte[] signingKey = hmac(("aliyun_v4" + credentials.secretAccessKey()).getBytes(StandardCharsets.UTF_8), date);
+        signingKey = hmac(signingKey, config.getRegion());
+        signingKey = hmac(signingKey, "oss");
+        signingKey = hmac(signingKey, "aliyun_v4_request");
+
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("policy", policy);
+        fields.put("x-oss-signature-version", "OSS4-HMAC-SHA256");
+        fields.put("x-oss-credential", credential);
+        fields.put("x-oss-date", requestTime);
+        fields.put("x-oss-signature", hex(hmac(signingKey, policy)));
+        fields.put("x-oss-forbid-overwrite", "true");
+        if (credentials instanceof AwsSessionCredentials session) {
+            fields.put("x-oss-security-token", session.sessionToken());
+        }
+        URI publicEndpoint = URI.create(config.getPublicEndpoint());
+        String endpointHost = publicEndpoint.getHost().replaceFirst("^s3\\.", "");
+        return new UploadPolicy("https://" + config.getBucket() + "." + endpointHost + "/", keyPrefix,
+            Map.copyOf(fields), expiresAt);
     }
 
-    @Override public void verifyUpload(String key, String contentType, long size) {
-        ObjectInfo info = internal.head(key);
-        if (info.size() != size || size <= 0 || size > properties.getMaxFileBytes()
-            || !contentType.equals(info.contentType())) {
-            throw new ServiceException("OSS图片大小或类型与上传申请不符");
+    private AwsCredentials resolveCredentials(ImageProperties.Oss config) {
+        if (external.config() != null && external.config().credentialsProvider() != null) {
+            return external.config().credentialsProvider().resolveCredentials();
         }
+        if (config.getAccessKey() == null || config.getSecretKey() == null) {
+            throw new ServiceException("OSS上传凭证不可用");
+        }
+        return AwsBasicCredentials.create(config.getAccessKey(), config.getSecretKey());
+    }
+
+    private static byte[] hmac(byte[] key, String value) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(key, "HmacSHA256"));
+            return mac.doFinal(value.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception exception) {
+            throw new IllegalStateException("OSS上传签名生成失败", exception);
+        }
+    }
+
+    private static String hex(byte[] bytes) {
+        return java.util.HexFormat.of().formatHex(bytes);
     }
 
     @Override public Optional<String> accessUrl(String key, boolean thumbnail) {

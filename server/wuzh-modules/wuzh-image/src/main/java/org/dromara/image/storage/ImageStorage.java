@@ -6,6 +6,9 @@ import org.springframework.web.multipart.MultipartFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 
 public interface ImageStorage {
@@ -16,15 +19,14 @@ public interface ImageStorage {
 
     default boolean directUpload() { return false; }
     default Optional<String> accessUrl(String key, boolean thumbnail) { return Optional.empty(); }
-    default String signUpload(String key, String contentType, long size) {
-        throw new ServiceException("当前存储不支持直传");
-    }
-    default void verifyUpload(String key, String contentType, long size) {
-        throw new ServiceException("当前存储不支持直传");
+    default UploadPolicy signUploadPolicy(String keyPrefix, Duration expiry) {
+        throw new ServiceException("当前存储不支持批次直传");
     }
 
     record StoredImage(String storageKey, String thumbnailKey, String originalName,
                        String contentType, long fileSize, int width, int height, String sha256) {}
+
+    record UploadPolicy(String host, String keyPrefix, Map<String, String> formFields, Instant expiresAt) {}
 
     record LocalFile(Path path, boolean temporary) implements AutoCloseable {
         @Override public void close() throws java.io.IOException {

@@ -86,35 +86,47 @@ public class SscdFeatureExtractor {
     }
 
     public Features extract(Path imagePath, boolean includeRotations) throws Exception {
-        BufferedImage image = readOriented(imagePath);
+        return extractBatch(List.of(imagePath), includeRotations).getFirst();
+    }
+
+    public List<Features> extractBatch(List<Path> imagePaths, boolean includeRotations) throws Exception {
+        if (imagePaths.isEmpty()) return List.of();
+        List<List<BufferedImage>> imageViews = new ArrayList<>(imagePaths.size());
+        for (Path path : imagePaths) imageViews.add(views(readOriented(path), includeRotations));
+        int viewsPerImage = imageViews.getFirst().size();
+        float[] input = new float[imagePaths.size() * viewsPerImage * 3 * INPUT_SIZE * INPUT_SIZE];
+        int offset = 0;
+        for (List<BufferedImage> views : imageViews) {
+            for (BufferedImage view : views) offset = writeNormalized(resize(view), input, offset);
+        }
+        float[][] vectors = predict(new ModelInput(input, imagePaths.size() * viewsPerImage));
+        if (vectors.length != imagePaths.size() * viewsPerImage) {
+            throw new IllegalStateException("SSCD模型输出批次数量不正确: " + vectors.length);
+        }
+        List<Features> result = new ArrayList<>(imagePaths.size());
+        for (int imageIndex = 0; imageIndex < imagePaths.size(); imageIndex++) {
+            List<float[]> queryVectors = new ArrayList<>(viewsPerImage);
+            for (int viewIndex = 0; viewIndex < viewsPerImage; viewIndex++) {
+                float[] vector = vectors[imageIndex * viewsPerImage + viewIndex];
+                if (vector.length != VECTOR_DIMENSION) {
+                    throw new IllegalStateException("SSCD模型输出维度不是512: " + vector.length);
+                }
+                queryVectors.add(normalize(vector));
+            }
+            result.add(new Features(queryVectors.get(0), queryVectors.get(1), List.copyOf(queryVectors)));
+        }
+        return List.copyOf(result);
+    }
+
+    private static List<BufferedImage> views(BufferedImage image, boolean includeRotations) {
         List<BufferedImage> views = new ArrayList<>();
         views.add(image);
         views.add(centerCrop(image));
         if (includeRotations) {
             Color fill = medianCornerColor(image);
-            for (int angle : QUERY_ROTATIONS) {
-                views.add(centerCrop(rotateExpanded(image, angle, fill)));
-            }
+            for (int angle : QUERY_ROTATIONS) views.add(centerCrop(rotateExpanded(image, angle, fill)));
         }
-
-        float[] input = new float[views.size() * 3 * INPUT_SIZE * INPUT_SIZE];
-        int offset = 0;
-        for (BufferedImage view : views) {
-            offset = writeNormalized(resize(view), input, offset);
-        }
-
-        float[][] vectors = predict(new ModelInput(input, views.size()));
-        if (vectors.length != views.size()) {
-            throw new IllegalStateException("SSCD模型输出批次数量不正确: " + vectors.length);
-        }
-        List<float[]> queryVectors = new ArrayList<>(vectors.length);
-        for (float[] vector : vectors) {
-            if (vector.length != VECTOR_DIMENSION) {
-                throw new IllegalStateException("SSCD模型输出维度不是512: " + vector.length);
-            }
-            queryVectors.add(normalize(vector));
-        }
-        return new Features(queryVectors.get(0), queryVectors.get(1), List.copyOf(queryVectors));
+        return views;
     }
 
     private void ensureLoaded() throws Exception {

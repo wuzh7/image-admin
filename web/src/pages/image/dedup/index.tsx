@@ -45,7 +45,7 @@ import {
   getImageStorageMode,
   prepareImageUploads,
   completeImageUploads,
-  putImageToOss,
+  postImageToOss,
   confirmImageBatch,
   createImageBatch,
   deleteApprovedImage,
@@ -503,34 +503,76 @@ export default function ImageDedupPage() {
       const rawFiles = files
         .filter(file => selectedFileUidSet.has(file.uid))
         .map(file => file.originFileObj || (file as unknown as File));
-      const directUpload = (await getImageStorageMode()).data;
-      for (let offset = 0; offset < rawFiles.length; offset += uploadChunkSize) {
-        const chunk = rawFiles.slice(offset, offset + uploadChunkSize);
-        if (directUpload) {
-          const tickets = (await prepareImageUploads(batchId, chunk)).data;
-          // 最多三张并行直传，避免大批图片耗尽浏览器连接。
-          for (let index = 0; index < chunk.length; index += 3) {
-            const slice = tickets.slice(index, index + 3);
-            await Promise.all(slice.map((ticket, pos) => putImageToOss(ticket, chunk[index + pos])));
-            await completeImageUploads(batchId, slice.map(ticket => ticket.imageId));
+      const selectedUploadFiles = files.filter(file => selectedFileUidSet.has(file.uid));
+      let retryUids: string[] = [];
+      const storageMode = (await getImageStorageMode()).data;
+      if (storageMode.directUpload) {
+        const session = (await prepareImageUploads(batchId, rawFiles)).data;
+        const loaded = Array.from<number>({ length: rawFiles.length }).fill(0);
+        const totalBytes = rawFiles.reduce((sum, file) => sum + file.size, 0);
+        let cursor = 0;
+        let lastProgressAt = 0;
+        const failedIndexes: number[] = [];
+        const uploadOne = async () => {
+          while (cursor < rawFiles.length) {
+            const index = cursor++;
+            let lastError: unknown;
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+              try {
+                await postImageToOss(session, session.files[index], rawFiles[index], bytes => {
+                  loaded[index] = bytes;
+                  const uploaded = loaded.reduce((sum, value) => sum + value, 0);
+                  const now = performance.now();
+                  if (now - lastProgressAt >= 100 || uploaded === totalBytes) {
+                    lastProgressAt = now;
+                    setUploadProgress(Math.round((uploaded / totalBytes) * 100));
+                  }
+                });
+                loaded[index] = rawFiles[index].size;
+                lastError = undefined;
+                break;
+              } catch (error) {
+                loaded[index] = 0;
+                lastError = error;
+              }
+            }
+            if (lastError) failedIndexes.push(index);
           }
-        } else {
+        };
+        const concurrency = Math.min(session.uploadConcurrency || storageMode.uploadConcurrency, rawFiles.length);
+        await Promise.all(Array.from({ length: concurrency }, uploadOne));
+        const failed = new Set(failedIndexes);
+        const successfulIds = session.files.filter((_, index) => !failed.has(index)).map(file => file.imageId);
+        const failedIds = session.files.filter((_, index) => failed.has(index)).map(file => file.imageId);
+        await completeImageUploads(batchId, successfulIds, failedIds);
+        retryUids = failedIndexes.map(index => selectedUploadFiles[index].uid);
+        if (!successfulIds.length) throw new Error('全部图片上传失败，请检查网络后重试');
+        setUploadProgress(100);
+      } else {
+        for (let offset = 0; offset < rawFiles.length; offset += uploadChunkSize) {
+          const chunk = rawFiles.slice(offset, offset + uploadChunkSize);
           await uploadBatchFiles(batchId, chunk);
+          setUploadProgress(Math.round((Math.min(offset + uploadChunkSize, rawFiles.length) / rawFiles.length) * 100));
         }
-        setUploadProgress(Math.round((Math.min(offset + uploadChunkSize, rawFiles.length) / rawFiles.length) * 100));
       }
       await startImageBatch(batchId);
       if (canQuery) {
         await loadBatch(batchId);
         await loadTasks(1, taskPageSize);
       }
-      setFiles([]);
-      setSelectedFileUids([]);
+      setFiles(current => current.filter(file => !selectedFileUidSet.has(file.uid) || retryUids.includes(file.uid)));
+      setSelectedFileUids(retryUids);
       setUploadPreviewPage(1);
       if (canQuery) history.push('/image/upload?tab=tasks');
-      message.success(canQuery
-        ? '上传完成，已进入后台检测；可以离开当前页面，稍后从“上传进度”查看结果'
-        : '上传完成，已进入后台检测');
+      if (retryUids.length) {
+        message.warning(`${retryUids.length}张图片上传失败并已保留，其余图片已进入检测`);
+      } else {
+        message.success(canQuery
+          ? '上传完成，已进入后台检测；可以离开当前页面，稍后从“上传进度”查看结果'
+          : '上传完成，已进入后台检测');
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '图片上传失败，请稍后重试');
     } finally {
       submittingRef.current = false;
       setUploading(false);

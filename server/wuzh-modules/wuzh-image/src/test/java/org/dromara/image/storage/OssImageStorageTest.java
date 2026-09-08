@@ -7,21 +7,35 @@ import org.dromara.image.config.ImageProperties;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import java.time.Duration;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @Tag("local")
 class OssImageStorageTest {
-    @Test void signsUploadAndChecksActualObjectMetadata() {
+    @Test void signsOneRestrictedPostPolicyForTheWholeBatch() {
+        ImageProperties properties = new ImageProperties();
+        var config = properties.getStorage().getOss();
+        config.setBucket("image-admin-test");
+        config.setRegion("cn-hangzhou");
+        config.setPublicEndpoint("https://s3.oss-cn-hangzhou.aliyuncs.com");
+        config.setAccessKey("test-access-key");
+        config.setSecretKey("test-secret-key");
         OssClient client = mock(OssClient.class);
-        OssImageStorage storage = new OssImageStorage(new ImageProperties(), client, client);
-        when(client.presignPutUrl("review/42/a.png", Duration.ofMinutes(15), "image/png", 123L))
-            .thenReturn("https://example.test/signed");
-        assertEquals("https://example.test/signed", storage.signUpload("review/42/a.png", "image/png", 123L));
-        when(client.head("review/42/a.png")).thenReturn(new ObjectInfo(123L, "image/png", "etag"));
-        storage.verifyUpload("review/42/a.png", "image/png", 123L);
-        assertThrows(ServiceException.class, () -> storage.verifyUpload("review/42/a.png", "image/png", 999L));
+
+        ImageStorage.UploadPolicy result = new OssImageStorage(properties, client, client)
+            .signUploadPolicy("review/42/", Duration.ofMinutes(30));
+
+        assertEquals("https://image-admin-test.oss-cn-hangzhou.aliyuncs.com/", result.host());
+        assertEquals("review/42/", result.keyPrefix());
+        assertEquals("OSS4-HMAC-SHA256", result.formFields().get("x-oss-signature-version"));
+        assertFalse(result.formFields().containsKey("accessKeySecret"));
+        String policy = new String(Base64.getDecoder().decode(result.formFields().get("policy")), StandardCharsets.UTF_8);
+        assertTrue(policy.contains("[\"starts-with\",\"$key\",\"review/42/\"]"));
+        assertTrue(policy.contains("[\"content-length-range\",1,20971520]"));
+        assertTrue(policy.contains("[\"in\",\"$content-type\",[\"image/jpeg\",\"image/png\",\"image/webp\"]]"));
     }
 
     @Test void thumbnailUsesSignedImageProcessing() {

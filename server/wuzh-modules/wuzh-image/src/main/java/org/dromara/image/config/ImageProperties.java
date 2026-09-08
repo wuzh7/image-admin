@@ -11,11 +11,15 @@ public class ImageProperties {
 
     private int maxFilesPerBatch = 1000;
     private int maxFilesPerRequest = 10;
+    private int maxFilesPerUploadSession = 1000;
     private long maxFileBytes = 20L * 1024 * 1024;
     private long maxPixels = 50_000_000L;
     private BigDecimal similarityThreshold = new BigDecimal("0.60");
     private int deleteRetentionDays = 7;
-    private int taskWorkers = 2;
+    private int taskWorkers = 1;
+    private int featureBatchSize = 1;
+    private int uploadConcurrency = 8;
+    private int uploadPolicyMinutes = 30;
     private final Storage storage = new Storage();
     private final Model model = new Model();
     private final Qdrant qdrant = new Qdrant();
@@ -48,6 +52,7 @@ public class ImageProperties {
         private String url = "http://127.0.0.1:6333";
         private String apiKey;
         private String collection = "image_sscd_v1";
+        private String stagingCollection = "image_sscd_staging_v1";
     }
 
 }

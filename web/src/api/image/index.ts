@@ -94,19 +94,29 @@ export function updateImageCategory(id: ImageId, data: SaveImageCategory) {
 export function deleteImageCategory(id: ImageId) {
   return request<R>({ url: `/image/categories/${id}`, method: 'delete' });
 }
-export interface UploadTicket {
+export interface UploadTarget {
   imageId: ImageId;
-  uploadUrl: string;
-  headers: Record<string, string>;
+  objectKey: string;
+  contentType: string;
+  size: number;
+}
+
+export interface UploadSession {
+  host: string;
+  keyPrefix: string;
+  formFields: Record<string, string>;
+  expiresAt: string;
+  uploadConcurrency: number;
+  files: UploadTarget[];
 }
 
 export function getImageStorageMode() {
-  return request<R<boolean>>({ url: '/image/storage', method: 'get' });
+  return request<R<{ directUpload: boolean; uploadConcurrency: number }>>({ url: '/image/storage', method: 'get' });
 }
 
 export function prepareImageUploads(batchId: ImageId, files: File[]) {
-  return request<R<UploadTicket[]>>({
-    url: `/image/batches/${batchId}/upload-tickets`, method: 'post',
+  return request<R<UploadSession>>({
+    url: `/image/batches/${batchId}/upload-session`, method: 'post',
     headers: { repeatSubmit: false },
     data: { files: files.map(file => ({
       name: file.name, size: file.size,
@@ -115,16 +125,32 @@ export function prepareImageUploads(batchId: ImageId, files: File[]) {
   });
 }
 
-export function completeImageUploads(batchId: ImageId, imageIds: ImageId[]) {
+export function completeImageUploads(batchId: ImageId, imageIds: ImageId[], failedIds: ImageId[] = []) {
   return request<R>({ url: `/image/batches/${batchId}/upload-complete`, method: 'post',
-    data: { imageIds }, headers: { repeatSubmit: false } });
+    data: { imageIds, failedIds }, headers: { repeatSubmit: false } });
 }
 
-// 使用独立请求，业务 Token、clientid、加密头都不能发送到 OSS。
-export async function putImageToOss(ticket: UploadTicket, file: File) {
-  const response = await fetch(ticket.uploadUrl, { method: 'PUT', headers: ticket.headers, body: file,
-    credentials: 'omit', signal: AbortSignal.timeout(5 * 60 * 1000) });
-  if (!response.ok) throw new Error(`图片直传失败（HTTP ${response.status}），请检查网络或上传地址是否过期`);
+// 使用独立 XHR 上传，既不泄露业务 Token，也能统计真实字节进度。file 必须是表单最后一项。
+export function postImageToOss(session: UploadSession, target: UploadTarget, file: File,
+  onProgress: (loaded: number) => void) {
+  return new Promise<void>((resolve, reject) => {
+    const data = new FormData();
+    data.append('key', target.objectKey);
+    Object.entries(session.formFields).forEach(([key, value]) => data.append(key, value));
+    data.append('Content-Type', target.contentType);
+    data.append('file', file);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', session.host);
+    xhr.timeout = 5 * 60 * 1000;
+    xhr.withCredentials = false;
+    xhr.upload.onprogress = event => onProgress(event.lengthComputable ? event.loaded : 0);
+    xhr.onload = () => xhr.status >= 200 && xhr.status < 300
+      ? resolve()
+      : reject(new Error(`图片直传失败（HTTP ${xhr.status}）`));
+    xhr.onerror = () => reject(new Error('图片直传网络异常'));
+    xhr.ontimeout = () => reject(new Error('图片直传超时'));
+    xhr.send(data);
+  });
 }
 
 export function getImageAccess(url: string) {

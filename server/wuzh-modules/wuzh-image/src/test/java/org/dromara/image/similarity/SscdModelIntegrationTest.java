@@ -11,12 +11,72 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Tags({@Tag("dev"), @Tag("local")})
 class SscdModelIntegrationTest {
+
+    @Test
+    void benchmarkRealImagesWithMicroBatches() throws Exception {
+        Path model = pathProperty("sscd.model");
+        Path directory = pathProperty("sscd.benchmark-dir");
+        Assumptions.assumeTrue(model != null && Files.isRegularFile(model));
+        Assumptions.assumeTrue(directory != null && Files.isDirectory(directory));
+        int count = Integer.getInteger("sscd.benchmark-count", 12);
+        List<Path> images;
+        try (var paths = Files.walk(directory)) {
+            images = paths.filter(Files::isRegularFile)
+                .filter(SscdModelIntegrationTest::isSupportedImage)
+                .sorted(Comparator.naturalOrder()).limit(count).toList();
+        }
+        assertEquals(count, images.size(), "真实图片样本数不足");
+
+        ImageProperties properties = new ImageProperties();
+        properties.setTaskWorkers(1);
+        properties.getModel().setPath(model.toString());
+        SscdFeatureExtractor extractor = new SscdFeatureExtractor(properties);
+        try {
+            extractor.extract(images.getFirst(), true);
+            List<SscdFeatureExtractor.Features> baseline = null;
+            for (int batchSize : List.of(1, 2, 4)) {
+                long started = System.nanoTime();
+                List<SscdFeatureExtractor.Features> current = extractInGroups(extractor, images, batchSize);
+                long elapsedMs = (System.nanoTime() - started) / 1_000_000;
+                System.out.printf(Locale.ROOT,
+                    "SSCD_BENCHMARK batchSize=%d images=%d elapsedMs=%d imagesPerMinute=%.2f%n",
+                    batchSize, images.size(), elapsedMs, images.size() * 60_000d / elapsedMs);
+                if (baseline == null) {
+                    baseline = current;
+                } else {
+                    assertSameFeatures(baseline, current);
+                }
+            }
+        } finally {
+            extractor.close();
+        }
+    }
+
+    @Test
+    void microBatchProducesTheSameVectorsAsSingleImageInference() throws Exception {
+        Path model = pathProperty("sscd.model");
+        Path demo = Path.of(SscdModelIntegrationTest.class.getResource("/sscd-baseline").toURI());
+        Assumptions.assumeTrue(model != null && Files.isRegularFile(model));
+        ImageProperties properties = new ImageProperties();
+        properties.getModel().setPath(model.toString());
+        SscdFeatureExtractor extractor = new SscdFeatureExtractor(properties);
+        try {
+            List<Path> paths = List.of(demo.resolve("test_img1.jpg"), demo.resolve("test_img2.jpg"));
+            List<SscdFeatureExtractor.Features> batch = extractor.extractBatch(paths, true);
+            assertArrayEquals(extractor.extract(paths.get(0), true).globalVector(), batch.get(0).globalVector(), 0.00001f);
+            assertArrayEquals(extractor.extract(paths.get(1), true).globalVector(), batch.get(1).globalVector(), 0.00001f);
+        } finally {
+            extractor.close();
+        }
+    }
 
     @Test
     void scoresMatchRecordedBaseline() throws Exception {
@@ -87,5 +147,30 @@ class SscdModelIntegrationTest {
     private static Path pathProperty(String name) {
         String value = System.getProperty(name);
         return value == null || value.isBlank() ? null : Path.of(value);
+    }
+
+    private static List<SscdFeatureExtractor.Features> extractInGroups(
+        SscdFeatureExtractor extractor, List<Path> images, int batchSize) throws Exception {
+        List<SscdFeatureExtractor.Features> result = new ArrayList<>();
+        for (int offset = 0; offset < images.size(); offset += batchSize) {
+            result.addAll(extractor.extractBatch(
+                images.subList(offset, Math.min(offset + batchSize, images.size())), true));
+        }
+        return result;
+    }
+
+    private static void assertSameFeatures(List<SscdFeatureExtractor.Features> expected,
+                                           List<SscdFeatureExtractor.Features> actual) {
+        assertEquals(expected.size(), actual.size());
+        for (int index = 0; index < expected.size(); index++) {
+            assertArrayEquals(expected.get(index).globalVector(), actual.get(index).globalVector(), 0.00001f);
+            assertArrayEquals(expected.get(index).centerVector(), actual.get(index).centerVector(), 0.00001f);
+        }
+    }
+
+    private static boolean isSupportedImage(Path path) {
+        String name = path.getFileName().toString().toLowerCase(Locale.ROOT);
+        return name.endsWith(".jpg") || name.endsWith(".jpeg")
+            || name.endsWith(".png") || name.endsWith(".webp");
     }
 }

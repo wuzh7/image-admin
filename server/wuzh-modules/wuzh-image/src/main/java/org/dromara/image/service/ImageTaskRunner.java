@@ -22,12 +22,12 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -81,14 +81,16 @@ public class ImageTaskRunner {
     public void dispatchQueued() {
         List<ImageBatch> batches = batchMapper.selectList(Wrappers.<ImageBatch>lambdaQuery()
             .eq(ImageBatch::getStatus, BatchStatus.QUEUED.name())
-            .orderByAsc(ImageBatch::getCreateTime));
+            .orderByAsc(ImageBatch::getCreateTime)
+            .orderByAsc(ImageBatch::getId));
         batches.forEach(batch -> submit(batch.getId()));
     }
 
     public void recover() {
         List<ImageBatch> batches = batchMapper.selectList(Wrappers.<ImageBatch>lambdaQuery()
             .in(ImageBatch::getStatus, BatchStatus.QUEUED.name(), BatchStatus.CHECKING.name())
-            .orderByAsc(ImageBatch::getCreateTime));
+            .orderByAsc(ImageBatch::getCreateTime)
+            .orderByAsc(ImageBatch::getId));
         batches.forEach(batch -> submit(batch.getId()));
     }
 
@@ -106,11 +108,15 @@ public class ImageTaskRunner {
             && !BatchStatus.CHECKING.name().equals(batch.getStatus()))) {
             return;
         }
+        BatchTiming timing = new BatchTiming();
         try {
+            long started = System.nanoTime();
             batch.setStatus(BatchStatus.CHECKING.name());
             batch.setErrorMessage(null);
             batchMapper.updateById(batch);
+            timing.persistNanos += System.nanoTime() - started;
 
+            started = System.nanoTime();
             List<ImageAsset> assets = assetMapper.selectList(Wrappers.<ImageAsset>lambdaQuery()
                 .eq(ImageAsset::getBatchId, batchId)
                 .orderByAsc(ImageAsset::getId));
@@ -119,7 +125,8 @@ public class ImageTaskRunner {
                     || ImageStatus.CHECKING.name().equals(asset.getStatus()))
                 .toList();
             Map<String, ImageAsset> exactByHash = loadApprovedExactMatches(pending);
-            List<BatchCandidate> batchCandidates = new ArrayList<>();
+            timing.persistNanos += System.nanoTime() - started;
+            Map<Long, BatchCandidate> batchCandidates = new HashMap<>();
             Progress progress = new Progress();
             for (ImageAsset asset : assets) {
                 if (isProcessed(asset)) {
@@ -129,17 +136,62 @@ public class ImageTaskRunner {
                     }
                 }
             }
-            updateProgress(batch, progress);
+            updateProgress(batch, progress, timing);
 
-            for (ImageAsset asset : pending) {
-                SscdFeatureExtractor.Features features = processImage(batch, asset, exactByHash, batchCandidates);
-                progress.add(asset);
-                if (!ImageStatus.FAILED.name().equals(asset.getStatus())) {
-                    addBatchCandidate(asset, features, exactByHash, batchCandidates);
+            int featureBatchSize = Math.max(1, Math.min(8, properties.getFeatureBatchSize()));
+            timing.featureBatchSize = featureBatchSize;
+            timing.imageCount = pending.size();
+            for (int offset = 0; offset < pending.size(); offset += featureBatchSize) {
+                List<ImageAsset> group = new ArrayList<>(
+                    pending.subList(offset, Math.min(offset + featureBatchSize, pending.size())));
+                group.forEach(asset -> {
+                    asset.setStatus(ImageStatus.CHECKING.name());
+                    asset.setErrorMessage(null);
+                });
+                started = System.nanoTime();
+                assetMapper.updateById(group);
+                timing.persistNanos += System.nanoTime() - started;
+                List<PreparedImage> featurePending = new ArrayList<>();
+                List<DuplicatePending> duplicatePending = new ArrayList<>();
+                Map<String, PreparedImage> ownersByHash = new HashMap<>();
+                try {
+                    for (ImageAsset asset : group) {
+                        started = System.nanoTime();
+                        PreparedImage prepared = prepareImage(asset, exactByHash);
+                        timing.prepareNanos += System.nanoTime() - started;
+                        if (prepared.local() != null) {
+                            PreparedImage owner = ownersByHash.putIfAbsent(asset.getSha256(), prepared);
+                            if (owner == null) {
+                                featurePending.add(prepared);
+                            } else {
+                                try { prepared.local().close(); } catch (Exception ignored) { }
+                                duplicatePending.add(new DuplicatePending(asset, owner.asset()));
+                            }
+                        } else {
+                            progress.add(asset);
+                            if (!ImageStatus.FAILED.name().equals(asset.getStatus())) {
+                                addBatchCandidate(asset, null, exactByHash, batchCandidates);
+                            }
+                        }
+                    }
+                    processFeatureBatch(batch, featurePending, exactByHash, batchCandidates, progress, timing);
+                    for (DuplicatePending duplicate : duplicatePending) {
+                        ImageAsset asset = duplicate.asset();
+                        ImageAsset owner = duplicate.owner();
+                        if (ImageStatus.WAIT_REVIEW.name().equals(owner.getStatus())) {
+                            copyExactResult(asset, owner);
+                            addBatchCandidate(asset, null, exactByHash, batchCandidates);
+                        } else {
+                            fail(asset, new ServiceException("完全重复图片的原图处理失败"));
+                        }
+                        progress.add(asset);
+                    }
+                } finally {
+                    closeLocalFiles(featurePending);
                 }
-                updateProgress(batch, progress);
+                updateProgress(batch, progress, timing);
             }
-            finishBatch(batch, progress);
+            finishBatch(batch, progress, timing);
         } catch (Exception exception) {
             log.error("图片批次执行失败 batchId={}", batchId, exception);
             batch = batchMapper.selectById(batchId);
@@ -148,18 +200,15 @@ public class ImageTaskRunner {
                 batch.setErrorMessage(message(exception));
                 batchMapper.updateById(batch);
             }
+        } finally {
+            timing.log(batchId);
         }
     }
 
-    private SscdFeatureExtractor.Features processImage(ImageBatch batch, ImageAsset asset,
-                                                        Map<String, ImageAsset> exactByHash,
-                                                        List<BatchCandidate> batchCandidates) {
-        asset.setStatus(ImageStatus.CHECKING.name());
-        asset.setErrorMessage(null);
-        assetMapper.updateById(asset);
-        SscdFeatureExtractor.Features features = null;
+    private PreparedImage prepareImage(ImageAsset asset, Map<String, ImageAsset> exactByHash) {
+        ImageStorage.LocalFile local = null;
         try {
-            try (ImageStorage.LocalFile local = storage.open(asset.getStorageKey())) {
+            local = storage.open(asset.getStorageKey());
             var validated = LocalImageStorage.validate(local.path(), asset.getOriginalName(), properties);
             if (!validated.contentType().equals(asset.getContentType()) || validated.fileSize() != asset.getFileSize()) {
                 throw new ServiceException("图片内容与上传记录不一致");
@@ -176,39 +225,150 @@ public class ImageTaskRunner {
                 if (!matches.isEmpty()) exact = matches.getFirst();
             }
             if (exact != null && exact.getGlobalVector() != null && exact.getCenterVector() != null) {
-                asset.setGlobalVector(exact.getGlobalVector());
-                asset.setCenterVector(exact.getCenterVector());
-                asset.setFeatureVersion(exact.getFeatureVersion());
-                asset.setDuplicateFlag(true);
-                asset.setDuplicateOf(exact.getId());
-                asset.setSimilarity(BigDecimal.ONE.setScale(5));
-                asset.setMatchMethod("EXACT_HASH");
-            } else {
-                Path path = local.path();
-                features = extractor.extract(path, true);
-                asset.setGlobalVector(SscdFeatureExtractor.encode(features.globalVector()));
-                asset.setCenterVector(SscdFeatureExtractor.encode(features.centerVector()));
+                copyExactResult(asset, exact);
+                local.close();
+                return new PreparedImage(asset, null);
+            }
+            return new PreparedImage(asset, local);
+        } catch (Exception exception) {
+            if (local != null) try { local.close(); } catch (Exception ignored) { }
+            log.warn("图片检测失败 imageId={}: {}", asset.getId(), exception.getMessage());
+            asset.setStatus(ImageStatus.FAILED.name());
+            asset.setDuplicateFlag(null);
+            asset.setErrorMessage(message(exception));
+            assetMapper.updateById(asset);
+            return new PreparedImage(asset, null);
+        }
+    }
+
+    private void processFeatureBatch(ImageBatch batch, List<PreparedImage> pending,
+                                     Map<String, ImageAsset> exactByHash,
+                                     Map<Long, BatchCandidate> batchCandidates, Progress progress,
+                                     BatchTiming timing) {
+        if (pending.isEmpty()) return;
+        List<SscdFeatureExtractor.Features> features;
+        List<List<Long>> approvedRecall;
+        List<List<Long>> batchRecall;
+        Map<Long, ImageAsset> approvedCandidates;
+        try {
+            long started = System.nanoTime();
+            features = extractor.extractBatch(
+                pending.stream().map(item -> item.local().path()).toList(), true);
+            timing.inferenceNanos += System.nanoTime() - started;
+
+            List<List<float[]>> queryGroups = features.stream()
+                .map(SscdFeatureExtractor.Features::queryVectors).toList();
+            started = System.nanoTime();
+            approvedRecall = vectorStore.recallMany(queryGroups, RECALL_LIMIT);
+            batchRecall = vectorStore.recallBatchMany(batch.getId(), queryGroups, RECALL_LIMIT);
+            timing.recallNanos += System.nanoTime() - started;
+
+            started = System.nanoTime();
+            approvedCandidates = loadApprovedCandidates(approvedRecall);
+            timing.persistNanos += System.nanoTime() - started;
+        } catch (Exception exception) {
+            pending.forEach(item -> {
+                fail(item.asset(), exception);
+                progress.add(item.asset());
+            });
+            return;
+        }
+
+        List<FeatureResult> successful = new ArrayList<>(pending.size());
+        List<BatchCandidate> earlierInGroup = new ArrayList<>(pending.size());
+        long started = System.nanoTime();
+        for (int index = 0; index < pending.size(); index++) {
+            ImageAsset asset = pending.get(index).asset();
+            SscdFeatureExtractor.Features current = features.get(index);
+            try {
+                asset.setGlobalVector(SscdFeatureExtractor.encode(current.globalVector()));
+                asset.setCenterVector(SscdFeatureExtractor.encode(current.centerVector()));
                 asset.setFeatureVersion(SscdFeatureExtractor.FEATURE_VERSION);
-                Match match = better(findBatchMatch(batchCandidates, features), findApprovedMatch(features));
+                Match match = better(
+                    findBatchMatch(batchRecall.get(index), batchCandidates, current),
+                    findApprovedMatch(approvedRecall.get(index), approvedCandidates, current));
+                match = better(match, findInMemoryMatch(earlierInGroup, current));
                 BigDecimal finalScore = score(match.score());
                 asset.setDuplicateOf(match.imageId());
                 asset.setSimilarity(finalScore);
                 asset.setDuplicateFlag(match.imageId() != null
                     && finalScore.compareTo(batch.getSimilarityThreshold()) >= 0);
                 asset.setMatchMethod("SSCD");
+                asset.setStatus(ImageStatus.WAIT_REVIEW.name());
+                asset.setDeletedAt(null);
+                asset.setErrorMessage(null);
+                FeatureResult result = new FeatureResult(asset, current);
+                successful.add(result);
+                earlierInGroup.add(new BatchCandidate(asset, current));
+            } catch (Exception exception) {
+                fail(asset, exception);
+                progress.add(asset);
             }
-            asset.setStatus(ImageStatus.WAIT_REVIEW.name());
-            asset.setDeletedAt(null);
-            asset.setErrorMessage(null);
+        }
+        timing.refineNanos += System.nanoTime() - started;
+
+        if (successful.isEmpty()) {
+            return;
+        }
+        List<Long> stagingIds = successful.stream().map(item -> item.asset().getId()).toList();
+        try {
+            started = System.nanoTime();
+            assetMapper.updateById(successful.stream().map(FeatureResult::asset).toList());
+            timing.persistNanos += System.nanoTime() - started;
+
+            started = System.nanoTime();
+            vectorStore.upsertBatch(successful.stream()
+                .map(item -> new QdrantVectorStore.StagingPoint(
+                    item.asset().getId(), item.asset().getBatchId(), item.features()))
+                .toList());
+            timing.indexNanos += System.nanoTime() - started;
+            for (FeatureResult result : successful) {
+                addBatchCandidate(result.asset(), result.features(), exactByHash, batchCandidates);
+                progress.add(result.asset());
             }
         } catch (Exception exception) {
-            log.warn("图片检测失败 imageId={}: {}", asset.getId(), exception.getMessage());
-            asset.setStatus(ImageStatus.FAILED.name());
-            asset.setDuplicateFlag(null);
-            asset.setErrorMessage(message(exception));
+            try {
+                vectorStore.deleteBatchPoints(stagingIds);
+            } catch (Exception cleanupException) {
+                log.error("清理无效批内向量失败 imageIds={}", stagingIds, cleanupException);
+            }
+            successful.forEach(result -> {
+                try {
+                    fail(result.asset(), exception);
+                    progress.add(result.asset());
+                } catch (Exception persistException) {
+                    log.error("保存图片失败状态失败 imageId={}", result.asset().getId(), persistException);
+                }
+            });
         }
+    }
+
+    static void closeLocalFiles(List<PreparedImage> pending) {
+        pending.forEach(item -> {
+            try { item.local().close(); } catch (Exception ignored) { }
+        });
+    }
+
+    private void fail(ImageAsset asset, Exception exception) {
+        log.warn("图片检测失败 imageId={}: {}", asset.getId(), exception.getMessage());
+        asset.setStatus(ImageStatus.FAILED.name());
+        asset.setDuplicateFlag(null);
+        asset.setErrorMessage(message(exception));
         assetMapper.updateById(asset);
-        return ImageStatus.FAILED.name().equals(asset.getStatus()) ? null : features;
+    }
+
+    private void copyExactResult(ImageAsset asset, ImageAsset exact) {
+        asset.setGlobalVector(exact.getGlobalVector());
+        asset.setCenterVector(exact.getCenterVector());
+        asset.setFeatureVersion(exact.getFeatureVersion());
+        asset.setDuplicateFlag(true);
+        asset.setDuplicateOf(exact.getId());
+        asset.setSimilarity(BigDecimal.ONE.setScale(5));
+        asset.setMatchMethod("EXACT_HASH");
+        asset.setStatus(ImageStatus.WAIT_REVIEW.name());
+        asset.setDeletedAt(null);
+        asset.setErrorMessage(null);
+        assetMapper.updateById(asset);
     }
 
     private Map<String, ImageAsset> loadApprovedExactMatches(List<ImageAsset> pending) {
@@ -229,15 +389,17 @@ public class ImageTaskRunner {
         return result;
     }
 
-    private Match findApprovedMatch(SscdFeatureExtractor.Features features) {
-        Set<Long> candidateIds = new LinkedHashSet<>(vectorStore.recall(features.queryVectors(), RECALL_LIMIT));
+    private Match findApprovedMatch(List<Long> recalledIds, Map<Long, ImageAsset> candidatesById,
+                                    SscdFeatureExtractor.Features features) {
+        Set<Long> candidateIds = new LinkedHashSet<>(recalledIds);
         if (candidateIds.isEmpty()) {
             return new Match(null, 0);
         }
-        List<ImageAsset> candidates = assetMapper.selectByIds(candidateIds);
         double bestScore = 0;
         Long bestId = null;
-        for (ImageAsset candidate : candidates) {
+        for (Long candidateId : candidateIds) {
+            ImageAsset candidate = candidatesById.get(candidateId);
+            if (candidate == null) continue;
             if (!ImageStatus.APPROVED.name().equals(candidate.getStatus())
                 || candidate.getGlobalVector() == null || candidate.getCenterVector() == null) {
                 continue;
@@ -253,9 +415,13 @@ public class ImageTaskRunner {
         return new Match(bestId, bestScore);
     }
 
-    private Match findBatchMatch(List<BatchCandidate> candidates, SscdFeatureExtractor.Features features) {
+    static Match findBatchMatch(List<Long> recalledIds, Map<Long, BatchCandidate> candidates,
+                                SscdFeatureExtractor.Features features) {
         Match best = new Match(null, 0);
-        for (BatchCandidate candidate : candidates) {
+        Set<Long> recalled = new LinkedHashSet<>(recalledIds);
+        for (Long candidateId : recalledIds) {
+            BatchCandidate candidate = candidates.get(candidateId);
+            if (candidate == null) continue;
             double current;
             if (candidate.features() != null) {
                 current = SscdFeatureExtractor.symmetricBestScore(features, candidate.features());
@@ -268,31 +434,59 @@ public class ImageTaskRunner {
                 best = new Match(candidate.asset().getId(), current);
             }
         }
+        for (BatchCandidate candidate : candidates.values()) {
+            if (candidate.features() != null || recalled.contains(candidate.asset().getId())) continue;
+            double current = SscdFeatureExtractor.bestScore(features.queryVectors(),
+                SscdFeatureExtractor.decode(candidate.asset().getGlobalVector()),
+                SscdFeatureExtractor.decode(candidate.asset().getCenterVector()));
+            if (current > best.score()) best = new Match(candidate.asset().getId(), current);
+        }
         return best;
+    }
+
+    private static Match findInMemoryMatch(List<BatchCandidate> candidates,
+                                           SscdFeatureExtractor.Features features) {
+        Match best = new Match(null, 0);
+        for (BatchCandidate candidate : candidates) {
+            double current = SscdFeatureExtractor.symmetricBestScore(features, candidate.features());
+            if (current > best.score()) best = new Match(candidate.asset().getId(), current);
+        }
+        return best;
+    }
+
+    private Map<Long, ImageAsset> loadApprovedCandidates(List<List<Long>> recalledGroups) {
+        Set<Long> ids = new LinkedHashSet<>();
+        recalledGroups.forEach(ids::addAll);
+        if (ids.isEmpty()) return Map.of();
+        Map<Long, ImageAsset> result = new HashMap<>();
+        assetMapper.selectByIds(ids).forEach(asset -> result.put(asset.getId(), asset));
+        return result;
     }
 
     private static Match better(Match left, Match right) {
         return left.score() >= right.score() ? left : right;
     }
 
-    private static void addBatchCandidate(ImageAsset asset, SscdFeatureExtractor.Features features,
-                                          Map<String, ImageAsset> exactByHash,
-                                          List<BatchCandidate> candidates) {
+    private void addBatchCandidate(ImageAsset asset, SscdFeatureExtractor.Features features,
+                                   Map<String, ImageAsset> exactByHash,
+                                   Map<Long, BatchCandidate> candidates) {
         if (asset.getGlobalVector() == null || asset.getCenterVector() == null) {
             return;
         }
         exactByHash.putIfAbsent(asset.getSha256(), asset);
-        candidates.add(new BatchCandidate(asset, features));
+        candidates.put(asset.getId(), new BatchCandidate(asset, features));
     }
 
-    private void updateProgress(ImageBatch batch, Progress progress) {
+    private void updateProgress(ImageBatch batch, Progress progress, BatchTiming timing) {
+        long started = System.nanoTime();
         batch.setProcessedCount(progress.processed);
         batch.setDuplicateCount(progress.duplicate);
         batch.setFailedCount(progress.failed);
         batchMapper.updateById(batch);
+        timing.persistNanos += System.nanoTime() - started;
     }
 
-    private void finishBatch(ImageBatch batch, Progress progress) {
+    private void finishBatch(ImageBatch batch, Progress progress, BatchTiming timing) {
         if (progress.failed > 0) {
             batch.setStatus(BatchStatus.FAILED.name());
             batch.setErrorMessage("有" + progress.failed + "张图片检测失败，请查看原因后重试");
@@ -303,7 +497,9 @@ public class ImageTaskRunner {
             batch.setStatus(BatchStatus.COMPLETED.name());
             batch.setErrorMessage(null);
         }
+        long started = System.nanoTime();
         batchMapper.updateById(batch);
+        timing.persistNanos += System.nanoTime() - started;
     }
 
     private static BigDecimal score(double value) {
@@ -325,10 +521,47 @@ public class ImageTaskRunner {
             || ImageStatus.FAILED.name().equals(asset.getStatus());
     }
 
-    private record Match(Long imageId, double score) {
+    record Match(Long imageId, double score) {
     }
 
-    private record BatchCandidate(ImageAsset asset, SscdFeatureExtractor.Features features) {
+    record BatchCandidate(ImageAsset asset, SscdFeatureExtractor.Features features) {
+    }
+
+    record PreparedImage(ImageAsset asset, ImageStorage.LocalFile local) {
+    }
+
+    private record DuplicatePending(ImageAsset asset, ImageAsset owner) {
+    }
+
+    private record FeatureResult(ImageAsset asset, SscdFeatureExtractor.Features features) {
+    }
+
+    private static final class BatchTiming {
+        private final long startedNanos = System.nanoTime();
+        private int imageCount;
+        private int featureBatchSize = 1;
+        private long prepareNanos;
+        private long inferenceNanos;
+        private long recallNanos;
+        private long refineNanos;
+        private long indexNanos;
+        private long persistNanos;
+
+        private void log(long batchId) {
+            long totalNanos = System.nanoTime() - startedNanos;
+            double imagesPerMinute = imageCount == 0 ? 0
+                : imageCount * 60_000_000_000d / totalNanos;
+            log.info(String.format(Locale.ROOT,
+                "图片批次性能 batchId=%d images=%d featureBatchSize=%d totalMs=%d prepareMs=%d "
+                    + "inferenceMs=%d recallMs=%d refineMs=%d indexMs=%d persistMs=%d imagesPerMinute=%.2f",
+                batchId, imageCount, featureBatchSize, millis(totalNanos), millis(prepareNanos),
+                millis(inferenceNanos), millis(recallNanos), millis(refineNanos), millis(indexNanos),
+                millis(persistNanos), imagesPerMinute));
+        }
+
+        private static long millis(long nanos) {
+            return nanos / 1_000_000;
+        }
     }
 
     private static final class Progress {

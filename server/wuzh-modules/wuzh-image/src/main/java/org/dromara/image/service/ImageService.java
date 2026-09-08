@@ -275,7 +275,6 @@ public class ImageService {
         Long currentUserId = requireCurrentUserId();
         LambdaQueryWrapper<ImageAsset> wrapper = Wrappers.<ImageAsset>lambdaQuery()
             .eq(ImageAsset::getStatus, ImageStatus.APPROVED.name())
-            .eq(!LoginHelper.isSuperAdmin(currentUserId), ImageAsset::getCreateBy, currentUserId)
             .eq(query.getCategoryId() != null, ImageAsset::getCategoryId, query.getCategoryId())
             .eq(query.getBatchId() != null, ImageAsset::getBatchId, query.getBatchId())
             .eq(StringUtils.isNotBlank(query.getAspectRatio()), ImageAsset::getAspectRatio, query.getAspectRatio())
@@ -396,7 +395,7 @@ public class ImageService {
 
     public List<String> listAspectRatios() {
         Long currentUserId = requireCurrentUserId();
-        return assetMapper.selectApprovedAspectRatios(currentUserId, LoginHelper.isSuperAdmin(currentUserId));
+        return assetMapper.selectApprovedAspectRatios(currentUserId, true);
     }
 
     public List<ImageDtos.CategoryView> categoryOptions() {
@@ -473,7 +472,7 @@ public class ImageService {
 
     private ImageAsset requireAsset(long id) {
         ImageAsset asset = assetMapper.selectById(id);
-        if (asset == null || !canAccess(asset.getCreateBy())) {
+        if (asset == null || !ImageStatus.APPROVED.name().equals(asset.getStatus()) && !canAccess(asset.getCreateBy())) {
             throw new ServiceException("图片不存在");
         }
         return asset;

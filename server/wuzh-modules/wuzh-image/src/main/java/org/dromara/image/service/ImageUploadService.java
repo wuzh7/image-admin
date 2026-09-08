@@ -15,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import java.util.*;
+import java.time.Duration;
+import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
@@ -26,18 +28,22 @@ public class ImageUploadService {
 
     public record FileRequest(@NotBlank @Size(max = 255) String name,
                               @NotBlank String contentType, @Positive long size) {}
-    public record PrepareRequest(@NotEmpty @Size(max = 10) List<@Valid FileRequest> files) {}
-    public record Ticket(Long imageId, String uploadUrl, Map<String, String> headers) {}
-    public record CompleteRequest(@NotEmpty @Size(max = 10) List<@NotNull Long> imageIds) {}
+    public record PrepareRequest(@NotEmpty @Size(max = 1000) List<@Valid FileRequest> files) {}
+    public record UploadTarget(Long imageId, String objectKey, String contentType, long size) {}
+    public record UploadSession(String host, String keyPrefix, Map<String, String> formFields,
+                                Instant expiresAt, int uploadConcurrency, List<UploadTarget> files) {}
+    public record StorageMode(boolean directUpload, int uploadConcurrency) {}
+    public record CompleteRequest(@NotNull @Size(max = 1000) List<@NotNull Long> imageIds,
+                                  @NotNull @Size(max = 1000) List<@NotNull Long> failedIds) {}
 
     @Transactional(rollbackFor = Exception.class)
-    public List<Ticket> prepare(long batchId, PrepareRequest request) {
+    public UploadSession createSession(long batchId, PrepareRequest request) {
         ImageBatch batch = requireUploading(batchId);
         if (!storage.directUpload()) throw new ServiceException("当前环境使用本地上传");
         long count = assets.selectCount(Wrappers.<ImageAsset>lambdaQuery().eq(ImageAsset::getBatchId, batchId));
-        if (request.files().size() > properties.getMaxFilesPerRequest()
+        if (request.files().size() > properties.getMaxFilesPerUploadSession()
             || count + request.files().size() > properties.getMaxFilesPerBatch()) throw new ServiceException("超过批次上传数量限制");
-        List<Ticket> tickets = new ArrayList<>();
+        List<ImageAsset> pending = new ArrayList<>(request.files().size());
         for (FileRequest file : request.files()) {
             String name = file.name().replace('\\', '/');
             name = name.substring(name.lastIndexOf('/') + 1);
@@ -67,30 +73,61 @@ public class ImageUploadService {
             asset.setSha256("");
             asset.setStatus(ImageStatus.UPLOADING.name());
             asset.setDelFlag("0");
-            assets.insert(asset);
-            tickets.add(new Ticket(asset.getId(), storage.signUpload(key, type, file.size()),
-                Map.of("Content-Type", type, "x-oss-forbid-overwrite", "true")));
+            pending.add(asset);
         }
+        assets.insert(pending);
         batch.setTotalCount(Math.toIntExact(count + request.files().size()));
         batches.updateById(batch);
-        return tickets;
+        String keyPrefix = "review/" + batchId + "/";
+        ImageStorage.UploadPolicy policy = storage.signUploadPolicy(keyPrefix,
+            Duration.ofMinutes(properties.getUploadPolicyMinutes()));
+        List<UploadTarget> targets = pending.stream().map(asset -> new UploadTarget(asset.getId(),
+            asset.getStorageKey(), asset.getContentType(), asset.getFileSize())).toList();
+        return new UploadSession(policy.host(), policy.keyPrefix(), policy.formFields(), policy.expiresAt(),
+            Math.max(1, Math.min(16, properties.getUploadConcurrency())), targets);
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void complete(long batchId, CompleteRequest request) {
-        requireUploading(batchId);
-        for (Long id : new LinkedHashSet<>(request.imageIds())) {
-            ImageAsset asset = assets.selectById(id);
+        ImageBatch batch = requireUploading(batchId);
+        Set<Long> successfulIds = new LinkedHashSet<>(request.imageIds());
+        Set<Long> failedIds = new LinkedHashSet<>(request.failedIds());
+        if (successfulIds.isEmpty() && failedIds.isEmpty()) throw new ServiceException("上传结果不能为空");
+        if (successfulIds.size() + failedIds.size() > properties.getMaxFilesPerUploadSession()) {
+            throw new ServiceException("超过批次上传数量限制");
+        }
+        if (successfulIds.stream().anyMatch(failedIds::contains)) throw new ServiceException("同一图片不能同时标记成功和失败");
+        List<Long> ids = new ArrayList<>(successfulIds);
+        ids.addAll(failedIds);
+        Map<Long, ImageAsset> found = new HashMap<>();
+        assets.selectByIds(ids).forEach(asset -> found.put(asset.getId(), asset));
+        List<ImageAsset> changed = new ArrayList<>();
+        int newlyFailed = 0;
+        for (Long id : ids) {
+            ImageAsset asset = found.get(id);
             if (asset == null || !Objects.equals(asset.getBatchId(), batchId)) throw new ServiceException("上传记录不存在");
-            if (ImageStatus.UPLOADED.name().equals(asset.getStatus())) continue;
+            if (successfulIds.contains(id) && ImageStatus.UPLOADED.name().equals(asset.getStatus())) continue;
+            if (failedIds.contains(id) && ImageStatus.DELETE_PENDING.name().equals(asset.getStatus())) continue;
             if (!ImageStatus.UPLOADING.name().equals(asset.getStatus())) throw new ServiceException("图片已进入处理流程");
-            storage.verifyUpload(asset.getStorageKey(), asset.getContentType(), asset.getFileSize());
-            asset.setStatus(ImageStatus.UPLOADED.name());
-            assets.updateById(asset);
+            if (successfulIds.contains(id)) {
+                asset.setStatus(ImageStatus.UPLOADED.name());
+            } else {
+                asset.setStatus(ImageStatus.DELETE_PENDING.name());
+                asset.setDeletedAt(java.time.LocalDateTime.now());
+                newlyFailed++;
+            }
+            changed.add(asset);
+        }
+        if (!changed.isEmpty()) assets.updateById(changed);
+        if (newlyFailed > 0) {
+            batch.setTotalCount(Math.max(0, Objects.requireNonNullElse(batch.getTotalCount(), 0) - newlyFailed));
+            batches.updateById(batch);
         }
     }
 
-    public boolean directUpload() { return storage.directUpload(); }
+    public StorageMode storageMode() {
+        return new StorageMode(storage.directUpload(), Math.max(1, Math.min(16, properties.getUploadConcurrency())));
+    }
 
     // 仅清理尚未开始检测的过期上传，不给整个 review/ 设置会误删待审图片的生命周期。
     @Scheduled(fixedDelay = 600000, scheduler = "imageCleanupScheduler")

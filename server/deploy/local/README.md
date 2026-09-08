@@ -151,10 +151,10 @@ image-admin/server/models/sscd_disc_mixup.torchscript.pt
 
 ## 7. 异常与恢复规则
 
-- Java 在提交批次前先把 `QUEUED` 写入 MySQL，实际执行时改为 `CHECKING`；每处理一张都立即落库。
+- Java 在提交批次前先把 `QUEUED` 写入 MySQL，实际执行时改为 `CHECKING`；每完成一个微批次就落库进度，默认微批次为 1 张。
 - Java 重启后会扫描 `QUEUED` 和 `CHECKING` 批次，从未完成图片继续处理。
 - 后台每 5 秒重新调度尚未进入执行器的 `QUEUED` 批次，队列短暂满载不会丢任务。
-- 默认允许 2 个不同批次并行处理，并复用同一份已加载的 SSCD 模型；每个批次内部仍按上传顺序串行，避免批内结果受执行顺序影响。可通过 `IMAGE_TASK_WORKERS` 调整，但 8 核 16 GB 服务器建议先保持 `2`。
+- 图片批次默认按 FIFO 单队列处理（`IMAGE_TASK_WORKERS=1`），避免多批次同时抢占 CPU 导致整体更慢。`IMAGE_FEATURE_BATCH_SIZE` 默认为 `1`；只有在目标服务器用真实图片实测证明 `2` 或 `4` 更快后再调整。
 - 续跑或重试时会为已处理图片重建查询特征，保证批内双向比较口径不因重启改变。
 - DJL、模型文件或 Qdrant 异常时，图片进入 `FAILED`，不会被误判为非重复。
 - Qdrant 恢复后，在页面点击“重试失败图片”。

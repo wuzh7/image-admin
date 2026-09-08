@@ -41,11 +41,12 @@ public class ImageAdmissionWorker {
                 if (remaining > 0) continue;
                 long failed = assets.selectCount(Wrappers.<ImageAsset>lambdaQuery().eq(ImageAsset::getBatchId, batch.getId())
                     .eq(ImageAsset::getStatus, ImageStatus.APPROVAL_FAILED.name()));
-                batches.update(null, Wrappers.<ImageBatch>lambdaUpdate().eq(ImageBatch::getId, batch.getId())
+                int updated = batches.update(null, Wrappers.<ImageBatch>lambdaUpdate().eq(ImageBatch::getId, batch.getId())
                     .eq(ImageBatch::getStatus, BatchStatus.CONFIRMING.name())
                     .set(ImageBatch::getStatus, failed > 0 ? BatchStatus.FAILED.name() : BatchStatus.COMPLETED.name())
                     .set(ImageBatch::getFailedCount, Math.toIntExact(failed))
                     .set(ImageBatch::getErrorMessage, failed > 0 ? failed + "张图片入库失败，请重试" : null));
+                if (updated == 1 && failed == 0) vectors.deleteBatch(batch.getId());
             } catch (RuntimeException exception) { log.error("入库调度失败 batchId={}", batch.getId(), exception); }
         }
     }

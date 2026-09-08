@@ -10,19 +10,19 @@ param(
 $ErrorActionPreference = 'Stop'
 foreach ($image in @($BackendImage, $FrontendImage)) {
     docker image inspect $image *> $null
-    if ($LASTEXITCODE -ne 0) { throw "本地镜像不存在: $image" }
+    if ($LASTEXITCODE -ne 0) { throw "Local image does not exist: $image" }
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $archive = Join-Path $OutputDirectory "image-admin-$Version.tar"
 $manifest = Join-Path $OutputDirectory "image-admin-$Version.env"
 $checksum = "$archive.sha256"
-if (Test-Path -LiteralPath $archive) { throw "发布包已存在，请使用新的版本号: $archive" }
-if (Test-Path -LiteralPath $manifest) { throw "版本清单已存在，请使用新的版本号: $manifest" }
-if (Test-Path -LiteralPath $checksum) { throw "校验文件已存在，请使用新的版本号: $checksum" }
+if (Test-Path -LiteralPath $archive) { throw "Release archive already exists; use a new version: $archive" }
+if (Test-Path -LiteralPath $manifest) { throw "Release manifest already exists; use a new version: $manifest" }
+if (Test-Path -LiteralPath $checksum) { throw "Release checksum already exists; use a new version: $checksum" }
 
 docker save --output $archive $BackendImage $FrontendImage
-if ($LASTEXITCODE -ne 0) { throw '发布包导出失败。' }
+if ($LASTEXITCODE -ne 0) { throw 'Release archive export failed.' }
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 [System.IO.File]::WriteAllText($manifest, "BACKEND_IMAGE=$BackendImage`nFRONTEND_IMAGE=$FrontendImage`n", $utf8NoBom)
 
@@ -30,6 +30,6 @@ $checksums = @($archive, $manifest) | ForEach-Object {
     "$((Get-FileHash -Algorithm SHA256 $_).Hash.ToLowerInvariant())  $(Split-Path -Leaf $_)"
 }
 [System.IO.File]::WriteAllText($checksum, (($checksums -join "`n") + "`n"), $utf8NoBom)
-Write-Host "发布包已生成: $archive"
-Write-Host "版本清单已生成: $manifest"
-Write-Host "校验文件已生成: $checksum"
+Write-Host "Release archive: $archive"
+Write-Host "Release manifest: $manifest"
+Write-Host "Release checksum: $checksum"

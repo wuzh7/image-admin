@@ -4,22 +4,23 @@
 
 在现有图片去重和人工复核流程中加入 Gemini 图片侵权风险检测。员工确认图片与正式图库不重复后，图片立即进入现有正式入库流程并写入 Qdrant，同时创建独立的异步侵权检测任务。Gemini 结果不作为正式入库门禁；任何网络、配额、超时或解析失败都记录为“检测失败”，风险等级保持为空，绝不伪装成低风险。
 
-本次实现包含主站任务管理、独立 AI Gateway、Gemini 调用、HMAC 鉴权、数据库状态、失败重试与恢复、风险结果展示、配置示例和本地自动化测试。不直接操作阿里云 ECS、1Panel、DNS、证书、安全组或真实生产密钥，也不建设 IP/TRO 知识库、搜索 Grounding、AI 结果缓存、Embedding、Kafka、Nacos 或 Kubernetes。
+本次实现包含主站任务管理、独立 AI Gateway、Gemini 调用、数据库状态、主站失败重试与恢复、风险结果展示、最小配置示例和本地自动化测试。不直接操作阿里云 ECS、1Panel、DNS、证书、安全组或真实生产密钥，也不建设 IP/TRO 知识库、搜索 Grounding、AI 结果缓存、Embedding、Redis 队列、AI 调用日志表、在线配置表、Kafka、Nacos 或 Kubernetes。
 
 ## 2. 已选方案与取舍
 
 采用“同一仓库、两个独立 Spring Boot 应用”的生产形态：
 
 - 主站继续运行现有 `wuzh-admin`，负责登录、审核、任务状态、重试、正式入库和前端 API。
-- 新增轻量 AI Gateway 应用，负责 HMAC 校验、单次 Gemini 调用和标准化响应，不连接业务数据库。
+- 新增轻量 AI Gateway 应用，负责静态服务令牌校验、单次 Gemini 调用和标准化响应，不连接业务数据库。
 - 本地 Compose 可同时启动两个应用；生产时将 Gateway 单独部署到新加坡 ECS。
-- 主站使用 MySQL 作为任务唯一事实来源和工作队列。项目虽然已有 Redis，但现有图片后台任务已经采用数据库持久状态与定时 Worker；V1 复用该模式可以避免再实现 Redis Stream 的消费确认、Pending reclaim 和数据库双写一致性。若实际吞吐证明 MySQL 抢占成为瓶颈，再迁移到 Redis Stream。
+- 主站只使用 MySQL 作为任务唯一事实来源和工作队列，Redis 完全不参与侵权检测。现有图片后台任务已经采用数据库持久状态与定时 Worker，V1 直接复用该模式。
 
 未采用的方案：
 
 1. 主站直接调用 Gemini：代码最少，但 Gemini Key 会进入中国主站，违反文档的密钥与区域隔离要求。
-2. 主站与 Gateway 都进行自动重试：会产生重试次数相乘和重复计费。最终只允许主站 Worker 决定业务重试，Gateway 每个请求最多调用一次 Gemini。
-3. 第一版直接强制 JSON Schema：解析简单，但可能改变客户已经认可的网页端行为。第一版默认 `TEXT_COMPAT`，保留原始响应；结构化输出能力保留为后续经样本对照后启用的配置值，但本次不实现第二套解析链路。
+2. HMAC 请求签名：安全性更强，但需要 timestamp、nonce、图片摘要、签名计算和防重放存储。V1 改为 HTTPS、安全组仅允许主 ECS EIP、一个静态服务令牌；若未来 Gateway 对多调用方开放，再升级为 HMAC 或 mTLS。
+3. 主站与 Gateway 都进行自动重试：会产生重试次数相乘和重复计费。最终只允许主站 Worker 决定业务重试，Gateway 每个请求最多调用一次 Gemini。
+4. 第一版直接强制 JSON Schema：解析简单，但可能改变客户已经认可的网页端行为。第一版固定使用客户原始文本 Prompt 并保存原始响应；经样本对照确有需要时再增加结构化输出。
 
 ## 3. 业务状态与数据模型
 
@@ -39,13 +40,14 @@
 
 ### 3.2 表
 
-新增最小三表：
+新增最小两表：
 
-- `infringement_scan_task`：初次检测或批量重检任务、汇总计数、状态和配置快照。
+- `infringement_scan_task`：初次检测或批量重检任务、状态和一份 JSON 配置快照。不保存 pending、processing、success、high、low、failed 等实时计数。
 - `infringement_scan_item`：每张图片的处理状态、风险结果、原始响应、尝试次数、下次重试时间和错误信息。
-- `ai_call_log`：每次 Gateway 调用的 requestId、模型、耗时、HTTP 状态、Token 和错误码。
 
-第一版不新增可编辑的运行时配置表和 Prompt 表。模型、Prompt、thinking、resolution、超时、重试次数及并发通过环境配置加载，并在创建任务时序列化到 `infringement_scan_task.config_snapshot`。这满足“运行中任务配置不漂移”，同时避免为当前唯一 Prompt 和 Provider 增加六张配置表及管理页面。需要在线修改配置时再引入版本表。
+任务列表和详情页需要的总数、高风险、低风险、处理中和失败数，通过对 `infringement_scan_item` 的分组查询实时计算，避免每处理一张图片都更新 task 多个计数字段并处理计数一致性。
+
+第一版不新增运行时配置表和 Prompt 表。主站只配置 Gateway URL、服务令牌、超时、最大重试次数和 Worker 并发；Gateway 只配置 Google Key、服务令牌、模型和 Prompt。创建任务时把模型、Prompt 版本和 Prompt 内容保存为一份 JSON 快照，保证运行中任务配置不漂移。需要网页在线修改配置时再增加配置表。
 
 `img_asset` 新增当前侵权检测状态、风险等级、原因、英文图片描述、对应最新 scan item 和检测时间。任务明细保存每次完整 AI 响应与错误；正式图库只保存当前展示所需字段。失败时状态写为 `FAILED`，风险等级、原因和描述保持为空。
 
@@ -69,13 +71,12 @@
 
 单项处理流程：
 
-1. 从现有 `ImageStorage` 读取正式图库图片。
-2. 生成 AI 检测副本：修复方向、移除非必要元数据、最长边不超过 2048、JPEG 质量 85；若原图已在限制内且格式受支持，可直接发送原始字节，避免重复转码损失。
-3. 计算图片 SHA-256 并生成 requestId、timestamp、nonce 和 HMAC。
-4. multipart 调用 Gateway。
-5. 严格解析 `高风险` 或 `低风险`；任何缺字段、歧义或超长内容都作为技术失败。
-6. 成功时在事务内写 item 结果与 `img_asset` 当前风险字段，不修改图片的正式入库状态。
-7. 可重试异常按照 `2s、5s、15s、60s、300s` 与随机抖动设置 `next_retry_at`；达到 5 次后把 item 和图片当前侵权检测状态写为 `FAILED`，风险等级保持为空。
+1. 从现有 `ImageStorage` 直接读取正式图库图片字节，不额外缩放、转码或生成第二份图片，避免增加 CPU、临时文件和画质损失。
+2. 生成 requestId，通过 HTTPS multipart 请求携带图片、任务配置和静态服务令牌调用 Gateway。
+3. Gateway 每个请求只调用一次 Gemini，不在 Gateway 内重试。
+4. 严格解析 `高风险` 或 `低风险`；任何缺字段、歧义或超长内容都作为技术失败。
+5. 成功时在事务内写 item 结果与 `img_asset` 当前风险字段，不修改图片的正式入库状态。
+6. 可重试异常按照 `2s、5s、15s、60s、300s` 与随机抖动设置 `next_retry_at`；达到 5 次后把 item 和图片当前侵权检测状态写为 `FAILED`，风险等级保持为空。
 
 定时恢复任务把超过 10 分钟的 `PROCESSING` item 改回 `RETRY`。状态更新必须带旧状态条件，确保多实例不会同时处理同一 item。
 
@@ -91,19 +92,13 @@
 
 ## 5. AI Gateway
 
-Gateway 提供 `POST /internal/v1/image-risk/analyze`，接收 multipart 图片以及只含 requestId 和配置快照必要字段的 metadata。它不接收用户、订单或其他个人信息。
+Gateway 提供 `POST /internal/v1/image-risk/analyze`，接收 multipart 图片以及只含 requestId 和任务配置必要字段的 metadata。它不接收用户、订单或其他个人信息。
 
-HMAC canonical string 固定为：
+Gateway 仅校验 `X-Gateway-Token` 是否与环境变量中的静态令牌一致，并限制图片大小和 MIME。生产必须使用 HTTPS，Gateway 443 安全组只允许主 ECS 固定 EIP；应用端口不开放公网。这里不实现 timestamp、nonce、图片摘要、HMAC、防重放缓存或 Redis。若 Gateway 以后需要服务多个调用方，再升级鉴权方式。
 
-```text
-timestamp + "\n" + nonce + "\n" + requestId + "\n" + sha256(image)
-```
+Gemini Key 只从 Gateway 环境变量 `GOOGLE_API_KEY` 读取。日志不得输出 Key、服务令牌、图片内容或完整 AI 响应。
 
-Gateway 校验时间偏差不超过 5 分钟、nonce 格式、图片大小和 MIME、签名常量时间比较。第一版 nonce 防重放使用进程内带过期时间的集合；生产仍依赖安全组只允许主 ECS EIP。若部署多个 Gateway 实例，再把 nonce 存储迁移到共享 Redis。
-
-Gemini Key 只从 Gateway 环境变量 `GOOGLE_API_KEY` 读取。日志不得输出 Key、共享密钥、签名、图片内容或完整 AI 响应。
-
-Gateway 使用固定版本的 Google Gen AI Java SDK，模型默认为 `gemini-3.8-flash`，thinking 为 `MEDIUM`，media resolution 为 `HIGH`。它对单个请求只调用一次模型，并返回统一结果或明确错误：认证失败、限流、上游超时、上游 5xx、不可解析响应和不可重试客户端错误。
+Gateway 使用固定版本的 Google Gen AI Java SDK，模型默认为 `gemini-3.8-flash`。第一版不暴露 thinking、media resolution、response mode 等额外开关，使用模型默认值。它对单个请求只调用一次模型，并返回统一结果或明确错误：认证失败、限流、上游超时、上游 5xx、不可解析响应和不可重试客户端错误。
 
 ## 6. API 与前端
 
@@ -114,11 +109,11 @@ Gateway 使用固定版本的 Google Gen AI Java SDK，模型默认为 `gemini-3
 - “重新检测全部失败”接口：批量纳入当前登录用户所有历史任务中当前状态为 `FAILED` 的正式图片，并返回新 taskId 和图片数量。
 - 图片详情返回风险等级、原因、描述、模型、Prompt 版本和检测时间。
 
-新增“图片侵权检测”动态菜单页面，并同步加入 `web/src/pages/dynamicPage.tsx`。页面展示任务总数、完成数、高低风险数、失败数、进度和明细图片。不会在浏览器中暴露 Gateway 地址、Google Key 或 HMAC Secret。
+新增“图片侵权检测”动态菜单页面，并同步加入 `web/src/pages/dynamicPage.tsx`。页面展示任务总数、完成数、高低风险数、失败数、进度和明细图片。不会在浏览器中暴露 Gateway 地址、Google Key 或服务令牌。
 
 ## 7. 配置与密钥
 
-主站环境变量只包含 Gateway URL 和共享 HMAC Secret；Gateway 环境变量包含 Google Key 和同一 HMAC Secret。仓库只提交 `.env.example` 占位符，不提交真实值。
+主站环境变量只包含 Gateway URL、静态服务令牌、超时、最大重试次数和 Worker 并发；Gateway 环境变量只包含 Google Key、同一静态服务令牌、模型和 Prompt。仓库只提交 `.env.example` 占位符，不提交真实值。
 
 用户在当前会话公开的 API Key 不用于代码、测试、命令或日志。开始联调前必须在 Google AI Studio 撤销该 Key 并创建新 Key，然后由用户自行放入本地未跟踪的环境变量。
 
@@ -127,13 +122,14 @@ Gateway 使用固定版本的 Google Gen AI Java SDK，模型默认为 `gemini-3
 后端最小自动化验证：
 
 - 确认批次会同时创建检测任务和启动正式入库；未选择图片仍进入删除流程。
-- HMAC 正常、过期、篡改和重复 nonce。
+- Gateway 服务令牌正确、缺失和错误场景。
 - HIGH/LOW 文本解析及歧义、缺字段、超长响应失败。
 - 429、5xx、超时按计划重试；技术失败绝不写 LOW；第五次失败进入 `FAILED`，图片仍保持正式入库。
 - 超时 `PROCESSING` 可以恢复。
 - AI 成功或失败都不会修改 `APPROVED` 状态、OSS 正式对象或 Qdrant 向量。
 - 批量重检覆盖当前用户所有历史失败图片，保留旧 item，并阻止并发重复创建。
 - 入库和检测多次调度都不会重复处理或重复正式入库。
+- Gateway 不自动重试；同一请求只触发一次假 Gemini Client 调用。
 - Gateway 测试使用假 Gemini Client，不需要真实 Key。
 
 前端运行 `pnpm lint` 和生产构建。后端运行相关模块测试与 `wuzh-admin` clean test/package。数据库、菜单和容器配置变更后重建本地容器，并验证任务页可见、创建任务立即返回、模拟 HIGH/LOW/失败链路均符合状态机。
@@ -144,7 +140,7 @@ Gateway 使用固定版本的 Google Gen AI Java SDK，模型默认为 `gemini-3
 
 1. 数据库、状态枚举和任务领域模型。
 2. 主站确认流程、任务 Worker、Gateway Client 和解析器测试。
-3. 独立 Gateway、HMAC 与 Gemini Client 适配器测试。
+3. 独立 Gateway、静态服务令牌与 Gemini Client 适配器测试。
 4. 任务查询 API 和前端页面。
 5. Compose 与环境变量示例。
 6. 全量构建、本地容器回归和一张图片的可选真实联调。

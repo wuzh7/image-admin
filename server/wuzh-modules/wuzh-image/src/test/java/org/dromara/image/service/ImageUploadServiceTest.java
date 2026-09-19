@@ -1,15 +1,22 @@
 package org.dromara.image.service;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.satoken.utils.LoginHelper;
 import org.dromara.image.config.ImageProperties;
 import org.dromara.image.domain.ImageAsset;
 import org.dromara.image.domain.ImageBatch;
+import org.dromara.image.domain.ImageDtos;
+import org.dromara.image.domain.ImageStatus;
 import org.dromara.image.mapper.ImageAssetMapper;
 import org.dromara.image.mapper.ImageBatchMapper;
 import org.dromara.image.storage.ImageStorage;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Tags;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
 
 import java.util.List;
 import java.time.Duration;
@@ -21,12 +28,18 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-@Tag("local")
+@Tags({@Tag("dev"), @Tag("local")})
 class ImageUploadServiceTest {
     private final ImageBatchMapper batches = mock(ImageBatchMapper.class);
     private final ImageAssetMapper assets = mock(ImageAssetMapper.class);
     private final ImageStorage storage = mock(ImageStorage.class);
-    private final ImageUploadService service = new ImageUploadService(batches, assets, storage, new ImageProperties());
+    private final ImageService imageService = mock(ImageService.class);
+    private final ImageUploadService service = new ImageUploadService(batches, assets, storage, new ImageProperties(), imageService);
+
+    @BeforeAll
+    static void initTableInfo() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), ImageAsset.class);
+    }
 
     private ImageBatch batch() {
         var batch = new ImageBatch();
@@ -52,8 +65,8 @@ class ImageUploadServiceTest {
         when(storage.directUpload()).thenReturn(true);
         when(assets.selectCount(any())).thenReturn(0L);
         var expiresAt = Instant.now().plusSeconds(1800);
-        when(storage.signUploadPolicy(eq("review/10/"), any(Duration.class))).thenReturn(
-            new ImageStorage.UploadPolicy("https://bucket.example/", "review/10/", Map.of("policy", "signed"), expiresAt));
+        when(storage.signUploadPolicy(startsWith("review/"), any(Duration.class))).thenReturn(
+            new ImageStorage.UploadPolicy("https://bucket.example/", "review/", Map.of("policy", "signed"), expiresAt));
         AtomicLong ids = new AtomicLong(100);
         doAnswer(invocation -> {
             List<ImageAsset> inserted = invocation.getArgument(0);
@@ -69,10 +82,66 @@ class ImageUploadServiceTest {
             assertEquals(2, result.files().size());
             assertEquals("https://bucket.example/", result.host());
             assertEquals(8, result.uploadConcurrency());
-            assertTrue(result.files().stream().allMatch(file -> file.objectKey().startsWith("review/10/")));
+            assertTrue(result.files().stream().allMatch(file -> file.objectKey().matches("review/\\d{4}/\\d{2}/\\d{2}/10/.+")));
         }
-        verify(storage, times(1)).signUploadPolicy(eq("review/10/"), any(Duration.class));
+        verify(storage, times(1)).signUploadPolicy(startsWith("review/"), any(Duration.class));
         verify(assets, times(1)).insert(anyCollection());
+    }
+
+    @Test void preparationDoesNotRejectAnImageOnlyBecauseItsExtensionWasChanged() {
+        batch();
+        when(storage.directUpload()).thenReturn(true);
+        when(assets.selectCount(any())).thenReturn(0L);
+        when(storage.signUploadPolicy(startsWith("review/"), any(Duration.class))).thenReturn(
+            new ImageStorage.UploadPolicy("https://bucket.example/", "review/", Map.of(), Instant.now().plusSeconds(1800)));
+        doAnswer(invocation -> {
+            ((List<ImageAsset>) invocation.getArgument(0)).getFirst().setId(101L);
+            return List.of();
+        }).when(assets).insert(anyCollection());
+
+        try (var login = mockStatic(LoginHelper.class)) {
+            login.when(LoginHelper::getUserId).thenReturn(2L);
+            var result = service.createSession(10L, new ImageUploadService.PrepareRequest(List.of(
+                new ImageUploadService.FileRequest("renamed.jpg", "image/png", 10))));
+            assertEquals("image/png", result.files().getFirst().contentType());
+            assertTrue(result.files().getFirst().objectKey().endsWith(".jpg"));
+        }
+    }
+
+    @Test void replacementSessionCreatesOneDirectUploadBoundToTheOldImage() {
+        ImageAsset old = new ImageAsset();
+        old.setId(5L);
+        old.setBatchId(4L);
+        old.setCategoryId(3L);
+        old.setStatus(ImageStatus.APPROVED.name());
+        when(assets.lockAsset(5L)).thenReturn(old);
+        when(assets.selectCount(any())).thenReturn(0L);
+        ImageBatch source = new ImageBatch();
+        source.setInfringementMode("RELAY");
+        when(batches.selectById(4L)).thenReturn(source);
+        ImageBatch uploadBatch = batch();
+        uploadBatch.setCategoryId(3L);
+        ImageDtos.BatchView created = mock(ImageDtos.BatchView.class);
+        when(created.id()).thenReturn(10L);
+        when(imageService.createBatch(any())).thenReturn(created);
+        when(storage.directUpload()).thenReturn(true);
+        when(storage.signUploadPolicy(anyString(), any(Duration.class))).thenReturn(
+            new ImageStorage.UploadPolicy("https://bucket.example/", "review/", Map.of(), Instant.now().plusSeconds(1800)));
+        doAnswer(invocation -> {
+            ((List<ImageAsset>) invocation.getArgument(0)).getFirst().setId(101L);
+            return List.of();
+        }).when(assets).insert(anyCollection());
+        when(assets.update(isNull(), any())).thenReturn(1);
+
+        try (var login = mockStatic(LoginHelper.class)) {
+            login.when(LoginHelper::isAdmin).thenReturn(true);
+            login.when(LoginHelper::getUserId).thenReturn(2L);
+            var result = service.createReplacementSession(5L, new ImageUploadService.PrepareRequest(List.of(
+                new ImageUploadService.FileRequest("new.png", "image/png", 10))));
+            assertEquals(10L, result.batchId());
+            assertEquals(101L, result.upload().files().getFirst().imageId());
+        }
+        verify(assets).update(isNull(), any());
     }
 
     @Test void completionRejectsImageFromAnotherBatch() {

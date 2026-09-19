@@ -1,0 +1,30 @@
+name: image-admin-ai-gateway
+
+services:
+  ai-gateway:
+    image: image-admin-ai-gateway:latest
+    build: .
+    environment:
+      TZ: Asia/Shanghai
+      OPENLUX_BASE_URL: ${OPENLUX_BASE_URL:-https://api.openlux.ai}
+      OPENLUX_API_KEY: ${OPENLUX_API_KEY:-}
+      OPENLUX_MODEL: ${OPENLUX_MODEL:-gemini-3.8-flash}
+      OPENLUX_TIMEOUT_SECONDS: ${OPENLUX_TIMEOUT_SECONDS:-900}
+      RELAY_PROMPT2_FILE: ${RELAY_PROMPT2_FILE-/opt/image-admin-ai-gateway/prompts/prompt2.txt}
+      RELAY_STAGE2_MODEL: ${RELAY_STAGE2_MODEL:-doubao-seed-2-0-lite-260215}
+      RELAY_STAGE2_PROTOCOL: ${RELAY_STAGE2_PROTOCOL:-CHAT_COMPLETIONS}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      AI_GATEWAY_TOKEN: ${AI_GATEWAY_TOKEN:?Set AI_GATEWAY_TOKEN}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+      GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-900}
+      GEMINI_PROMPT_FILE: ${GEMINI_PROMPT_FILE:-/opt/image-admin-ai-gateway/prompts/gemini_prompt.txt}
+    volumes:
+      - /opt/image-admin-ai-gateway/prompts:/opt/image-admin-ai-gateway/prompts:ro
+    ports:
+      - "${AI_GATEWAY_BIND:-127.0.0.1}:${AI_GATEWAY_PORT:-18080}:18080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:18080/health | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped

@@ -113,6 +113,13 @@ redisson:
 # 生产图片必须使用私有 OSS；配置不完整时启动失败。
 image:
   task-workers: ${IMAGE_TASK_WORKERS:1}
+  infringement:
+    gateway-url: ${AI_GATEWAY_URL}
+    gateway-token: ${AI_GATEWAY_TOKEN}
+    request-timeout-seconds: ${AI_GATEWAY_TIMEOUT_SECONDS:960}
+    workers: ${IMAGE_INFRINGEMENT_WORKERS:2}
+    relay-workers: ${IMAGE_INFRINGEMENT_RELAY_WORKERS:10}
+    store-file: ${IMAGE_INFRINGEMENT_STORE_FILE:/app/config/store-probe.xlsx}
   storage:
     type: oss
     oss:

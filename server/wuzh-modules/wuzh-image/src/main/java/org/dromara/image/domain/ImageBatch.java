@@ -7,6 +7,7 @@ import lombok.EqualsAndHashCode;
 import org.dromara.common.mybatis.core.domain.BaseEntity;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -18,10 +19,12 @@ public class ImageBatch extends BaseEntity {
     private String name;
     private Long categoryId;
     private String status;
+    private String infringementMode;
     private BigDecimal similarityThreshold;
     private Integer totalCount;
     private Integer processedCount;
     private Integer duplicateCount;
     private Integer failedCount;
+    private LocalDateTime detectionCompletedAt;
     private String errorMessage;
 }

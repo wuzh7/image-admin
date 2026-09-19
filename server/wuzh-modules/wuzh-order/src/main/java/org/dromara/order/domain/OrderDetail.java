@@ -1,5 +1,7 @@
 package org.dromara.order.domain;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -18,6 +20,11 @@ public class OrderDetail extends BaseEntity {
     private String parentOrderSn;
     private String fulfillmentMallId;
     private BigDecimal estimatedAmount;
+    private BigDecimal shippingSettleAmount;
+    private BigDecimal salesSettleAmount;
+    private String siteName;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String customizedProducts;
     private String sendWarehouseName;
     private String shippingCompanyName;
     private String orderSn;

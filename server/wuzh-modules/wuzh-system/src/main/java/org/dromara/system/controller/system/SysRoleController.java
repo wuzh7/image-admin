@@ -75,10 +75,10 @@ public class SysRoleController extends BaseController {
     @PostMapping
     public R<Void> add(@Validated @RequestBody SysRoleBo role) {
         roleService.checkRoleAllowed(role);
+        role.setRoleName(role.getRoleName().trim());
         if (!roleService.checkRoleNameUnique(role)) {
             return R.fail("新增角色'" + role.getRoleName() + "'失败，角色名称已存在");
-        } else if (!roleService.checkRoleKeyUnique(role)) {
-            return R.fail("新增角色'" + role.getRoleName() + "'失败，角色权限已存在");
+
         }
         return toAjax(roleService.insertRole(role));
 
@@ -97,10 +97,10 @@ public class SysRoleController extends BaseController {
     public R<Void> edit(@Validated @RequestBody SysRoleBo role) {
         roleService.checkRoleAllowed(role);
         roleService.checkRoleDataScope(role.getRoleId());
+        role.setRoleName(role.getRoleName().trim());
         if (!roleService.checkRoleNameUnique(role)) {
             return R.fail("修改角色'" + role.getRoleName() + "'失败，角色名称已存在");
-        } else if (!roleService.checkRoleKeyUnique(role)) {
-            return R.fail("修改角色'" + role.getRoleName() + "'失败，角色权限已存在");
+
         }
 
         if (roleService.updateRoleBaseInfo(role) > 0) {

@@ -49,11 +49,11 @@ public class SysUserBo implements Serializable {
     private String userName;
 
     /**
-     * 用户昵称
+     * 用户名称
      */
-    @Xss(message = "用户昵称不能包含脚本字符")
-    @NotBlank(message = "用户昵称不能为空")
-    @Size(min = 0, max = 30, message = "用户昵称长度不能超过{max}个字符")
+    @Xss(message = "用户名称不能包含脚本字符")
+    @NotBlank(message = "用户名称不能为空")
+    @Size(min = 2, max = 30, message = "用户名称长度必须在{min}到{max}个字符之间")
     private String nickName;
 
     /**
@@ -64,7 +64,6 @@ public class SysUserBo implements Serializable {
     /**
      * 用户邮箱
      */
-    @NotBlank(message = "邮箱不能为空")
     @Email(message = "邮箱格式不正确")
     @Size(min = 0, max = 50, message = "邮箱长度不能超过{max}个字符")
     private String email;
@@ -72,7 +71,6 @@ public class SysUserBo implements Serializable {
     /**
      * 手机号码
      */
-    @NotBlank(message = "手机号码不能为空")
     @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式不正确")
     private String phoneNumber;
 

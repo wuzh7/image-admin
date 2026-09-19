@@ -20,7 +20,7 @@ export default defineConfig({
   publicPath: appConfig.publicPath,
   routes: [
     { path: '/login', component: './login', layout: false },
-    { path: '/register', component: './register', layout: false },
+    { path: '/register', redirect: '/login', layout: false },
     { path: '/401', component: './error/401', layout: false },
     { path: '/404', component: './error/404', layout: false },
     { path: '/redirect/*', component: './redirect', layout: false },
@@ -30,7 +30,7 @@ export default defineConfig({
       routes: [
         { path: '/', redirect: '/index' },
         { path: '/index', component: './index' },
-        { path: '/user/profile', component: './system/user/profile' },
+
         { path: '*', component: './dynamicPage' }
       ]
     }

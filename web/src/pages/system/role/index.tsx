@@ -8,7 +8,6 @@ import {
 import {
   ModalForm,
   PageContainer,
-  ProFormDigit,
   ProFormRadio,
   ProFormText,
   ProFormTextArea,
@@ -36,7 +35,6 @@ import { toPageQuery, toTableData } from '@/utils/wuzh';
 import RolePermissionModal from './components/RolePermissionModal';
 
 const defaultRoleForm: RoleForm = {
-  roleSort: 1,
   status: '0',
   menuCheckStrictly: true,
   dataScope: '1',
@@ -52,6 +50,7 @@ export default function SystemRolePage() {
   const {
     ids: selectedIds,
     selectedOne,
+    selectedRows,
     handleSelectionChange,
     clearSelection
   } = useTableSelection<RoleVO>(row => row.roleId);
@@ -81,7 +80,6 @@ export default function SystemRolePage() {
     form.setFieldsValue({
       ...defaultRoleForm,
       ...res.data,
-      roleSort: Number(res.data.roleSort),
       menuIds: menuRes.data.checkedKeys
     });
     openModal();
@@ -129,26 +127,9 @@ export default function SystemRolePage() {
 
   const columns: ProColumns<RoleVO>[] = [
     {
-      title: '角色编号',
-      dataIndex: 'roleId',
-      search: false,
-      hideInTable: true
-    },
-    {
       title: '角色名称',
       dataIndex: 'roleName',
       width: 160
-    },
-    {
-      title: '角色 Code',
-      dataIndex: 'roleKey',
-      width: 200
-    },
-    {
-      title: '显示顺序',
-      dataIndex: 'roleSort',
-      search: false,
-      width: 112
     },
     {
       title: '状态',
@@ -197,7 +178,7 @@ export default function SystemRolePage() {
                 label: '删除',
                 icon: <DeleteOutlined />,
                 danger: true,
-                confirm: `是否确认删除角色编号为"${row.roleId}"的数据项？`,
+                confirm: `是否确认删除角色“${row.roleName}”？`,
                 onClick: () => handleDelete(row)
               },
               canEdit && {
@@ -253,7 +234,7 @@ export default function SystemRolePage() {
           canRemove && (
             <Popconfirm
               key="delete"
-              title={`是否确认删除角色编号为"${selectedIds}"的数据项？`}
+              title={`是否确认删除角色“${selectedRows.map(row => row.roleName).join("、")}”？`}
               onConfirm={() => handleDelete()}
             >
               <Button danger disabled={!selectedIds.length} icon={<DeleteOutlined />}>
@@ -287,19 +268,7 @@ export default function SystemRolePage() {
             name="roleName"
             label="角色名称"
             placeholder="请输入角色名称"
-            rules={[{ required: true, message: '角色名称不能为空' }]}
-          />
-          <ProFormText
-            name="roleKey"
-            label="角色 Code"
-            placeholder="请输入角色 Code"
-            rules={[{ required: true, message: '角色 Code 不能为空' }]}
-          />
-          <ProFormDigit
-            name="roleSort"
-            label="角色顺序"
-            min={0}
-            rules={[{ required: true, message: '角色顺序不能为空' }]}
+            rules={[{ required: true, whitespace: true, message: '角色名称不能为空' }, { max: 30 }]}
           />
           <ProFormRadio.Group name="status" label="状态" options={dictOptions(dicts.sys_normal_disable)} />
         </div>

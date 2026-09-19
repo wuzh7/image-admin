@@ -14,7 +14,7 @@ class SysUserBoTest {
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
     @Test
-    void requiresPhoneNumberAndEmail() {
+    void acceptsAccountNameAndRolesWithoutProfileFields() {
         SysUserBo user = new SysUserBo();
         user.setUserName("tester");
         user.setNickName("测试用户");
@@ -22,8 +22,7 @@ class SysUserBoTest {
 
         var messages = validator.validate(user).stream().map(error -> error.getMessage()).toList();
 
-        assertTrue(messages.contains("手机号码不能为空"));
-        assertTrue(messages.contains("邮箱不能为空"));
+        assertTrue(messages.isEmpty());
     }
 
     @Test

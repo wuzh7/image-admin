@@ -34,16 +34,28 @@ class OssImageStorageTest {
         assertFalse(result.formFields().containsKey("accessKeySecret"));
         String policy = new String(Base64.getDecoder().decode(result.formFields().get("policy")), StandardCharsets.UTF_8);
         assertTrue(policy.contains("[\"starts-with\",\"$key\",\"review/42/\"]"));
-        assertTrue(policy.contains("[\"content-length-range\",1,20971520]"));
+        assertFalse(policy.contains("content-length-range"));
         assertTrue(policy.contains("[\"in\",\"$content-type\",[\"image/jpeg\",\"image/png\",\"image/webp\"]]"));
     }
 
     @Test void thumbnailUsesSignedImageProcessing() {
         OssClient client = mock(OssClient.class);
         OssImageStorage storage = new OssImageStorage(new ImageProperties(), client, client);
-        Map<String, String> query = Map.of("x-oss-process", "image/auto-orient,1/resize,m_lfit,w_480,h_480/quality,q_82");
+        Map<String, String> query = Map.of(
+            "x-oss-process", "image/auto-orient,1/resize,m_lfit,w_480,h_480/quality,q_82");
         when(client.presignGetUrl("review/42/a.png", Duration.ofMinutes(10), query)).thenReturn("https://example.test/thumb");
-        assertEquals("https://example.test/thumb", storage.accessUrl("review/42/a.png", true).orElseThrow());
+        assertEquals("https://example.test/thumb", storage.accessUrl("review/42/a.png", "image/png", true).orElseThrow());
+    }
+
+    @Test void batchInputUsesRequestedSignedUrlLifetimeWithoutImageProcessing() {
+        OssClient client = mock(OssClient.class);
+        OssImageStorage storage = new OssImageStorage(new ImageProperties(), client, client);
+        Duration expiry = Duration.ofHours(72);
+        when(client.presignGetUrl("library/42/a.png", expiry, Map.of()))
+            .thenReturn("https://example.test/signed-source");
+
+        assertEquals("https://example.test/signed-source",
+            storage.signGetUrl("library/42/a.png", expiry).orElseThrow());
     }
 
     @Test void copyMustBeVerifiedAndNeverDeletesSource() {
@@ -57,6 +69,7 @@ class OssImageStorageTest {
 
     @Test void libraryDestinationIsStableAcrossRestarts() {
         var created = java.time.LocalDateTime.of(2026, 9, 5, 12, 0);
-        assertEquals("library/2026/09/ab/101.png", ImageStorage.libraryKey(101, "ab".repeat(32), "review/42/a.png", created));
+        assertEquals("library/2026/09/05/42/101_abababababab.png", ImageStorage.libraryKey(101, 42, "ab".repeat(32), "review/42/a.png", created));
+        assertEquals("review/2026/09/05/42/", ImageStorage.reviewPrefix(42, created));
     }
 }

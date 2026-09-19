@@ -7,12 +7,15 @@ import org.dromara.image.domain.ImageBatch;
 import org.dromara.image.domain.ImageCategory;
 import org.dromara.image.domain.ImageDtos;
 import org.dromara.image.domain.ImageStatus;
+import org.dromara.image.domain.InfringementScanItem;
 import org.dromara.image.mapper.ImageAssetMapper;
+import org.dromara.image.mapper.ImageRecordMapper;
 import org.dromara.image.mapper.ImageBatchMapper;
 import org.dromara.image.mapper.ImageCategoryMapper;
 import org.dromara.image.similarity.QdrantVectorStore;
 import org.dromara.image.similarity.SscdFeatureExtractor;
 import org.dromara.image.storage.LocalImageStorage;
+import org.dromara.image.storage.ImageStorage;
 import org.dromara.common.satoken.utils.LoginHelper;
 import org.dromara.common.core.domain.PageResult;
 import org.dromara.common.mybatis.core.page.PageQuery;
@@ -21,6 +24,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Tags;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -31,10 +35,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.io.ByteArrayInputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.zip.ZipInputStream;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -56,9 +65,10 @@ class ImageServiceTest {
         ImageAssetMapper assetMapper = mock(ImageAssetMapper.class);
         LocalImageStorage storage = mock(LocalImageStorage.class);
         QdrantVectorStore vectorStore = mock(QdrantVectorStore.class);
+        InfringementService infringementService = mock(InfringementService.class);
         ImageService service = new ImageService(new ImageProperties(), batchMapper, assetMapper,
             mock(ImageCategoryMapper.class), storage,
-            vectorStore, mock(ImageTaskRunner.class), mock(UserService.class));
+            vectorStore, mock(ImageTaskRunner.class), mock(UserService.class), infringementService, mock(ImageRecordMapper.class));
 
         long batchId = 10L;
         ImageBatch batch = new ImageBatch();
@@ -101,6 +111,7 @@ class ImageServiceTest {
         }
 
         verify(vectorStore, never()).upsert(any(List.class));
+        verify(infringementService, never()).createInitialTask(any(), any());
         assertEquals(BatchStatus.CONFIRMING.name(), batch.getStatus());
         assertEquals(21, assets.stream().filter(a -> ImageStatus.APPROVING.name().equals(a.getStatus())).count());
         verify(storage, never()).copy(anyString(), anyString());
@@ -114,7 +125,7 @@ class ImageServiceTest {
         LocalImageStorage storage = mock(LocalImageStorage.class);
         ImageService service = new ImageService(new ImageProperties(), batchMapper, assetMapper,
             mock(ImageCategoryMapper.class), storage, vectorStore,
-            mock(ImageTaskRunner.class), mock(UserService.class));
+            mock(ImageTaskRunner.class), mock(UserService.class), mock(InfringementService.class), mock(ImageRecordMapper.class));
         ImageBatch batch = new ImageBatch();
         batch.setId(11L);
         batch.setCreateBy(1L);
@@ -148,7 +159,7 @@ class ImageServiceTest {
         LocalImageStorage storage = mock(LocalImageStorage.class);
         ImageService service = new ImageService(new ImageProperties(), batchMapper, assetMapper,
             mock(ImageCategoryMapper.class), storage, vectorStore,
-            mock(ImageTaskRunner.class), mock(UserService.class));
+            mock(ImageTaskRunner.class), mock(UserService.class), mock(InfringementService.class), mock(ImageRecordMapper.class));
         ImageBatch batch = new ImageBatch();
         batch.setId(12L);
         batch.setCreateBy(1L);
@@ -183,7 +194,7 @@ class ImageServiceTest {
         LocalImageStorage storage = mock(LocalImageStorage.class);
         ImageService service = new ImageService(new ImageProperties(), batchMapper, assetMapper,
             mock(ImageCategoryMapper.class), storage, vectorStore,
-            mock(ImageTaskRunner.class), mock(UserService.class));
+            mock(ImageTaskRunner.class), mock(UserService.class), mock(InfringementService.class), mock(ImageRecordMapper.class));
         ImageBatch batch = new ImageBatch();
         batch.setId(13L);
         batch.setCreateBy(1L);
@@ -213,7 +224,8 @@ class ImageServiceTest {
         ImageAssetMapper assetMapper = mock(ImageAssetMapper.class);
         ImageService service = new ImageService(new ImageProperties(), batchMapper, assetMapper,
             mock(ImageCategoryMapper.class),
-            mock(LocalImageStorage.class), mock(QdrantVectorStore.class), mock(ImageTaskRunner.class), mock(UserService.class));
+            mock(LocalImageStorage.class), mock(QdrantVectorStore.class), mock(ImageTaskRunner.class), mock(UserService.class),
+            mock(InfringementService.class), mock(ImageRecordMapper.class));
         ImageBatch batch = new ImageBatch();
         batch.setId(40L);
         batch.setCreateBy(100L);
@@ -229,9 +241,11 @@ class ImageServiceTest {
     void administratorCanReadAnotherUsersBatch() {
         ImageBatchMapper batchMapper = mock(ImageBatchMapper.class);
         ImageAssetMapper assetMapper = mock(ImageAssetMapper.class);
+        InfringementService infringementService = mock(InfringementService.class);
         ImageService service = new ImageService(new ImageProperties(), batchMapper, assetMapper,
             mock(ImageCategoryMapper.class),
-            mock(LocalImageStorage.class), mock(QdrantVectorStore.class), mock(ImageTaskRunner.class), mock(UserService.class));
+            mock(LocalImageStorage.class), mock(QdrantVectorStore.class), mock(ImageTaskRunner.class), mock(UserService.class),
+            infringementService, mock(ImageRecordMapper.class));
         ImageBatch batch = new ImageBatch();
         batch.setId(50L);
         batch.setCreateBy(100L);
@@ -240,10 +254,18 @@ class ImageServiceTest {
         batch.setDuplicateCount(0);
         batch.setFailedCount(0);
         when(batchMapper.selectById(50L)).thenReturn(batch);
-        when(assetMapper.selectList(any())).thenReturn(List.of());
+        ImageAsset imageWithoutInfringementTask = new ImageAsset();
+        imageWithoutInfringementTask.setId(501L);
+        imageWithoutInfringementTask.setBatchId(50L);
+        imageWithoutInfringementTask.setStatus(ImageStatus.UPLOADED.name());
+        when(assetMapper.selectList(any())).thenReturn(List.of(imageWithoutInfringementTask));
+        when(infringementService.currentResults(List.of())).thenReturn(Map.of());
 
         try (MockedStatic<LoginHelper> login = loginAs(1L, true)) {
-            assertEquals(50L, service.getBatch(50L).id());
+            ImageDtos.BatchView view = service.getBatch(50L);
+            assertEquals(50L, view.id());
+            assertEquals(1, view.images().size());
+            assertNull(view.images().getFirst().infringementStatus());
         }
     }
 
@@ -252,7 +274,8 @@ class ImageServiceTest {
         ImageBatchMapper batchMapper = mock(ImageBatchMapper.class);
         ImageCategoryMapper categoryMapper = mock(ImageCategoryMapper.class);
         ImageService service = new ImageService(new ImageProperties(), batchMapper, mock(ImageAssetMapper.class),
-            categoryMapper, mock(LocalImageStorage.class), mock(QdrantVectorStore.class), mock(ImageTaskRunner.class), mock(UserService.class));
+            categoryMapper, mock(LocalImageStorage.class), mock(QdrantVectorStore.class), mock(ImageTaskRunner.class),
+            mock(UserService.class), mock(InfringementService.class), mock(ImageRecordMapper.class));
         ImageCategory category = new ImageCategory();
         category.setId(3L);
         category.setName("美妆工具");
@@ -264,22 +287,23 @@ class ImageServiceTest {
         });
 
         try (MockedStatic<LoginHelper> login = loginAs(1L, true)) {
-            ImageDtos.BatchView batch = service.createBatch(new ImageDtos.CreateBatchRequest(null, 3L));
+            ImageDtos.BatchView batch = service.createBatch(new ImageDtos.CreateBatchRequest(null, 3L, "RELAY"));
             assertEquals(1980000000000000001L, batch.id());
             assertEquals(3L, batch.categoryId());
             assertEquals("美妆工具", batch.categoryName());
             assertEquals(new java.math.BigDecimal("0.60"), batch.similarityThreshold());
+            assertEquals("RELAY", batch.infringementMode());
         }
         verify(batchMapper, never()).updateById(any(ImageBatch.class));
     }
 
     @Test
-    void listBatchesIncludesCreatorNickname() {
+    void listBatchesIncludesCreatorUserName() {
         ImageBatchMapper batchMapper = mock(ImageBatchMapper.class);
         UserService userService = mock(UserService.class);
         ImageService service = new ImageService(new ImageProperties(), batchMapper, mock(ImageAssetMapper.class),
             mock(ImageCategoryMapper.class), mock(LocalImageStorage.class), mock(QdrantVectorStore.class),
-            mock(ImageTaskRunner.class), userService);
+            mock(ImageTaskRunner.class), userService, mock(InfringementService.class), mock(ImageRecordMapper.class));
         ImageBatch batch = new ImageBatch();
         batch.setId(80L);
         batch.setCreateBy(9L);
@@ -292,11 +316,13 @@ class ImageServiceTest {
         page.setRecords(List.of(batch));
         page.setTotal(1);
         when(batchMapper.selectPage(any(), any())).thenReturn(page);
-        when(userService.selectUserNicksByIds(any())).thenReturn(Map.of(9L, "张三"));
+        var user = new org.dromara.system.api.domain.UserDTO();
+        user.setUserId(9L); user.setUserName("zhangsan");
+        when(userService.selectListByIds(any())).thenReturn(List.of(user));
 
         try (MockedStatic<LoginHelper> login = loginAs(1L, true)) {
             PageResult<ImageDtos.BatchSummary> result = service.listBatches(new PageQuery(10, 1), null);
-            assertEquals("张三", result.getRows().iterator().next().creatorName());
+            assertEquals("zhangsan", result.getRows().iterator().next().creatorName());
         }
     }
 
@@ -315,7 +341,8 @@ class ImageServiceTest {
             "staging/70/a.jpg", "staging/70/thumb/a.jpg", "a.jpg", "image/jpeg",
             100L, 10, 10, "sha256"));
         ImageService service = new ImageService(new ImageProperties(), batchMapper, assetMapper,
-            mock(ImageCategoryMapper.class), storage, mock(QdrantVectorStore.class), mock(ImageTaskRunner.class), mock(UserService.class));
+            mock(ImageCategoryMapper.class), storage, mock(QdrantVectorStore.class), mock(ImageTaskRunner.class),
+            mock(UserService.class), mock(InfringementService.class), mock(ImageRecordMapper.class));
 
         try (MockedStatic<LoginHelper> login = loginAs(1L, true)) {
             assertEquals(1, service.upload(70L, List.of(mock(MultipartFile.class))));
@@ -333,7 +360,7 @@ class ImageServiceTest {
         QdrantVectorStore vectorStore = mock(QdrantVectorStore.class);
         ImageService service = new ImageService(new ImageProperties(), mock(ImageBatchMapper.class), assetMapper,
             mock(ImageCategoryMapper.class), mock(LocalImageStorage.class), vectorStore,
-            mock(ImageTaskRunner.class), mock(UserService.class));
+            mock(ImageTaskRunner.class), mock(UserService.class), mock(InfringementService.class), mock(ImageRecordMapper.class));
         byte[] vector = SscdFeatureExtractor.encode(new float[SscdFeatureExtractor.VECTOR_DIMENSION]);
         ImageAsset approved = asset(301L, 30L, vector);
         approved.setStatus(ImageStatus.APPROVED.name());
@@ -356,7 +383,7 @@ class ImageServiceTest {
         QdrantVectorStore vectorStore = mock(QdrantVectorStore.class);
         ImageService service = new ImageService(new ImageProperties(), mock(ImageBatchMapper.class), assetMapper,
             mock(ImageCategoryMapper.class), mock(LocalImageStorage.class), vectorStore,
-            mock(ImageTaskRunner.class), mock(UserService.class));
+            mock(ImageTaskRunner.class), mock(UserService.class), mock(InfringementService.class), mock(ImageRecordMapper.class));
         ImageAsset indexed = asset(401L, 40L, new byte[0]);
         indexed.setStatus(ImageStatus.APPROVED.name());
         indexed.setCreateBy(1L);
@@ -380,6 +407,76 @@ class ImageServiceTest {
     }
 
     @Test
+    void libraryReturnsAdmissionTimeAndCurrentInfringementResult() {
+        ImageAssetMapper assetMapper = mock(ImageAssetMapper.class);
+        QdrantVectorStore vectorStore = mock(QdrantVectorStore.class);
+        InfringementService infringementService = mock(InfringementService.class);
+        ImageService service = new ImageService(new ImageProperties(), mock(ImageBatchMapper.class), assetMapper,
+            mock(ImageCategoryMapper.class), mock(LocalImageStorage.class), vectorStore,
+            mock(ImageTaskRunner.class), mock(UserService.class), infringementService, mock(ImageRecordMapper.class));
+        ImageAsset approved = asset(501L, 50L, new byte[0]);
+        approved.setStatus(ImageStatus.APPROVED.name());
+        approved.setCreateBy(1L);
+        approved.setInfringementScanItemId(601L);
+        approved.setApprovedAt(java.time.LocalDateTime.of(2026, 9, 9, 10, 0));
+        InfringementScanItem resultItem = new InfringementScanItem();
+        resultItem.setId(601L);
+        resultItem.setStatus("FAILED");
+        resultItem.setErrorMessage("Gemini quota exhausted");
+        Page<ImageAsset> page = new Page<>(1, 12);
+        page.setRecords(List.of(approved));
+        page.setTotal(1);
+        when(assetMapper.selectPage(any(Page.class), any())).thenReturn(page);
+        when(vectorStore.existingPointIds(List.of(501L))).thenReturn(Set.of(501L));
+        when(infringementService.currentResults(List.of(601L))).thenReturn(Map.of(601L, resultItem));
+
+        PageResult<ImageDtos.ImageView> response;
+        try (MockedStatic<LoginHelper> login = loginAs(1L, true)) {
+            response = service.listApproved(new ImageDtos.ImageQuery(), new PageQuery(12, 1));
+        }
+
+        ImageDtos.ImageView row = response.getRows().iterator().next();
+        assertEquals(approved.getApprovedAt(), row.approvedAt());
+        assertEquals("FAILED", row.infringementStatus());
+        assertEquals("Gemini quota exhausted", row.infringementErrorMessage());
+    }
+
+    @Test
+    void exportsFilteredLibraryImagesWithManifestAndOriginalFile() throws Exception {
+        ImageAssetMapper assetMapper = mock(ImageAssetMapper.class);
+        ImageStorage storage = mock(ImageStorage.class);
+        InfringementService infringementService = mock(InfringementService.class);
+        ImageService service = new ImageService(new ImageProperties(), mock(ImageBatchMapper.class), assetMapper,
+            mock(ImageCategoryMapper.class), storage, mock(QdrantVectorStore.class), mock(ImageTaskRunner.class),
+            mock(UserService.class), infringementService, mock(ImageRecordMapper.class));
+        ImageAsset asset = asset(701L, 71L, new byte[0]);
+        asset.setStatus(ImageStatus.APPROVED.name());
+        asset.setOriginalName("cat.png");
+        asset.setStorageKey("library/2026/09/11/71/701_cat.png");
+        asset.setInfringementScanItemId(801L);
+        when(assetMapper.selectList(any())).thenReturn(List.of(asset));
+        InfringementScanItem item = new InfringementScanItem();
+        item.setRiskLevel("LOW");
+        when(infringementService.currentResults(List.of(801L))).thenReturn(Map.of(801L, item));
+        Path source = Files.createTempFile("library-export-", ".png");
+        Files.write(source, new byte[]{1, 2, 3});
+        when(storage.open(asset.getStorageKey())).thenReturn(new ImageStorage.LocalFile(source, false));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        try (MockedStatic<LoginHelper> login = loginAs(1L, true)) {
+            service.exportApproved(new ImageDtos.ImageQuery(), response);
+        } finally {
+            Files.deleteIfExists(source);
+        }
+
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(response.getContentAsByteArray()))) {
+            assertEquals("图片清单.xlsx", zip.getNextEntry().getName());
+            assertEquals("images/71/701_cat.png", zip.getNextEntry().getName());
+            assertEquals(1, zip.read());
+        }
+    }
+
+    @Test
     void uploadAllowsTheOneThousandthImageInABatch() {
         ImageBatchMapper batchMapper = mock(ImageBatchMapper.class);
         ImageAssetMapper assetMapper = mock(ImageAssetMapper.class);
@@ -395,7 +492,8 @@ class ImageServiceTest {
             "staging/71/a.jpg", "staging/71/thumb/a.jpg", "a.jpg", "image/jpeg",
             100L, 10, 10, "sha256"));
         ImageService service = new ImageService(new ImageProperties(), batchMapper, assetMapper,
-            mock(ImageCategoryMapper.class), storage, mock(QdrantVectorStore.class), mock(ImageTaskRunner.class), mock(UserService.class));
+            mock(ImageCategoryMapper.class), storage, mock(QdrantVectorStore.class), mock(ImageTaskRunner.class),
+            mock(UserService.class), mock(InfringementService.class), mock(ImageRecordMapper.class));
 
         try (MockedStatic<LoginHelper> login = loginAs(1L, true)) {
             assertEquals(1, service.upload(71L, List.of(mock(MultipartFile.class))));
@@ -414,7 +512,7 @@ class ImageServiceTest {
         when(assetMapper.selectCount(any())).thenReturn(1000L);
         ImageService service = new ImageService(new ImageProperties(), batchMapper, assetMapper,
             mock(ImageCategoryMapper.class), mock(LocalImageStorage.class), mock(QdrantVectorStore.class),
-            mock(ImageTaskRunner.class), mock(UserService.class));
+            mock(ImageTaskRunner.class), mock(UserService.class), mock(InfringementService.class), mock(ImageRecordMapper.class));
 
         try (MockedStatic<LoginHelper> login = loginAs(1L, true)) {
             org.dromara.common.core.exception.ServiceException exception = assertThrows(
@@ -430,7 +528,8 @@ class ImageServiceTest {
         ImageAssetMapper assetMapper = mock(ImageAssetMapper.class);
         ImageService service = new ImageService(new ImageProperties(), batchMapper, assetMapper,
             mock(ImageCategoryMapper.class),
-            mock(LocalImageStorage.class), mock(QdrantVectorStore.class), mock(ImageTaskRunner.class), mock(UserService.class));
+            mock(LocalImageStorage.class), mock(QdrantVectorStore.class), mock(ImageTaskRunner.class), mock(UserService.class),
+            mock(InfringementService.class), mock(ImageRecordMapper.class));
         ImageAsset asset = new ImageAsset();
         asset.setId(60L);
         asset.setCreateBy(100L);
@@ -447,7 +546,7 @@ class ImageServiceTest {
         ImageAssetMapper assetMapper = mock(ImageAssetMapper.class);
         ImageService service = new ImageService(new ImageProperties(), batchMapper, assetMapper,
             mock(ImageCategoryMapper.class), mock(LocalImageStorage.class), mock(QdrantVectorStore.class),
-            mock(ImageTaskRunner.class), mock(UserService.class));
+            mock(ImageTaskRunner.class), mock(UserService.class), mock(InfringementService.class), mock(ImageRecordMapper.class));
         ImageBatch batch = new ImageBatch();
         batch.setId(90L);
         batch.setCreateBy(1L);
@@ -485,24 +584,27 @@ class ImageServiceTest {
     private static MockedStatic<LoginHelper> loginAs(long userId, boolean administrator) {
         MockedStatic<LoginHelper> login = mockStatic(LoginHelper.class);
         login.when(LoginHelper::getUserId).thenReturn(userId);
-        login.when(() -> LoginHelper.isSuperAdmin(userId)).thenReturn(administrator);
+        login.when(LoginHelper::isAdmin).thenReturn(administrator);
         return login;
     }
 
     @Test
-    void approvedLibraryImageCanBeViewedByAnotherAuthorizedUser() {
+    void approvedLibraryImageCannotBeViewedByAnotherRegularUser() {
         ImageAssetMapper assetMapper = mock(ImageAssetMapper.class);
         LocalImageStorage storage = mock(LocalImageStorage.class);
         ImageAsset approved = asset(1001L, 100L, new byte[0]);
         approved.setStatus(ImageStatus.APPROVED.name());
         approved.setCreateBy(2L);
         when(assetMapper.selectById(1001L)).thenReturn(approved);
-        when(storage.accessUrl(approved.getStorageKey(), true)).thenReturn(Optional.of("https://example.test/thumb"));
+        when(storage.accessUrl(approved.getStorageKey(), approved.getContentType(), true))
+            .thenReturn(Optional.of("https://example.test/thumb"));
         ImageService service = new ImageService(new ImageProperties(), mock(ImageBatchMapper.class), assetMapper,
-            mock(ImageCategoryMapper.class), storage, mock(QdrantVectorStore.class), mock(ImageTaskRunner.class), mock(UserService.class));
+            mock(ImageCategoryMapper.class), storage, mock(QdrantVectorStore.class), mock(ImageTaskRunner.class),
+            mock(UserService.class), mock(InfringementService.class), mock(ImageRecordMapper.class));
 
         try (MockedStatic<LoginHelper> login = loginAs(1L, false)) {
-            assertEquals("https://example.test/thumb", service.accessUrl(1001L, true));
+            assertThrows(org.dromara.common.core.exception.ServiceException.class, () -> service.accessUrl(1001L, true));
+            verify(storage, never()).accessUrl(any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
         }
     }
 

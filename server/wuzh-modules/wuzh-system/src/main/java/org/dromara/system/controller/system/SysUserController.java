@@ -29,9 +29,11 @@ import org.dromara.system.event.OnlineUserCleanEvent;
 import org.dromara.system.service.ISysDeptService;
 import org.dromara.system.service.ISysRoleService;
 import org.dromara.system.service.ISysUserService;
+import org.dromara.system.service.SysDeptRoleService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -48,6 +50,7 @@ public class SysUserController extends BaseController {
     private final ISysUserService userService;
     private final ISysRoleService roleService;
     private final ISysDeptService deptService;
+    private final SysDeptRoleService deptRoleService;
 
     /**
      * 分页查询用户列表。
@@ -101,7 +104,7 @@ public class SysUserController extends BaseController {
         SysRoleBo roleBo = new SysRoleBo();
         roleBo.setStatus(SystemConstants.NORMAL);
         List<SysRoleVo> roles = roleService.selectRoleList(roleBo);
-        userInfoVo.setRoles(LoginHelper.isSuperAdmin(userId) ? roles : StreamUtils.filter(roles, r -> !r.isSuperAdmin()));
+        userInfoVo.setRoles(LoginHelper.isAdmin() ? roles : StreamUtils.filter(roles, r -> !r.isSuperAdmin()));
         return R.ok(userInfoVo);
     }
 
@@ -117,12 +120,17 @@ public class SysUserController extends BaseController {
     @PostMapping
     public R<Void> add(@Validated @RequestBody SysUserBo user) {
         deptService.checkDeptDataScope(user.getDeptId());
+        deptRoleService.validate(user.getDeptId(), user.getRoleIds() == null ? List.of() : Arrays.asList(user.getRoleIds()));
+        user.setUserName(user.getUserName().trim());
+        user.setNickName(user.getNickName().trim());
+        user.setPhoneNumber(null);
+        user.setEmail(null);
+        user.setGender("2");
         if (!userService.checkUserNameUnique(user)) {
             return R.fail("新增用户'" + user.getUserName() + "'失败，登录账号已存在");
-        } else if (StringUtils.isNotEmpty(user.getPhoneNumber()) && !userService.checkPhoneUnique(user)) {
-            return R.fail("新增用户'" + user.getUserName() + "'失败，手机号码已存在");
-        } else if (StringUtils.isNotEmpty(user.getEmail()) && !userService.checkEmailUnique(user)) {
-            return R.fail("新增用户'" + user.getUserName() + "'失败，邮箱账号已存在");
+        }
+        if (!userService.checkNickNameUnique(user)) {
+            return R.fail("新增用户'" + user.getNickName() + "'失败，用户名称已存在");
         }
         user.setPassword(BCrypt.hashpw(user.getPassword()));
         return toAjax(userService.insertUser(user));
@@ -142,12 +150,18 @@ public class SysUserController extends BaseController {
         userService.checkUserAllowed(user.getUserId());
         userService.checkUserDataScope(user.getUserId());
         deptService.checkDeptDataScope(user.getDeptId());
+        deptRoleService.validate(user.getDeptId(), user.getRoleIds() == null
+            ? roleService.selectRoleListByUserId(user.getUserId()) : Arrays.asList(user.getRoleIds()));
+        user.setUserName(user.getUserName().trim());
+        user.setNickName(user.getNickName().trim());
+        user.setPhoneNumber(null);
+        user.setEmail(null);
+        user.setGender("2");
         if (!userService.checkUserNameUnique(user)) {
             return R.fail("修改用户'" + user.getUserName() + "'失败，登录账号已存在");
-        } else if (StringUtils.isNotEmpty(user.getPhoneNumber()) && !userService.checkPhoneUnique(user)) {
-            return R.fail("修改用户'" + user.getUserName() + "'失败，手机号码已存在");
-        } else if (StringUtils.isNotEmpty(user.getEmail()) && !userService.checkEmailUnique(user)) {
-            return R.fail("修改用户'" + user.getUserName() + "'失败，邮箱账号已存在");
+        }
+        if (!userService.checkNickNameUnique(user)) {
+            return R.fail("修改用户'" + user.getNickName() + "'失败，用户名称已存在");
         }
         return toAjax(userService.updateUser(user));
     }
@@ -254,10 +268,12 @@ public class SysUserController extends BaseController {
     public R<SysUserInfoVo> authRole(@PathVariable Long userId) {
         userService.checkUserDataScope(userId);
         SysUserVo user = userService.selectUserById(userId);
-        List<SysRoleVo> roles = roleService.selectRolesAuthByUserId(userId);
+        List<Long> assignedRoleIds = roleService.selectRoleListByUserId(userId);
+        List<SysRoleVo> roles = deptRoleService.roles(user.getDeptId());
+        roles.forEach(role -> role.setFlag(assignedRoleIds.contains(role.getRoleId())));
         SysUserInfoVo userInfoVo = new SysUserInfoVo();
         userInfoVo.setUser(user);
-        userInfoVo.setRoles(LoginHelper.isSuperAdmin(userId) ? roles : StreamUtils.filter(roles, r -> !r.isSuperAdmin()));
+        userInfoVo.setRoles(roles);
         return R.ok(userInfoVo);
     }
 
@@ -274,6 +290,8 @@ public class SysUserController extends BaseController {
     @PutMapping("/authRole")
     public R<Void> insertAuthRole(Long userId, Long[] roleIds) {
         userService.checkUserDataScope(userId);
+        SysUserVo user = userService.selectUserById(userId);
+        deptRoleService.validate(user.getDeptId(), roleIds == null ? List.of() : Arrays.asList(roleIds));
         userService.insertUserAuth(userId, roleIds);
         return R.ok();
     }

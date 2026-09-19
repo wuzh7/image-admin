@@ -1,3 +1,5 @@
+SET NAMES utf8mb4;
+
 -- ----------------------------
 -- 1、部门表
 -- ----------------------------
@@ -173,6 +175,7 @@ create table sys_menu (
 insert into sys_menu values(1761400000000000001, '系统管理', 0, 1, 'system', null, '', 'N', 'Y', 'M', '0', '0', '', 'system', '', '', 1761000000000000103, 1761100000000000103, sysdate(), null, null, '系统管理目录');
 insert into sys_menu values(1761400000000000100, '用户管理', 1761400000000000001, 1, 'user', 'system/user/index', '', 'N', 'Y', 'C', '0', '0', 'system:user:list', 'user', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '用户管理菜单');
 insert into sys_menu values(1761400000000000101, '角色管理', 1761400000000000001, 2, 'role', 'system/role/index', '', 'N', 'Y', 'C', '0', '0', 'system:role:list', 'peoples', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '角色管理菜单');
+insert into sys_menu values(1761400000000000103, '部门管理', 1761400000000000001, 3, 'dept', 'system/dept/index', '', 'N', 'Y', 'C', '0', '0', 'system:dept:list', 'tree', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '部门管理菜单');
 insert into sys_menu values(1761400000000000130, '分配用户', 1761400000000000001, 2, 'role-auth/user/:roleId', 'system/role/authUser', '', 'N', 'N', 'C', '1', '0', 'system:role:edit', '#', '/system/role', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000000131, '分配角色', 1761400000000000001, 1, 'user-auth/role/:userId', 'system/user/authRole', '', 'N', 'N', 'C', '1', '0', 'system:user:edit', '#', '/system/user', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000001001, '用户查询', 1761400000000000100, 1, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:user:query', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
@@ -184,6 +187,10 @@ insert into sys_menu values(1761400000000001008, '角色查询', 176140000000000
 insert into sys_menu values(1761400000000001009, '角色新增', 1761400000000000101, 2, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:role:add', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000001010, '角色修改', 1761400000000000101, 3, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:role:edit', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000001011, '角色删除', 1761400000000000101, 4, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:role:remove', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
+insert into sys_menu values(1761400000000001020, '部门查询', 1761400000000000103, 1, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:dept:query', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
+insert into sys_menu values(1761400000000001021, '部门新增', 1761400000000000103, 2, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:dept:add', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
+insert into sys_menu values(1761400000000001022, '部门修改', 1761400000000000103, 3, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:dept:edit', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
+insert into sys_menu values(1761400000000001023, '部门删除', 1761400000000000103, 4, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:dept:remove', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 
 -- 6、用户和角色关联表  用户N-1角色
 -- ----------------------------
@@ -200,6 +207,18 @@ create table sys_user_role (
 insert into sys_user_role values (1761100000000000001, 1761300000000000001);
 insert into sys_user_role values (1761100000000000003, 1761300000000000003);
 insert into sys_user_role values (1761100000000000004, 1761300000000000004);
+
+-- 部门可用角色；与角色数据范围表 sys_role_dept 相互独立
+create table sys_dept_role (
+    dept_id   bigint(20) not null comment '部门ID',
+    role_id   bigint(20) not null comment '角色ID',
+    primary key(dept_id, role_id),
+    key idx_sys_dept_role_rid (role_id)
+) engine=innodb comment = '部门可用角色关联表';
+
+insert into sys_dept_role (dept_id, role_id)
+select distinct u.dept_id, ur.role_id from sys_user u join sys_user_role ur on ur.user_id = u.user_id
+where u.dept_id is not null;
 
 -- ----------------------------
 -- 7、角色和菜单关联表  角色1-N菜单

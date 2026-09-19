@@ -237,6 +237,12 @@ public class LoginHelper {
         return isSuperAdmin(getUserId());
     }
 
+    public static boolean isAdmin() {
+        LoginUser user = getLoginUser();
+        return user != null && user.getRolePermission() != null
+            && user.getRolePermission().contains(SystemConstants.SUPER_ADMIN_ROLE_KEY);
+    }
+
     /**
      * 检查当前用户是否已登录
      *

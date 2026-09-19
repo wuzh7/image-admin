@@ -13,7 +13,7 @@ class SysRoleServiceImplTest {
     @Test
     @Tag("local")
     void savesRolePermissionWithoutDepartmentAssignments() throws NoSuchMethodException {
-        SysRoleServiceImpl service = new SysRoleServiceImpl(null, null, null, null);
+        SysRoleServiceImpl service = new SysRoleServiceImpl(null, null, null, null, null);
         SysRoleBo role = new SysRoleBo();
         role.setRoleId(1L);
 
@@ -26,7 +26,7 @@ class SysRoleServiceImplTest {
     @Test
     @Tag("local")
     void savesRolePermissionWithoutMenuAssignments() throws NoSuchMethodException {
-        SysRoleServiceImpl service = new SysRoleServiceImpl(null, null, null, null);
+        SysRoleServiceImpl service = new SysRoleServiceImpl(null, null, null, null, null);
         SysRoleBo role = new SysRoleBo();
         role.setRoleId(1L);
 

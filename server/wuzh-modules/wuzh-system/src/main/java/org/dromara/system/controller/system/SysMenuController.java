@@ -44,7 +44,16 @@ public class SysMenuController extends BaseController {
     @GetMapping("/getRouters")
     public R<List<RouterVo>> getRouters() {
         List<SysMenu> menus = menuService.selectMenuTreeByUserId(LoginHelper.getUserId());
-        return R.ok(menuService.buildMenus(menus));
+        if (!LoginHelper.isAdmin()) hideAdminMenus(menus);
+        List<RouterVo> routes = menuService.buildMenus(menus);
+        return R.ok(routes);
+    }
+
+    private void hideAdminMenus(List<SysMenu> menus) {
+        menus.removeIf(menu -> "system".equals(menu.getPath()) || "image/category/index".equals(menu.getComponent()));
+        for (SysMenu menu : menus) {
+            if (menu.getChildren() != null) hideAdminMenus(menu.getChildren());
+        }
     }
 
     /**

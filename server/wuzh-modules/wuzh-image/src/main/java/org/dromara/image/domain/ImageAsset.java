@@ -23,6 +23,7 @@ public class ImageAsset extends BaseEntity {
     private String thumbnailKey;
     private String cleanupKey;
     private String cleanupThumbnailKey;
+    private Long infringementScanItemId;
     private String originalName;
     private String displayName;
     private String contentType;
@@ -35,11 +36,16 @@ public class ImageAsset extends BaseEntity {
     private Boolean duplicateFlag;
     private Long duplicateOf;
     private BigDecimal similarity;
+    private String similarMatchesJson;
     private String matchMethod;
     private byte[] globalVector;
     private byte[] centerVector;
+    private byte[] queryVectors;
+    private Boolean manuallyApproved;
+    private Long replacesImageId;
     private String featureVersion;
     private String errorMessage;
+    private LocalDateTime approvedAt;
     private LocalDateTime deletedAt;
     @TableLogic
     private String delFlag;

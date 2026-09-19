@@ -17,7 +17,7 @@ server:
 
 captcha:
   # 是否启用验证码校验
-  enable: true
+  enable: false
   # 验证码类型 math 数组计算 char 字符验证
   type: math
   # 数字验证码位数
@@ -66,10 +66,8 @@ spring:
   # 文件上传
   servlet:
     multipart:
-      # 单个文件大小
-      max-file-size: 20MB
-      # 设置总上传的文件大小
-      max-request-size: 220MB
+      max-file-size: -1
+      max-request-size: -1
   mvc:
     # 设置静态资源路径 防止所有请求都去查静态资源
     static-path-pattern: /static/**
@@ -186,8 +184,6 @@ image:
   max-files-per-batch: 1000
   max-files-per-request: 10
   max-files-per-upload-session: ${IMAGE_UPLOAD_SESSION_MAX_FILES:1000}
-  max-file-bytes: 20971520
-  max-pixels: 50000000
   similarity-threshold: 0.60
   delete-retention-days: 7
   task-workers: ${IMAGE_TASK_WORKERS:1}
@@ -203,7 +199,7 @@ image:
     url: ${QDRANT_URL:http://127.0.0.1:6333}
     api-key: ${QDRANT_API_KEY:}
     collection: ${QDRANT_COLLECTION:image_sscd_v1}
-    staging-collection: ${QDRANT_STAGING_COLLECTION:image_sscd_staging_v1}
+    staging-collection: ${QDRANT_STAGING_COLLECTION:image_sscd_staging_v2}
 
 # 防止XSS攻击
 xss:

@@ -110,6 +110,11 @@ public interface ISysUserService {
     boolean checkUserNameUnique(SysUserBo user);
 
     /**
+     * 校验用户名称是否唯一
+     */
+    boolean checkNickNameUnique(SysUserBo user);
+
+    /**
      * 校验手机号码是否唯一
      *
      * @param user 用户信息

@@ -28,6 +28,9 @@ deploy/prod/.env.prod
 *.log
 *.log.gz
 
+# ===== Temporary files =====
+/tmp/
+
 # ===== ML models (large binaries) =====
 models/*.pt
 

@@ -15,6 +15,7 @@ export interface UserInfo {
 
 export interface UserForm {
   userId?: string | number;
+  deptId?: string | number;
   userName?: string;
   nickName?: string;
   password?: string;
@@ -53,6 +54,8 @@ export interface UserQuery extends PageQuery {
 
 export interface UserVO extends BaseEntity {
   userId?: string | number;
+  deptId?: string | number;
+  deptName?: string;
   tenantId?: string;
   userName?: string;
   nickName?: string;

@@ -39,9 +39,7 @@ export default function UserAuthRolePage() {
 
   const columns: ProColumns<RoleVO>[] = useMemo(
     () => [
-      { title: '角色编号', dataIndex: 'roleId', search: false, width: 120 },
       { title: '角色名称', dataIndex: 'roleName' },
-      { title: '角色 Code', dataIndex: 'roleKey' },
       {
         title: '状态',
         dataIndex: 'status',
@@ -78,8 +76,7 @@ export default function UserAuthRolePage() {
         column={2}
         style={{ marginBottom: 16 }}
         items={[
-          { key: 'nickName', label: '用户昵称', children: user?.nickName },
-          { key: 'userName', label: '登录账号', children: user?.userName }
+          { key: 'userName', label: '用户名称', children: user?.userName }
         ]}
       />
       <ProTable<RoleVO>

@@ -1,0 +1,13 @@
+SET @ddl = IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'infringement_scan_item' AND column_name = 'case_numbers_json'), 'SELECT 1', 'ALTER TABLE infringement_scan_item ADD COLUMN case_numbers_json JSON DEFAULT NULL COMMENT ''TRO case number array'' AFTER risk_reason');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @ddl = IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'infringement_scan_item' AND column_name = 'call_type'), 'SELECT 1', 'ALTER TABLE infringement_scan_item ADD COLUMN call_type VARCHAR(20) NOT NULL DEFAULT ''RISK_SCAN'' COMMENT ''RISK_SCAN or CASE_LOOKUP'' AFTER case_numbers_json');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @ddl = IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'infringement_call_log' AND column_name = 'call_type'), 'SELECT 1', 'ALTER TABLE infringement_call_log ADD COLUMN call_type VARCHAR(20) NOT NULL DEFAULT ''RISK_SCAN'' COMMENT ''RISK_SCAN or CASE_LOOKUP'' AFTER execution_mode');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SELECT table_name, column_name, column_type FROM information_schema.columns WHERE table_schema = DATABASE() AND ((table_name = 'infringement_scan_item' AND column_name IN ('case_numbers_json','call_type')) OR (table_name = 'infringement_call_log' AND column_name = 'call_type'));

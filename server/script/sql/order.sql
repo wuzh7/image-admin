@@ -1,9 +1,15 @@
+SET NAMES utf8mb4;
+
 -- 订单明细外部接入与后台管理，可重复执行。
 CREATE TABLE IF NOT EXISTS ord_order_detail (
     id                       BIGINT          NOT NULL COMMENT '订单明细ID',
     parent_order_sn          VARCHAR(64)     NOT NULL COMMENT '主订单号',
     fulfillment_mall_id      VARCHAR(64)     DEFAULT NULL COMMENT '店铺ID',
     estimated_amount         DECIMAL(12,2)   DEFAULT NULL COMMENT '运费',
+    shipping_settle_amount   DECIMAL(12,2)   DEFAULT NULL COMMENT '订单运费预计冲回',
+    sales_settle_amount      DECIMAL(12,2)   DEFAULT NULL COMMENT '子订单预计回款',
+    site_name                VARCHAR(128)    DEFAULT NULL COMMENT '销售站点',
+    customized_products      VARCHAR(255)    DEFAULT NULL COMMENT '是否定制',
     send_warehouse_name      VARCHAR(128)    DEFAULT NULL COMMENT '下单工厂',
     shipping_company_name    VARCHAR(128)    DEFAULT NULL COMMENT '物流商',
     order_sn                 VARCHAR(64)     NOT NULL COMMENT '子订单号',
@@ -25,6 +31,50 @@ CREATE TABLE IF NOT EXISTS ord_order_detail (
     CONSTRAINT chk_ord_order_detail_quantity CHECK (sku_quantity > 0),
     CONSTRAINT chk_ord_order_detail_amount CHECK (estimated_amount IS NULL OR estimated_amount >= 0)
 ) ENGINE=InnoDB COMMENT='订单明细';
+
+SET @add_shipping_settle_amount = IF(
+    EXISTS(SELECT 1 FROM information_schema.columns
+           WHERE table_schema = DATABASE() AND table_name = 'ord_order_detail'
+             AND column_name = 'shipping_settle_amount'),
+    'DO 0',
+    'ALTER TABLE ord_order_detail ADD COLUMN shipping_settle_amount DECIMAL(12,2) DEFAULT NULL COMMENT ''订单运费预计冲回'' AFTER estimated_amount'
+);
+PREPARE stmt FROM @add_shipping_settle_amount;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @add_sales_settle_amount = IF(
+    EXISTS(SELECT 1 FROM information_schema.columns
+           WHERE table_schema = DATABASE() AND table_name = 'ord_order_detail'
+             AND column_name = 'sales_settle_amount'),
+    'DO 0',
+    'ALTER TABLE ord_order_detail ADD COLUMN sales_settle_amount DECIMAL(12,2) DEFAULT NULL COMMENT ''子订单预计回款'' AFTER shipping_settle_amount'
+);
+PREPARE stmt FROM @add_sales_settle_amount;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @add_site_name = IF(
+    EXISTS(SELECT 1 FROM information_schema.columns
+           WHERE table_schema = DATABASE() AND table_name = 'ord_order_detail'
+             AND column_name = 'site_name'),
+    'DO 0',
+    'ALTER TABLE ord_order_detail ADD COLUMN site_name VARCHAR(128) DEFAULT NULL COMMENT ''销售站点'' AFTER sales_settle_amount'
+);
+PREPARE stmt FROM @add_site_name;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @add_customized_products = IF(
+    EXISTS(SELECT 1 FROM information_schema.columns
+           WHERE table_schema = DATABASE() AND table_name = 'ord_order_detail'
+             AND column_name = 'customized_products'),
+    'DO 0',
+    'ALTER TABLE ord_order_detail ADD COLUMN customized_products VARCHAR(255) DEFAULT NULL COMMENT ''是否定制'' AFTER site_name'
+);
+PREPARE stmt FROM @add_customized_products;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 INSERT INTO sys_menu VALUES
 (1990000000000000010, '订单明细', 0, 3, 'order-details', 'order/detail/index', '', 'N', 'Y', 'C', '0', '0', 'order:detail:list', 'unordered-list', '', '', 1761000000000000103, 1761100000000000001, SYSDATE(), NULL, NULL, '维护外部接入的订单明细'),

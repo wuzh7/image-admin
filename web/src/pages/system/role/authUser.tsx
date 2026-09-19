@@ -45,9 +45,6 @@ export default function RoleAuthUserPage() {
 
   const columns: ProColumns<UserVO>[] = [
     { title: '用户名称', dataIndex: 'userName' },
-    { title: '用户昵称', dataIndex: 'nickName', search: false },
-    { title: '邮箱', dataIndex: 'email', search: false },
-    { title: '手机号码', dataIndex: 'phoneNumber' },
     {
       title: '状态',
       dataIndex: 'status',

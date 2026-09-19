@@ -1,6 +1,6 @@
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
-import { Button, Form, Input, InputNumber, message, Modal, Popconfirm, Space, Switch, Table, Tag } from 'antd';
+import { Button, Form, Input, message, Modal, Popconfirm, Space, Switch, Table, Tag } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -11,11 +11,10 @@ import {
 } from '@/api/image';
 import type { ImageCategory, ImageId } from '@/api/image/types';
 import { useUserStore } from '@/stores/userStore';
-import { hasPermi } from '@/utils/permission';
+import { hasRole } from '@/utils/permission';
 
 interface CategoryForm {
   name: string;
-  sortOrder: number;
   enabled: boolean;
 }
 
@@ -27,9 +26,9 @@ export default function ImageCategoryPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<ImageId>();
   const userInfo = useUserStore(state => state.userInfo);
-  const canAdd = hasPermi(userInfo, ['image:category:add']);
-  const canEdit = hasPermi(userInfo, ['image:category:edit']);
-  const canRemove = hasPermi(userInfo, ['image:category:remove']);
+  const canAdd = hasRole(userInfo, ['superadmin']);
+  const canEdit = hasRole(userInfo, ['superadmin']);
+  const canRemove = hasRole(userInfo, ['superadmin']);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,7 +46,7 @@ export default function ImageCategoryPage() {
 
   const openCreate = () => {
     setEditingId(undefined);
-    form.setFieldsValue({ name: '', sortOrder: categories.length + 1, enabled: true });
+    form.setFieldsValue({ name: '', enabled: true });
     setModalOpen(true);
   };
 
@@ -55,7 +54,6 @@ export default function ImageCategoryPage() {
     setEditingId(category.id);
     form.setFieldsValue({
       name: category.name,
-      sortOrder: category.sortOrder,
       enabled: category.status === '0'
     });
     setModalOpen(true);
@@ -65,7 +63,6 @@ export default function ImageCategoryPage() {
     const values = await form.validateFields();
     const data = {
       name: values.name.trim(),
-      sortOrder: values.sortOrder,
       status: values.enabled ? ('0' as const) : ('1' as const)
     };
     setSaving(true);
@@ -86,7 +83,6 @@ export default function ImageCategoryPage() {
 
   const columns: TableColumnsType<ImageCategory> = [
     { title: '类目名称', dataIndex: 'name' },
-    { title: '排序', dataIndex: 'sortOrder', width: 100 },
     {
       title: '状态',
       dataIndex: 'status',
@@ -147,9 +143,6 @@ export default function ImageCategoryPage() {
         <Form form={form} layout="vertical" preserve={false}>
           <Form.Item label="类目名称" name="name" rules={[{ required: true, whitespace: true, message: '请输入类目名称' }, { max: 50 }]}>
             <Input placeholder="例如：家居收纳" />
-          </Form.Item>
-          <Form.Item label="排序" name="sortOrder" rules={[{ required: true, message: '请输入排序' }]}>
-            <InputNumber min={0} max={9999} precision={0} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item label="启用" name="enabled" valuePropName="checked">
             <Switch />

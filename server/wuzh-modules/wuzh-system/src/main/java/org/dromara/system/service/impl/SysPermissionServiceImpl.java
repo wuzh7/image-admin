@@ -54,7 +54,7 @@ public class SysPermissionServiceImpl implements ISysPermissionService, Permissi
     public Set<String> getMenuPermission(Long userId) {
         Set<String> perms = new HashSet<>();
         // 管理员拥有所有权限
-        if (LoginHelper.isSuperAdmin(userId)) {
+        if (getRolePermission(userId).contains(SystemConstants.SUPER_ADMIN_ROLE_KEY)) {
             perms.add("*:*:*");
         } else {
             perms.addAll(menuService.selectMenuPermsByUserId(userId));

@@ -20,11 +20,18 @@ public class ImageMaintenance {
     private final ImageProperties properties;
     private final ImageAssetMapper assetMapper;
     private final ImageStorage storage;
+    private final org.dromara.image.similarity.QdrantVectorStore vectors;
+    private final ImageDataLock dataLock;
 
     @Scheduled(fixedDelay = 10000, scheduler = "imageCleanupScheduler")
     public void cleanupPending() {
+        dataLock.read(this::cleanupPendingLocked);
+    }
+
+    private void cleanupPendingLocked() {
         for (ImageAsset asset : assetMapper.selectSourceCleanup()) {
             try {
+                if ("REPLACED".equals(asset.getStatus())) vectors.delete(List.of(asset.getId()));
                 storage.delete(asset.getCleanupKey());
                 storage.delete(asset.getCleanupThumbnailKey());
                 assetMapper.clearSourceCleanup(asset.getId());
@@ -41,6 +48,10 @@ public class ImageMaintenance {
 
     @Scheduled(cron = "0 20 3 * * *", scheduler = "imageCleanupScheduler")
     public void cleanupExpiredFiles() {
+        dataLock.read(this::cleanupExpiredFilesLocked);
+    }
+
+    private void cleanupExpiredFilesLocked() {
         LocalDateTime cutoff = LocalDateTime.now().minusDays(properties.getDeleteRetentionDays());
         for (ImageAsset asset : assetMapper.selectCleanupCandidates(cutoff)) {
             try {

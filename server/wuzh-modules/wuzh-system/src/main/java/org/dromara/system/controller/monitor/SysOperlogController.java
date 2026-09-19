@@ -1,11 +1,9 @@
 package org.dromara.system.controller.monitor;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
-import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.lock.annotation.Lock4j;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.dromara.common.core.constant.SystemConstants;
 import org.dromara.common.core.domain.PageResult;
 import org.dromara.common.core.domain.R;
 import org.dromara.common.excel.utils.ExcelBuilder;
@@ -49,16 +47,15 @@ public class SysOperlogController extends BaseController {
     }
 
     /**
-     * 查询工作台最近动态。普通用户只能查看本人，超级管理员可查看全部。
+     * 查询工作台最近动态，仅管理员可访问，支持按用户名称筛选。
      *
      * @return 最近操作日志
      */
     @GetMapping("/recent")
-    public R<PageResult<SysOperLogVo>> recent() {
+    public R<PageResult<SysOperLogVo>> recent(@RequestParam(required = false) String userName) {
+        if (!LoginHelper.isAdmin()) throw new org.dromara.common.core.exception.ServiceException("只有管理员可以查看操作日志");
         SysOperLogBo operLog = new SysOperLogBo();
-        if (!StpUtil.hasRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)) {
-            operLog.setUserId(LoginHelper.getUserId());
-        }
+        operLog.setOperName(userName);
         return R.ok(operLogService.selectPageOperLogList(operLog, new PageQuery(8, 1)));
     }
 

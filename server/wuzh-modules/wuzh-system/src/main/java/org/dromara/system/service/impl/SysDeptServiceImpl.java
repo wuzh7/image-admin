@@ -29,6 +29,7 @@ import org.dromara.system.mapper.SysDeptMapper;
 import org.dromara.system.mapper.SysRoleMapper;
 import org.dromara.system.mapper.SysUserMapper;
 import org.dromara.system.service.ISysDeptService;
+import org.dromara.system.service.SysDeptRoleService;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
@@ -49,6 +50,7 @@ public class SysDeptServiceImpl implements ISysDeptService, DeptService {
     private final SysDeptMapper deptMapper;
     private final SysRoleMapper roleMapper;
     private final SysUserMapper userMapper;
+    private final SysDeptRoleService deptRoleService;
 
     /**
      * 分页查询部门管理数据
@@ -169,6 +171,7 @@ public class SysDeptServiceImpl implements ISysDeptService, DeptService {
             .eq(SysDept::getDeptId, dept.getParentId())
             .voOne();
         dept.setParentName(ObjectUtils.notNullGetter(parentDept, SysDeptVo::getDeptName));
+        dept.setRoleIds(deptRoleService.roleIds(deptId));
         return dept;
     }
 
@@ -309,6 +312,7 @@ public class SysDeptServiceImpl implements ISysDeptService, DeptService {
      */
     @CacheEvict(cacheNames = CacheNames.SYS_DEPT_AND_CHILD, allEntries = true)
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int insertDept(SysDeptBo bo) {
         SysDept info = deptMapper.selectById(bo.getParentId());
         // 如果父节点不存在或不为正常状态,则不允许新增子节点
@@ -319,8 +323,11 @@ public class SysDeptServiceImpl implements ISysDeptService, DeptService {
             throw new ServiceException("部门停用，不允许新增");
         }
         SysDept dept = MapstructUtils.convert(bo, SysDept.class);
+        dept.setOrderNum(ObjectUtils.defaultIfNull(dept.getOrderNum(), 0));
         dept.setAncestors(info.getAncestors() + StringUtils.SEPARATOR + dept.getParentId());
-        return deptMapper.insert(dept);
+        int rows = deptMapper.insert(dept);
+        deptRoleService.replace(dept.getDeptId(), bo.getRoleIds());
+        return rows;
     }
 
     /**
@@ -346,6 +353,10 @@ public class SysDeptServiceImpl implements ISysDeptService, DeptService {
             this.checkDeptDataScope(dept.getParentId());
             SysDept newParentDept = deptMapper.selectById(dept.getParentId());
             if (ObjectUtil.isNotNull(newParentDept)) {
+                if ((StringUtils.SEPARATOR + newParentDept.getAncestors() + StringUtils.SEPARATOR)
+                    .contains(StringUtils.SEPARATOR + dept.getDeptId() + StringUtils.SEPARATOR)) {
+                    throw new ServiceException("上级部门不能选择当前部门的下级");
+                }
                 String newAncestors = newParentDept.getAncestors() + StringUtils.SEPARATOR + newParentDept.getDeptId();
                 String oldAncestors = oldDept.getAncestors();
                 dept.setAncestors(newAncestors);
@@ -355,6 +366,7 @@ public class SysDeptServiceImpl implements ISysDeptService, DeptService {
             dept.setAncestors(oldDept.getAncestors());
         }
         int result = deptMapper.updateById(dept);
+        deptRoleService.replace(dept.getDeptId(), bo.getRoleIds());
         // 如果部门状态为启用，且部门祖级列表不为空，且部门祖级列表不等于根部门祖级列表（如果部门祖级列表不等于根部门祖级列表，则说明存在上级部门）
         if (SystemConstants.NORMAL.equals(dept.getStatus())
             && StringUtils.isNotEmpty(dept.getAncestors())
@@ -413,7 +425,9 @@ public class SysDeptServiceImpl implements ISysDeptService, DeptService {
         @CacheEvict(cacheNames = CacheNames.SYS_DEPT_AND_CHILD, allEntries = true)
     })
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int deleteDeptById(Long deptId) {
+        deptRoleService.delete(deptId);
         return deptMapper.deleteById(deptId);
     }
 

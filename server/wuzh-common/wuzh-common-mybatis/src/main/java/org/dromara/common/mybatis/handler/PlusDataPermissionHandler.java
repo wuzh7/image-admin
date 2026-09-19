@@ -73,7 +73,7 @@ public class PlusDataPermissionHandler {
         try {
             LoginUser currentUser = currentUser();
             // 如果是超级管理员或租户管理员，则不过滤数据
-            if (LoginHelper.isSuperAdmin()) {
+            if (LoginHelper.isAdmin()) {
                 return where;
             }
             // 构造数据过滤条件的 SQL 片段

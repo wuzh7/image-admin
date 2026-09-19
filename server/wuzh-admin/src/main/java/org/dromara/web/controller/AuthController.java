@@ -12,14 +12,11 @@ import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.core.utils.ValidatorUtils;
 import org.dromara.common.encrypt.annotation.ApiEncrypt;
 import org.dromara.common.json.utils.JsonUtils;
-import org.dromara.system.api.model.RegisterBody;
 import org.dromara.system.domain.vo.SysClientVo;
 import org.dromara.system.service.ISysClientService;
-import org.dromara.system.service.ISysConfigService;
 import org.dromara.web.domain.vo.LoginVo;
 import org.dromara.web.service.IAuthStrategy;
 import org.dromara.web.service.SysLoginService;
-import org.dromara.web.service.SysRegisterService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,8 +33,6 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final SysLoginService loginService;
-    private final SysRegisterService registerService;
-    private final ISysConfigService configService;
     private final ISysClientService clientService;
     /**
      * 登录方法
@@ -79,17 +74,11 @@ public class AuthController {
     /**
      * 用户注册。
      *
-     * @param user 注册信息
      * @return 操作结果
      */
-    @ApiEncrypt
     @PostMapping("/register")
-    public R<Void> register(@Validated @RequestBody RegisterBody user) {
-        if (!configService.selectRegisterEnabled()) {
-            return R.fail("当前系统没有开启注册功能！");
-        }
-        registerService.register(user);
-        return R.ok();
+    public R<Void> register() {
+        return R.fail("系统不开放注册，请联系管理员新增用户");
     }
 
 }

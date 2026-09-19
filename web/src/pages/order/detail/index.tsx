@@ -16,7 +16,21 @@ const { Text } = Typography;
 
 function OrderThumbnail({ url, name }: { url?: string; name?: string }) {
   if (!url) return <Text type="secondary">-</Text>;
-  return <Image src={url} alt={name || '订单商品图片'} width={48} height={48} style={{ objectFit: 'cover' }} />;
+  return <Image
+    src={url}
+    alt={name || '订单商品图片'}
+    width={48}
+    height={48}
+    loading="lazy"
+    decoding="async"
+    fetchPriority="low"
+    preview={false}
+    style={{ objectFit: 'cover' }}
+  />;
+}
+
+function formatAmount(value?: number) {
+  return value == null ? '-' : `$${Number(value).toFixed(2)}`;
 }
 
 export default function OrderDetailPage() {
@@ -44,7 +58,11 @@ export default function OrderDetailPage() {
     form.resetFields();
     form.setFieldsValue({
       ...response.data,
-      estimatedAmount: response.data.estimatedAmount == null ? undefined : Number(response.data.estimatedAmount)
+      estimatedAmount: response.data.estimatedAmount == null ? undefined : Number(response.data.estimatedAmount),
+      shippingSettleAmount:
+        response.data.shippingSettleAmount == null ? undefined : Number(response.data.shippingSettleAmount),
+      salesSettleAmount:
+        response.data.salesSettleAmount == null ? undefined : Number(response.data.salesSettleAmount)
     });
     setModalOpen(true);
   };
@@ -78,6 +96,8 @@ export default function OrderDetailPage() {
     { title: '主订单号', dataIndex: 'parentOrderSn', width: 170, ellipsis: true },
     { title: '子订单号', dataIndex: 'orderSn', width: 170, ellipsis: true },
     { title: '店铺ID', dataIndex: 'fulfillmentMallId', width: 130, ellipsis: true },
+    { title: '店铺名称', dataIndex: 'storeName', width: 160, search: false, ellipsis: true },
+    { title: '店铺备注', dataIndex: 'storeRemark', width: 180, search: false, ellipsis: true },
     { title: '下单工厂', dataIndex: 'sendWarehouseName', width: 150, ellipsis: true },
     { title: '物流商', dataIndex: 'shippingCompanyName', width: 130, ellipsis: true },
     {
@@ -91,11 +111,27 @@ export default function OrderDetailPage() {
     { title: 'SKU', dataIndex: 'spec', width: 180, search: false, ellipsis: true },
     { title: '数量', dataIndex: 'skuQuantity', width: 80, search: false },
     {
+      title: '订单运费预计冲回',
+      dataIndex: 'shippingSettleAmount',
+      width: 160,
+      search: false,
+      render: (_, row) => formatAmount(row.shippingSettleAmount)
+    },
+    {
+      title: '子订单预计回款',
+      dataIndex: 'salesSettleAmount',
+      width: 160,
+      search: false,
+      render: (_, row) => formatAmount(row.salesSettleAmount)
+    },
+    { title: '销售站点', dataIndex: 'siteName', width: 120, search: false, ellipsis: true },
+    { title: '是否定制', dataIndex: 'customizedProducts', width: 120, search: false, ellipsis: true },
+    {
       title: '运费',
       dataIndex: 'estimatedAmount',
       width: 100,
       search: false,
-      render: (_, row) => (row.estimatedAmount == null ? '-' : `$${Number(row.estimatedAmount).toFixed(2)}`)
+      render: (_, row) => formatAmount(row.estimatedAmount)
     },
     { title: '更新时间', dataIndex: 'updateTime', valueType: 'dateTime', width: 170, search: false },
     {
@@ -128,7 +164,7 @@ export default function OrderDetailPage() {
           actionRef={actionRef}
           rowKey="id"
           columns={columns}
-          scroll={{ x: 1700 }}
+          scroll={{ x: 2260 }}
           search={{ labelWidth: 90, defaultCollapsed: false }}
           pagination={{ defaultPageSize: 10, showSizeChanger: true }}
           rowSelection={{ selectedRowKeys: selectedIds, onChange: handleSelectionChange }}
@@ -206,6 +242,26 @@ export default function OrderDetailPage() {
             <Col xs={24} md={12}>
               <Form.Item label="运费" name="estimatedAmount" rules={[{ type: 'number', min: 0 }]}>
                 <InputNumber min={0} precision={2} prefix="$" style={{ width: '100%' }} placeholder="请输入运费" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="订单运费预计冲回" name="shippingSettleAmount" rules={[{ type: 'number', min: 0 }]}>
+                <InputNumber min={0} precision={2} prefix="$" style={{ width: '100%' }} placeholder="请输入预计冲回" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="子订单预计回款" name="salesSettleAmount" rules={[{ type: 'number', min: 0 }]}>
+                <InputNumber min={0} precision={2} prefix="$" style={{ width: '100%' }} placeholder="请输入预计回款" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="销售站点" name="siteName" rules={[{ max: 128 }]}>
+                <Input placeholder="请输入销售站点" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="是否定制" name="customizedProducts">
+                <Input placeholder="可空，输入内容将原样保存" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>

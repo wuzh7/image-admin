@@ -1,5 +1,9 @@
 package org.dromara.order.service;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.dromara.order.domain.OrderDetail;
 import org.dromara.order.domain.OrderDetailDtos;
 import org.dromara.order.mapper.OrderDetailMapper;
@@ -21,6 +25,7 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -31,6 +36,55 @@ class OrderDetailServiceTest {
 
     @Mock
     private OrderDetailMapper orderDetailMapper;
+
+    @Test
+    void customizedProductsAllowsNullToClearExistingValue() throws Exception {
+        TableField tableField = OrderDetail.class.getDeclaredField("customizedProducts")
+            .getAnnotation(TableField.class);
+
+        assertThat(tableField).isNotNull();
+        assertThat(tableField.updateStrategy()).isEqualTo(FieldStrategy.ALWAYS);
+    }
+
+    @Test
+    void importsSettlementAmountsSiteNameAndCustomizedProducts() throws Exception {
+        when(orderDetailMapper.selectList(any())).thenReturn(List.of());
+        when(orderDetailMapper.insert(any(OrderDetail.class))).thenReturn(1);
+        List<OrderDetailDtos.ParentOrderRequest> requests = new ObjectMapper().readValue("""
+            [{
+              "parentOrderSn":"PARENT-1",
+              "shippingSettleAmount":"$2.22",
+              "siteName":"US",
+              "relatedGoodsInfoForAggregation":[{
+                "orderSn":"CHILD-1",
+                "parentOrderSn":"PARENT-1",
+                "skuQuantity":1,
+                "salesSettleAmount":"10.51",
+                "customized_products":"子订单一"
+              },{
+                "orderSn":"CHILD-2",
+                "parentOrderSn":"PARENT-1",
+                "skuQuantity":1,
+                "salesSettleAmount":"11.52",
+                "customized_products":"子订单二"
+              }]
+            }]
+            """, new TypeReference<>() {
+        });
+
+        new OrderDetailService(orderDetailMapper).importBatch(requests);
+
+        ArgumentCaptor<OrderDetail> inserted = ArgumentCaptor.forClass(OrderDetail.class);
+        verify(orderDetailMapper, times(2)).insert(inserted.capture());
+        assertThat(inserted.getAllValues()).allSatisfy(detail ->
+            assertThat(detail).extracting("shippingSettleAmount", "siteName")
+                .containsExactly(new java.math.BigDecimal("2.22"), "US")
+        );
+        assertThat(inserted.getAllValues()).extracting(OrderDetail::getCustomizedProducts)
+            .containsExactly("子订单一", "子订单二");
+        assertThat(inserted.getAllValues()).extracting(OrderDetail::getSalesSettleAmount)
+            .containsExactly(new java.math.BigDecimal("10.51"), new java.math.BigDecimal("11.52"));
+    }
 
     @Test
     void importsNewAndExistingOrderDetailsIdempotently() {

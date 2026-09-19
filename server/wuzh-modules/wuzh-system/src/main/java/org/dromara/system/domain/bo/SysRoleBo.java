@@ -2,7 +2,6 @@ package org.dromara.system.domain.bo;
 
 import io.github.linpeilie.annotations.AutoMapper;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -43,14 +42,12 @@ public class SysRoleBo implements Serializable {
     /**
      * 角色权限字符串
      */
-    @NotBlank(message = "角色权限字符串不能为空")
     @Size(min = 0, max = 100, message = "权限字符长度不能超过{max}个字符")
     private String roleKey;
 
     /**
      * 显示顺序
      */
-    @NotNull(message = "显示顺序不能为空")
     private Integer roleSort;
 
     /**

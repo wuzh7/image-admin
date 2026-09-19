@@ -25,6 +25,7 @@ public class ImageUploadService {
     private final ImageAssetMapper assets;
     private final ImageStorage storage;
     private final ImageProperties properties;
+    private final ImageService imageService;
 
     public record FileRequest(@NotBlank @Size(max = 255) String name,
                               @NotBlank String contentType, @Positive long size) {}
@@ -32,9 +33,39 @@ public class ImageUploadService {
     public record UploadTarget(Long imageId, String objectKey, String contentType, long size) {}
     public record UploadSession(String host, String keyPrefix, Map<String, String> formFields,
                                 Instant expiresAt, int uploadConcurrency, List<UploadTarget> files) {}
-    public record StorageMode(boolean directUpload, int uploadConcurrency) {}
+    public record ReplacementSession(Long batchId, UploadSession upload) {}
+    public record StorageMode(boolean directUpload, int uploadConcurrency, java.math.BigDecimal similarityThreshold) {}
     public record CompleteRequest(@NotNull @Size(max = 1000) List<@NotNull Long> imageIds,
                                   @NotNull @Size(max = 1000) List<@NotNull Long> failedIds) {}
+
+    @Transactional(rollbackFor = Exception.class)
+    public ReplacementSession createReplacementSession(long oldId, PrepareRequest request) {
+        if (!LoginHelper.isAdmin()) throw new ServiceException("只有管理员可以操作");
+        if (request.files().size() != 1) throw new ServiceException("替换时只能上传一张图片");
+        ImageAsset old = assets.lockAsset(oldId);
+        if (old == null || !ImageStatus.APPROVED.name().equals(old.getStatus())) {
+            throw new ServiceException("只能替换正式图库中的图片");
+        }
+        if (assets.selectCount(Wrappers.<ImageAsset>lambdaQuery().eq(ImageAsset::getReplacesImageId, oldId)
+            .in(ImageAsset::getStatus, ImageStatus.UPLOADING.name(), ImageStatus.UPLOADED.name(),
+                ImageStatus.CHECKING.name(), ImageStatus.WAIT_REVIEW.name(), ImageStatus.APPROVING.name(),
+                ImageStatus.APPROVAL_FAILED.name(), ImageStatus.FAILED.name())) > 0) {
+            throw new ServiceException("这张图片已有替换任务，请先处理该任务");
+        }
+        ImageBatch sourceBatch = batches.selectById(old.getBatchId());
+        if (sourceBatch == null) throw new ServiceException("原图片批次不存在");
+        var batch = imageService.createBatch(new ImageDtos.CreateBatchRequest(
+            properties.getSimilarityThreshold(), old.getCategoryId(), sourceBatch.getInfringementMode()));
+        UploadSession upload = createSession(batch.id(), request);
+        UploadTarget target = upload.files().getFirst();
+        int updated = assets.update(null, Wrappers.<ImageAsset>lambdaUpdate()
+            .eq(ImageAsset::getId, target.imageId())
+            .eq(ImageAsset::getBatchId, batch.id())
+            .eq(ImageAsset::getStatus, ImageStatus.UPLOADING.name())
+            .set(ImageAsset::getReplacesImageId, oldId));
+        if (updated != 1) throw new ServiceException("创建图片替换任务失败");
+        return new ReplacementSession(batch.id(), upload);
+    }
 
     @Transactional(rollbackFor = Exception.class)
     public UploadSession createSession(long batchId, PrepareRequest request) {
@@ -47,17 +78,12 @@ public class ImageUploadService {
         for (FileRequest file : request.files()) {
             String name = file.name().replace('\\', '/');
             name = name.substring(name.lastIndexOf('/') + 1);
-            String extension = name.substring(Math.max(0, name.lastIndexOf('.'))).toLowerCase(Locale.ROOT);
-            String type = switch (extension) {
-                case ".jpg", ".jpeg" -> "image/jpeg";
-                case ".png" -> "image/png";
-                case ".webp" -> "image/webp";
-                default -> throw new ServiceException("仅支持JPEG、PNG和WebP图片");
-            };
-            if (file.size() <= 0 || file.size() > properties.getMaxFileBytes() || !type.equals(file.contentType())) {
-                throw new ServiceException("图片大小或类型不合法");
-            }
-            String key = "review/" + batchId + "/" + UUID.randomUUID().toString().replace("-", "") + extension;
+            int dot = name.lastIndexOf('.');
+            String extension = dot > 0 ? name.substring(dot).toLowerCase(Locale.ROOT) : "";
+            if (file.size() <= 0) throw new ServiceException("图片大小不合法");
+            String type = file.contentType().startsWith("image/") ? file.contentType() : "application/octet-stream";
+            String key = ImageStorage.reviewPrefix(batchId, batch.getCreateTime() == null ? java.time.LocalDateTime.now() : batch.getCreateTime())
+                + UUID.randomUUID().toString().replace("-", "") + extension;
             ImageAsset asset = new ImageAsset();
             asset.setBatchId(batchId);
             asset.setCategoryId(batch.getCategoryId());
@@ -78,7 +104,7 @@ public class ImageUploadService {
         assets.insert(pending);
         batch.setTotalCount(Math.toIntExact(count + request.files().size()));
         batches.updateById(batch);
-        String keyPrefix = "review/" + batchId + "/";
+        String keyPrefix = ImageStorage.reviewPrefix(batchId, batch.getCreateTime() == null ? java.time.LocalDateTime.now() : batch.getCreateTime());
         ImageStorage.UploadPolicy policy = storage.signUploadPolicy(keyPrefix,
             Duration.ofMinutes(properties.getUploadPolicyMinutes()));
         List<UploadTarget> targets = pending.stream().map(asset -> new UploadTarget(asset.getId(),
@@ -126,7 +152,7 @@ public class ImageUploadService {
     }
 
     public StorageMode storageMode() {
-        return new StorageMode(storage.directUpload(), Math.max(1, Math.min(16, properties.getUploadConcurrency())));
+        return new StorageMode(storage.directUpload(), Math.max(1, Math.min(16, properties.getUploadConcurrency())), properties.getSimilarityThreshold());
     }
 
     // 仅清理尚未开始检测的过期上传，不给整个 review/ 设置会误删待审图片的生命周期。
@@ -151,7 +177,7 @@ public class ImageUploadService {
     private ImageBatch requireUploading(long id) {
         ImageBatch batch = batches.lockBatch(id);
         Long userId = LoginHelper.getUserId();
-        if (batch == null || userId == null || (!LoginHelper.isSuperAdmin(userId)
+        if (batch == null || userId == null || (!LoginHelper.isAdmin()
             && !Objects.equals(userId, batch.getCreateBy()))) throw new ServiceException("图片批次不存在");
         if (!BatchStatus.UPLOADING.name().equals(batch.getStatus())) throw new ServiceException("批次已开始检测");
         return batch;

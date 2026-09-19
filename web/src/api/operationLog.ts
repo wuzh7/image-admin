@@ -16,6 +16,6 @@ export interface OperationLog {
   costTime?: number;
 }
 
-export function listRecentOperationLogs() {
-  return request<R<PageResult<OperationLog>>>({ url: '/monitor/operlog/recent', method: 'get' });
+export function listRecentOperationLogs(userName?: string) {
+  return request<R<PageResult<OperationLog>>>({ url: '/monitor/operlog/recent', method: 'get', params: { userName } });
 }

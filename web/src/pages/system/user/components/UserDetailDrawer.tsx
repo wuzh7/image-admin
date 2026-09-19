@@ -2,17 +2,15 @@ import { ProDescriptions } from '@ant-design/pro-components';
 import { useRequest } from 'ahooks';
 import { Divider, Drawer, Switch } from 'antd';
 import { useEffect, useMemo } from 'react';
-import type { DictData } from '@/api/system/dict/data/types';
 import { getUser } from '@/api/system/user';
 
 interface UserDetailDrawerProps {
   open: boolean;
   userId?: string | number;
-  genderOptions?: DictData[];
   onClose: () => void;
 }
 
-export default function UserDetailDrawer({ open, userId, genderOptions, onClose }: UserDetailDrawerProps) {
+export default function UserDetailDrawer({ open, userId, onClose }: UserDetailDrawerProps) {
   const { data, loading, runAsync: loadUser, mutate } = useRequest(getUser, { manual: true });
 
   useEffect(() => {
@@ -27,7 +25,6 @@ export default function UserDetailDrawer({ open, userId, genderOptions, onClose 
     .filter(role => roleIds.includes(String(role.roleId)))
     .map(role => role.roleName)
     .join('、');
-  const genderDisplay = genderOptions?.find(item => item.dictValue === user?.gender)?.dictLabel || '-';
 
   const closeDrawer = () => {
     onClose();
@@ -43,14 +40,11 @@ export default function UserDetailDrawer({ open, userId, genderOptions, onClose 
         dataSource={{
           ...user,
           statusDisplay: user?.status === '0' ? '正常' : '停用',
-          roleNames: roleNames || '-',
-          genderDisplay
+          roleNames: roleNames || '-'
         }}
         columns={[
+          { title: '用户账号', dataIndex: 'userName' },
           { title: '用户名称', dataIndex: 'nickName' },
-          { title: '手机号码', dataIndex: 'phoneNumber' },
-          { title: '邮箱', dataIndex: 'email' },
-          { title: '登录账号', dataIndex: 'userName' },
           {
             title: '用户状态',
             dataIndex: 'statusDisplay',
@@ -58,7 +52,6 @@ export default function UserDetailDrawer({ open, userId, genderOptions, onClose 
               <Switch checked={record.status === '0'} checkedChildren="正常" unCheckedChildren="停用" disabled />
             )
           },
-          { title: '用户性别', dataIndex: 'genderDisplay' },
           { title: '角色', dataIndex: 'roleNames', span: 2 }
         ]}
       />

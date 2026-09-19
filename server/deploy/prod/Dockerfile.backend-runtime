@@ -1,3 +1,10 @@
+FROM maven:3.9.11-eclipse-temurin-21 AS build
+
+WORKDIR /workspace
+COPY . .
+RUN --mount=type=cache,target=/root/.m2 \
+    mvn -B -ntp -Plocal,djl-linux -pl wuzh-admin -am -DskipTests clean package
+
 FROM eclipse-temurin:21-jre-jammy
 
 RUN apt-get update \
@@ -8,7 +15,7 @@ RUN apt-get update \
     && chown -R app:app /app /data/images /tmp/djl
 
 WORKDIR /app
-COPY --chown=app:app wuzh-admin.jar /app/app.jar
+COPY --from=build --chown=app:app /workspace/wuzh-admin/target/wuzh-admin.jar /app/app.jar
 
 ENV TZ=Asia/Shanghai \
     LANG=C.UTF-8 \

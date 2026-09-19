@@ -2,8 +2,12 @@
 .idea
 .vscode
 **/target
+**/.flattened-pom.xml
+**/.env*
+**/releases
 models/*.pt
 deploy/local
+deploy/prod
 data
 *.log
 deploy/prod/.env.prod

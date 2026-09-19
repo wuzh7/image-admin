@@ -18,7 +18,8 @@ public interface ImageStorage {
     void delete(String key);
 
     default boolean directUpload() { return false; }
-    default Optional<String> accessUrl(String key, boolean thumbnail) { return Optional.empty(); }
+    default Optional<String> accessUrl(String key, String contentType, boolean thumbnail) { return Optional.empty(); }
+    default Optional<String> signGetUrl(String key, Duration expiry) { return Optional.empty(); }
     default UploadPolicy signUploadPolicy(String keyPrefix, Duration expiry) {
         throw new ServiceException("当前存储不支持批次直传");
     }
@@ -34,8 +35,16 @@ public interface ImageStorage {
         }
     }
 
-    static String libraryKey(long id, String sha256, String source, LocalDateTime created) {
-        return "library/%04d/%02d/%s/%s%s".formatted(created.getYear(), created.getMonthValue(),
-            sha256.substring(0, 2), id, source.substring(source.lastIndexOf('.')));
+    static String reviewPrefix(long batchId, LocalDateTime created) {
+        return "review/%04d/%02d/%02d/%d/".formatted(created.getYear(), created.getMonthValue(),
+            created.getDayOfMonth(), batchId);
+    }
+
+    static String libraryKey(long id, long batchId, String sha256, String source, LocalDateTime created) {
+        String extension = source.substring(Math.max(source.lastIndexOf('/'), source.lastIndexOf('\\')) + 1).replaceFirst("^.*(\\.[^.]+)$", "$1");
+        if (!extension.startsWith(".")) extension = "";
+        String shortSha = sha256 == null ? "unknown" : sha256.substring(0, Math.min(12, sha256.length()));
+        return "library/%04d/%02d/%02d/%d/%d_%s%s".formatted(created.getYear(), created.getMonthValue(),
+            created.getDayOfMonth(), batchId, id, shortSha, extension);
     }
 }

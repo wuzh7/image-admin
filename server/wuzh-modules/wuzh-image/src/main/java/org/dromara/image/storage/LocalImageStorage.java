@@ -49,9 +49,6 @@ public class LocalImageStorage implements ImageStorage {
         if (file == null || file.isEmpty()) {
             throw new ServiceException("请选择要上传的图片");
         }
-        if (file.getSize() > properties.getMaxFileBytes()) {
-            throw new ServiceException("图片不能超过20MB: " + safeName(file.getOriginalFilename()));
-        }
         if (!ALLOWED_EXTENSIONS.contains(uploadedExtension(safeName(file.getOriginalFilename())))) {
             throw new ServiceException("图片扩展名仅支持JPG、JPEG、PNG和WebP: " + safeName(file.getOriginalFilename()));
         }
@@ -64,10 +61,6 @@ public class LocalImageStorage implements ImageStorage {
             temporary = Files.createTempFile(temporaryDirectory, "upload-", ".tmp");
             String sha256 = copyAndHash(file, temporary);
             ImageInfo info = inspect(temporary);
-            if ((long) info.width() * info.height() > properties.getMaxPixels()) {
-                throw new ServiceException("图片像素不能超过5000万: " + safeName(file.getOriginalFilename()));
-            }
-
             String token = UUID.randomUUID().toString().replace("-", "");
             String base = "staging/" + batchId + "/" + token;
             String storageKey = base + info.extension();
@@ -143,20 +136,17 @@ public class LocalImageStorage implements ImageStorage {
 
     public static StoredImage validate(Path path, String name, ImageProperties properties) throws Exception {
         long size = Files.size(path);
-        if (size == 0 || size > properties.getMaxFileBytes()) throw new ServiceException("图片大小不合法");
+        if (size == 0) throw new ServiceException("图片大小不合法");
         ImageInfo info = inspect(path);
-        if (info.width() <= 0 || info.height() <= 0
-            || (long) info.width() * info.height() > properties.getMaxPixels()) {
-            throw new ServiceException("图片像素超出限制");
-        }
-        // 完整解码并修正 EXIF 后确认真实尺寸，元数据和模型使用同一方向。
-        BufferedImage decoded = SscdFeatureExtractor.readOriented(path);
+        if (info.width() <= 0 || info.height() <= 0) throw new ServiceException("图片尺寸不合法");
+        SscdFeatureExtractor.readOriented(path, 2048);
+        int[] dimensions = SscdFeatureExtractor.orientedDimensions(path, info.width(), info.height());
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         try (InputStream input = new DigestInputStream(Files.newInputStream(path), digest)) {
             input.transferTo(OutputStream.nullOutputStream());
         }
         return new StoredImage(null, null, safeName(name), info.contentType(), size,
-            decoded.getWidth(), decoded.getHeight(), HexFormat.of().formatHex(digest.digest()));
+            dimensions[0], dimensions[1], HexFormat.of().formatHex(digest.digest()));
     }
 
     public Path resolve(String key) {
@@ -183,16 +173,11 @@ public class LocalImageStorage implements ImageStorage {
 
     private String copyAndHash(MultipartFile file, Path target) throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        long total = 0;
         byte[] buffer = new byte[8192];
         try (InputStream input = new DigestInputStream(file.getInputStream(), digest);
              OutputStream output = Files.newOutputStream(target)) {
             int read;
             while ((read = input.read(buffer)) != -1) {
-                total += read;
-                if (total > properties.getMaxFileBytes()) {
-                    throw new ServiceException("图片不能超过20MB: " + safeName(file.getOriginalFilename()));
-                }
                 output.write(buffer, 0, read);
             }
         }
@@ -233,7 +218,7 @@ public class LocalImageStorage implements ImageStorage {
     }
 
     private static void writeThumbnail(Path source, Path target) throws Exception {
-        BufferedImage image = SscdFeatureExtractor.readOriented(source);
+        BufferedImage image = SscdFeatureExtractor.readOriented(source, 640);
         double scale = Math.min(1.0, (double) THUMBNAIL_SIZE / Math.max(image.getWidth(), image.getHeight()));
         int width = Math.max(1, (int) Math.round(image.getWidth() * scale));
         int height = Math.max(1, (int) Math.round(image.getHeight() * scale));

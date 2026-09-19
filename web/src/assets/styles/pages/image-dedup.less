@@ -36,6 +36,10 @@
   gap: 16px;
   margin-bottom: 18px;
 
+  &__mode {
+    grid-column: 1 / -1;
+  }
+
   label {
     display: grid;
     gap: 7px;
@@ -257,22 +261,23 @@
 
 .image-review-comparison {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: minmax(180px, 22%) minmax(0, 1fr);
+  gap: 12px;
   width: 100%;
 }
 
 .image-review-asset {
   display: grid;
   min-width: 0;
-  gap: 8px;
-  padding: 12px;
+  align-content: start;
+  gap: 10px;
+  padding: 16px;
   border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
   border-radius: 9px;
 
   &__preview {
     display: grid;
-    min-height: 220px;
+    min-height: 160px;
     place-items: center;
     overflow: hidden;
     border-radius: 7px;
@@ -284,10 +289,78 @@
   }
 }
 
+.image-review-matches {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 9px;
+}
+
+.image-similar-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.image-similar-card {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 8px;
+  background: var(--ant-color-bg-container, #fff);
+
+  &__preview {
+    display: grid;
+    min-height: 180px;
+    place-items: center;
+    overflow: hidden;
+    border-radius: 6px;
+    background: var(--ant-color-fill-quaternary, #f5f5f5);
+
+    .ant-image {
+      width: 100% !important;
+    }
+  }
+}
+
+.image-similar-pagination {
+  padding-top: 12px;
+  border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
 .image-review-decision {
   grid-column: 1 / -1;
   padding: 12px 4px 0;
   border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
+@media (max-width: 1200px) {
+  .image-review-comparison {
+    grid-template-columns: minmax(180px, 25%) minmax(0, 1fr);
+  }
+
+  .image-similar-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .image-review-comparison {
+    grid-template-columns: 1fr;
+  }
+
+  .image-review-asset__preview {
+    min-height: 160px;
+  }
+
+  .image-review-decision {
+    grid-column: auto;
+  }
 }
 
 @media (max-width: 640px) {
@@ -327,6 +400,10 @@
   }
 
   .image-review-comparison {
+    grid-template-columns: 1fr;
+  }
+
+  .image-similar-grid {
     grid-template-columns: 1fr;
   }
 

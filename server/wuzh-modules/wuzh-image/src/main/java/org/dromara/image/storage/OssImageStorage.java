@@ -63,11 +63,11 @@ public class OssImageStorage implements ImageStorage {
         String policyJson = "{\"expiration\":\"%s\",\"conditions\":[[\"eq\",\"$bucket\",\"%s\"],"
             + "[\"eq\",\"$x-oss-signature-version\",\"OSS4-HMAC-SHA256\"],"
             + "[\"eq\",\"$x-oss-credential\",\"%s\"],[\"eq\",\"$x-oss-date\",\"%s\"]%s,"
-            + "[\"starts-with\",\"$key\",\"%s\"],[\"content-length-range\",1,%d],"
+            + "[\"starts-with\",\"$key\",\"%s\"],"
             + "[\"in\",\"$content-type\",[\"image/jpeg\",\"image/png\",\"image/webp\"]],"
             + "[\"eq\",\"$x-oss-forbid-overwrite\",\"true\"]]}";
         policyJson = policyJson.formatted(expiresAt, config.getBucket(), credential, requestTime,
-            tokenCondition, keyPrefix, properties.getMaxFileBytes());
+            tokenCondition, keyPrefix);
         String policy = Base64.getEncoder().encodeToString(policyJson.getBytes(StandardCharsets.UTF_8));
         byte[] signingKey = hmac(("aliyun_v4" + credentials.secretAccessKey()).getBytes(StandardCharsets.UTF_8), date);
         signingKey = hmac(signingKey, config.getRegion());
@@ -114,30 +114,30 @@ public class OssImageStorage implements ImageStorage {
         return java.util.HexFormat.of().formatHex(bytes);
     }
 
-    @Override public Optional<String> accessUrl(String key, boolean thumbnail) {
+    @Override public Optional<String> accessUrl(String key, String contentType, boolean thumbnail) {
         if (key == null || key.isBlank()) return Optional.empty();
         return Optional.of(external.presignGetUrl(key, Duration.ofMinutes(10), thumbnail
             ? Map.of("x-oss-process", "image/auto-orient,1/resize,m_lfit,w_480,h_480/quality,q_82") : Map.of()));
     }
 
+    @Override public Optional<String> signGetUrl(String key, Duration expiry) {
+        if (key == null || key.isBlank()) return Optional.empty();
+        return Optional.of(external.presignGetUrl(key, expiry, Map.of()));
+    }
+
     @Override public LocalFile open(String key) {
         Path path = null;
         try {
-            if (internal.head(key).size() > properties.getMaxFileBytes()) throw new ServiceException("图片超过大小限制");
             path = Files.createTempFile("image-oss-", ".tmp");
-            // 流式读取且限制实际字节数，避免远端对象填满本机磁盘。
             try (OutputStream output = Files.newOutputStream(path)) {
                 internal.download(key, (metadata, input) -> {
                     try {
                         byte[] buffer = new byte[8192];
-                        long total = 0;
                         int count;
                         while ((count = input.read(buffer)) != -1) {
-                            total += count;
-                            if (total > properties.getMaxFileBytes()) throw new ServiceException("图片超过大小限制");
                             output.write(buffer, 0, count);
                         }
-                        return total;
+                        return null;
                     } catch (java.io.IOException exception) { throw new ServiceException("读取OSS图片失败"); }
                 });
             }

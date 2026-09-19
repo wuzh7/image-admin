@@ -1,8 +1,9 @@
 import type { FormInstance } from 'antd';
-import { ModalForm, ProFormSelect, ProFormText, ProFormTextArea } from '@ant-design/pro-components';
+import { ModalForm, ProFormSelect, ProFormText, ProFormTextArea, ProFormTreeSelect } from '@ant-design/pro-components';
 import { Form } from 'antd';
 import type { RoleVO } from '@/api/system/role/types';
 import type { UserForm } from '@/api/system/user/types';
+import type { DeptTreeOption } from '@/api/system/dept/types';
 
 interface UserFormModalProps {
   open: boolean;
@@ -11,7 +12,8 @@ interface UserFormModalProps {
   initialValues: UserForm;
   currentUserId?: string | number;
   roleOptions: RoleVO[];
-  genderOptions: Array<{ label: string; value: string }>;
+  deptOptions: DeptTreeOption[];
+  onDeptChange: (deptId?: string | number) => Promise<void>;
   statusOptions: Array<{ label: string; value: string }>;
   onClose: () => void;
   onFinish: (values: UserForm) => Promise<boolean>;
@@ -24,7 +26,8 @@ export default function UserFormModal({
   initialValues,
   currentUserId,
   roleOptions,
-  genderOptions,
+  deptOptions,
+  onDeptChange,
   statusOptions,
   onClose,
   onFinish
@@ -52,46 +55,28 @@ export default function UserFormModal({
     >
       <ProFormText name="userId" hidden />
       <div className="form-grid">
-        <ProFormText
-          name="nickName"
-          label="用户昵称"
-          fieldProps={{ maxLength: 30 }}
-          placeholder="请输入用户昵称"
-          rules={[{ required: true, message: '用户昵称不能为空' }]}
-        />
-        <ProFormText
-          name="phoneNumber"
-          label="手机号码"
-          fieldProps={{ maxLength: 11 }}
-          placeholder="请输入手机号码"
-          rules={[
-            { required: true, message: '手机号码不能为空' },
-            { pattern: /^1[3456789][0-9]\d{8}$/, message: '请输入正确的手机号码' }
-          ]}
-        />
-        <ProFormText
-          name="email"
-          label="邮箱"
-          fieldProps={{ maxLength: 50 }}
-          placeholder="请输入邮箱"
-          rules={[
-            { required: true, message: '邮箱不能为空' },
-            { type: 'email', message: '请输入正确的邮箱地址' }
-          ]}
-        />
-        {!editingUserId && (
-          <>
+        <>
             <ProFormText
               name="userName"
+              label="用户账号"
+              fieldProps={{ maxLength: 30 }}
+              placeholder="请输入登录账号"
+              rules={[
+                { required: true, message: '用户账号不能为空' },
+                { min: 2, max: 30, message: '用户账号长度必须介于 2 和 30 之间' }
+              ]}
+            />
+            <ProFormText
+              name="nickName"
               label="用户名称"
               fieldProps={{ maxLength: 30 }}
               placeholder="请输入用户名称"
               rules={[
                 { required: true, message: '用户名称不能为空' },
-                { min: 2, max: 20, message: '用户名称长度必须介于 2 和 20 之间' }
+                { min: 2, max: 30, message: '用户名称长度必须介于 2 和 30 之间' }
               ]}
             />
-            <ProFormText.Password
+            {!editingUserId && <ProFormText.Password
               name="password"
               label="用户密码"
               fieldProps={{ maxLength: 20 }}
@@ -101,10 +86,21 @@ export default function UserFormModal({
                 { min: 5, max: 20, message: '用户密码长度必须介于 5 和 20 之间' },
                 { pattern: /^[^<>"'|\\]+$/, message: `不能包含非法字符：< > " ' \\ |` }
               ]}
-            />
-          </>
-        )}
-        <ProFormSelect name="gender" label="用户性别" allowClear options={genderOptions} placeholder="请选择" />
+            />}
+        </>
+        <ProFormTreeSelect
+          name="deptId"
+          label="所属部门"
+          fieldProps={{
+            treeData: deptOptions,
+            fieldNames: { label: 'label', value: 'id', children: 'children' },
+            onChange: value => {
+              form.setFieldValue('roleIds', []);
+              void onDeptChange(value as string | number | undefined);
+            }
+          }}
+          rules={[{ required: true, message: '所属部门不能为空' }]}
+        />
         <ProFormSelect name="status" label="状态" options={statusOptions} placeholder="请选择" />
         {!editingSelf && (
           <>

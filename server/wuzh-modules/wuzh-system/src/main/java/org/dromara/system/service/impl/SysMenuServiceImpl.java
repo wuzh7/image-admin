@@ -62,7 +62,7 @@ public class SysMenuServiceImpl implements ISysMenuService {
     @Override
     public List<SysMenuVo> selectMenuList(SysMenuBo menu, Long userId) {
         // 管理员显示所有菜单信息 不是管理员 按用户id过滤菜单
-        if (LoginHelper.isSuperAdmin(userId)) {
+        if (LoginHelper.isAdmin()) {
             return menuMapper.lambda()
                 .likeIfText(SysMenu::getMenuName, menu.getMenuName())
                 .eqIfText(SysMenu::getVisible, menu.getVisible())
@@ -118,7 +118,7 @@ public class SysMenuServiceImpl implements ISysMenuService {
     @Override
     public List<SysMenu> selectMenuTreeByUserId(Long userId) {
         List<SysMenu> menus;
-        if (LoginHelper.isSuperAdmin(userId)) {
+        if (LoginHelper.isAdmin()) {
             menus = menuMapper.selectMenuTreeAll();
         } else {
             menus = menuMapper.selectMenuTreeByUserId(userId);

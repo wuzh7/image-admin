@@ -1,6 +1,6 @@
 # 图片去重 Demo 本地运行手册
 
-这套本地环境用于演示“上传图片 → Java 提取 SSCD 特征 → Qdrant 召回 → 人工确认 → 正式图库”的完整流程。除 Docker Desktop、Docker Compose V2 和 Git 外，不需要在 Windows 单独安装 JDK、Maven、MySQL、Redis、Qdrant、Node.js 或 Nginx。
+这套本地环境用于演示“上传图片 → Java 提取 SSCD 特征 → Qdrant 召回 → 低相似图片自动入库 / 高相似图片人工确认 → 正式图库”的完整流程。除 Docker Desktop、Docker Compose V2 和 Git 外，不需要在 Windows 单独安装 JDK、Maven、MySQL、Redis、Qdrant、Node.js 或 Nginx。
 
 ## 1. 本地会启动什么
 
@@ -84,8 +84,8 @@ http://localhost:8088
 
 1. 在“批次上传”页填写批次名称。
 2. 阈值默认 `0.60`，可在 `0.50` 到 `0.99` 之间调整。
-3. 选择 JPEG、PNG 或 WebP 图片；单张不超过 20 MB，一批最多 100 张。
-4. 点击“上传并开始检测”。前端会自动每 10 张拆成一个请求。
+3. 选择 JPEG、PNG 或 WebP 图片；单张不设大小和像素上限，一批最多 1000 张。
+4. 点击“上传并开始检测”。前端会并发上传；单张失败只提示该文件，其余图片继续检测。
 5. 提交后任务进入后台队列，页面每 2 秒刷新处理进度。可以关闭或离开页面，任务不会中断；稍后从“检测任务”重新打开。普通用户只看到自己创建的任务和图片，管理员可以查看并处理全部用户的数据。
 6. 同批图片在 Java 内存中逐对进行双向精确比较；正式图库才通过 Qdrant Top30 召回并用 MySQL 原始向量精排。
 7. 到达“待确认”后查看原图和最佳匹配图：

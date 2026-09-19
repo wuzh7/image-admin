@@ -1,0 +1,27 @@
+server:
+  port: 18080
+spring:
+  servlet:
+    multipart:
+      max-file-size: -1
+      max-request-size: -1
+gateway:
+  token: ${AI_GATEWAY_TOKEN:local-gateway-token}
+gemini:
+  prompt-file: ${GEMINI_PROMPT_FILE:/app/config/gemini_prompt.txt}
+  api-key: ${GOOGLE_API_KEY:missing-local-key}
+  model: ${GEMINI_MODEL:gemini-3.8-flash}
+  timeout-seconds: ${GEMINI_TIMEOUT_SECONDS:900}
+openlux:
+  api-key: ${OPENLUX_API_KEY:missing-local-key}
+  base-url: ${OPENLUX_BASE_URL:https://api.openlux.ai}
+  model: ${OPENLUX_MODEL:gemini-3.8-flash}
+  timeout-seconds: ${OPENLUX_TIMEOUT_SECONDS:900}
+relay:
+  prompt1-file: ${GEMINI_PROMPT_FILE:/app/config/gemini_prompt.txt}
+  prompt2-file: ${RELAY_PROMPT2_FILE:/app/config/relay-prompts/prompt2.txt}
+  stages:
+    - model: ${OPENLUX_MODEL:gemini-3.8-flash}
+      protocol: GEMINI
+    - model: ${RELAY_STAGE2_MODEL:doubao-seed-2-0-lite-260215}
+      protocol: ${RELAY_STAGE2_PROTOCOL:CHAT_COMPLETIONS}

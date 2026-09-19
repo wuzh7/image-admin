@@ -17,6 +17,9 @@ import org.dromara.image.config.ImageProperties;
 import org.springframework.stereotype.Component;
 
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReadParam;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
@@ -35,6 +38,7 @@ import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.Iterator;
 
 @Component
 @RequiredArgsConstructor
@@ -45,7 +49,7 @@ public class SscdFeatureExtractor {
     public static final String EXPECTED_MODEL_SHA256 =
         "9f26bd4c848cc19b73d2ae92eea6e04886f61a7b764ceb7a13aeee62e6a6db56";
     private static final int INPUT_SIZE = 320;
-    private static final int[] QUERY_ROTATIONS = {-15, -10, -5, 5, 10, 15, 90, 180, 270};
+    private static final int[] QUERY_ROTATIONS = {90, 180, 270};
     private static final float[] MEAN = {0.485f, 0.456f, 0.406f};
     private static final float[] STD = {0.229f, 0.224f, 0.225f};
 
@@ -70,6 +74,10 @@ public class SscdFeatureExtractor {
         return predictorPool != null;
     }
 
+    public static int queryViewCount() {
+        return 2 + QUERY_ROTATIONS.length;
+    }
+
     public String modelSha256() throws Exception {
         if (modelSha256 == null) {
             synchronized (modelLock) {
@@ -92,7 +100,7 @@ public class SscdFeatureExtractor {
     public List<Features> extractBatch(List<Path> imagePaths, boolean includeRotations) throws Exception {
         if (imagePaths.isEmpty()) return List.of();
         List<List<BufferedImage>> imageViews = new ArrayList<>(imagePaths.size());
-        for (Path path : imagePaths) imageViews.add(views(readOriented(path), includeRotations));
+        for (Path path : imagePaths) imageViews.add(views(readOriented(path, 2048), includeRotations));
         int viewsPerImage = imageViews.getFirst().size();
         float[] input = new float[imagePaths.size() * viewsPerImage * 3 * INPUT_SIZE * INPUT_SIZE];
         int offset = 0;
@@ -195,21 +203,48 @@ public class SscdFeatureExtractor {
     }
 
     public static BufferedImage readOriented(Path path) throws Exception {
-        BufferedImage source = ImageIO.read(path.toFile());
-        if (source == null) {
-            throw new IOException("无法解析图片内容: " + path.getFileName());
+        return readOriented(path, Integer.MAX_VALUE);
+    }
+
+    public static BufferedImage readOriented(Path path, int maxDimension) throws Exception {
+        BufferedImage source;
+        try (ImageInputStream input = ImageIO.createImageInputStream(path.toFile())) {
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
+            if (!readers.hasNext()) throw new IOException("无法解析图片内容: " + path.getFileName());
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(input, true, true);
+                int width = reader.getWidth(0);
+                int height = reader.getHeight(0);
+                int subsampling = maxDimension == Integer.MAX_VALUE ? 1
+                    : Math.max(1, (int) Math.ceil((double) Math.max(width, height) / maxDimension));
+                ImageReadParam param = reader.getDefaultReadParam();
+                param.setSourceSubsampling(subsampling, subsampling, 0, 0);
+                source = reader.read(0, param);
+            } finally {
+                reader.dispose();
+            }
         }
-        int orientation = 1;
+        if (source == null) throw new IOException("无法解析图片内容: " + path.getFileName());
+        return orient(toRgb(source), readOrientation(path));
+    }
+
+    public static int[] orientedDimensions(Path path, int width, int height) {
+        int orientation = readOrientation(path);
+        return orientation >= 5 && orientation <= 8 ? new int[]{height, width} : new int[]{width, height};
+    }
+
+    private static int readOrientation(Path path) {
         try {
             ExifIFD0Directory directory = ImageMetadataReader.readMetadata(path.toFile())
                 .getFirstDirectoryOfType(ExifIFD0Directory.class);
             if (directory != null && directory.containsTag(ExifIFD0Directory.TAG_ORIENTATION)) {
-                orientation = directory.getInt(ExifIFD0Directory.TAG_ORIENTATION);
+                return directory.getInt(ExifIFD0Directory.TAG_ORIENTATION);
             }
         } catch (Exception ignored) {
-            orientation = 1;
+            return 1;
         }
-        return orient(toRgb(source), orientation);
+        return 1;
     }
 
     private static BufferedImage toRgb(BufferedImage source) {
@@ -393,6 +428,30 @@ public class SscdFeatureExtractor {
             vector[index] = buffer.getFloat();
         }
         return vector;
+    }
+
+    public static byte[] encodeQueries(List<float[]> vectors) {
+        if (vectors.size() != queryViewCount()) throw new IllegalArgumentException("无效的SSCD查询视图数量");
+        ByteBuffer buffer = ByteBuffer.allocate(vectors.size() * VECTOR_DIMENSION * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+        for (float[] vector : vectors) {
+            if (vector.length != VECTOR_DIMENSION) throw new IllegalArgumentException("无效的SSCD查询视图");
+            for (float value : vector) buffer.putFloat(value);
+        }
+        return buffer.array();
+    }
+
+    public static List<float[]> decodeQueries(byte[] bytes) {
+        if (bytes == null || bytes.length != queryViewCount() * VECTOR_DIMENSION * Float.BYTES) {
+            throw new IllegalArgumentException("无效的SSCD查询视图数据");
+        }
+        ByteBuffer buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+        List<float[]> result = new ArrayList<>();
+        for (int view = 0; view < queryViewCount(); view++) {
+            float[] vector = new float[VECTOR_DIMENSION];
+            for (int index = 0; index < vector.length; index++) vector[index] = buffer.getFloat();
+            result.add(vector);
+        }
+        return result;
     }
 
     @PreDestroy

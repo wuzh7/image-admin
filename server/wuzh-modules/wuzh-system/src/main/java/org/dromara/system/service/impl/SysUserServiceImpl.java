@@ -234,6 +234,15 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
         return !exist;
     }
 
+    @Override
+    public boolean checkNickNameUnique(SysUserBo user) {
+        boolean exist = userMapper.lambda()
+            .eq(SysUser::getNickName, user.getNickName())
+            .neIfPresent(SysUser::getUserId, user.getUserId())
+            .exists();
+        return !exist;
+    }
+
     /**
      * 校验手机号码是否唯一
      *
@@ -284,7 +293,7 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
         if (ObjectUtil.isNull(userId)) {
             return;
         }
-        if (LoginHelper.isSuperAdmin()) {
+        if (LoginHelper.isAdmin()) {
             return;
         }
         if (userMapper.countUserById(userId) == 0) {
@@ -484,7 +493,7 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
         List<Long> roleList = new ArrayList<>(Arrays.asList(roleIds));
 
         // 非超级管理员，禁止包含超级管理员角色
-        if (!LoginHelper.isSuperAdmin(userId)) {
+        if (!LoginHelper.isAdmin()) {
             roleList.remove(SystemConstants.SUPER_ADMIN_ROLE_ID);
         }
 

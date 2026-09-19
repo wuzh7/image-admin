@@ -27,7 +27,7 @@ class LocalImageStorageTest {
 
     @Test
     void savesValidatedImageAndThumbnail() throws Exception {
-        LocalImageStorage storage = storage(20 * 1024 * 1024);
+        LocalImageStorage storage = storage();
         MockMultipartFile file = new MockMultipartFile(
             "files", "商品图.png", "image/png", png(640, 480));
 
@@ -42,17 +42,17 @@ class LocalImageStorageTest {
     }
 
     @Test
-    void rejectsFilesOverConfiguredLimit() {
-        LocalImageStorage storage = storage(8);
+    void acceptsImagesWithoutAnApplicationSizeLimit() throws Exception {
+        LocalImageStorage storage = storage();
         MockMultipartFile file = new MockMultipartFile(
-            "files", "商品图.png", "image/png", new byte[9]);
+            "files", "商品图.png", "image/png", png(64, 64));
 
-        assertThrows(ServiceException.class, () -> storage.save(42L, file));
+        assertEquals(64, storage.save(42L, file).width());
     }
 
     @Test
     void rejectsSupportedImageContentWithUnsupportedExtension() throws Exception {
-        LocalImageStorage storage = storage(20 * 1024 * 1024);
+        LocalImageStorage storage = storage();
         MockMultipartFile file = new MockMultipartFile(
             "files", "伪装文件.txt", "image/png", png(32, 32));
 
@@ -61,17 +61,16 @@ class LocalImageStorageTest {
 
     @Test
     void rejectsImageWithoutExtension() throws Exception {
-        LocalImageStorage storage = storage(20 * 1024 * 1024);
+        LocalImageStorage storage = storage();
         MockMultipartFile file = new MockMultipartFile(
             "files", "没有扩展名", "image/png", png(32, 32));
 
         assertThrows(ServiceException.class, () -> storage.save(42L, file));
     }
 
-    private LocalImageStorage storage(long maxBytes) {
+    private LocalImageStorage storage() {
         ImageProperties properties = new ImageProperties();
         properties.getStorage().setRoot(root.toString());
-        properties.setMaxFileBytes(maxBytes);
         return new LocalImageStorage(properties);
     }
 

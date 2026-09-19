@@ -12,6 +12,8 @@ import { useBoolean } from 'ahooks';
 import { Button, Form, Input, message, Modal, Popconfirm, Switch } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import type { RoleVO } from '@/api/system/role/types';
+import type { DeptTreeOption } from '@/api/system/dept/types';
+import { deptTree, getDeptRoles } from '@/api/system/dept';
 import type { UserForm, UserQuery, UserVO } from '@/api/system/user/types';
 import { getConfigKey } from '@/api/system/config';
 import {
@@ -47,8 +49,9 @@ export default function SystemUserPage() {
   const { tableScroll } = useTableScroll(1220);
   const [form] = Form.useForm<UserForm>();
   const userInfo = useUserStore(state => state.userInfo);
-  const dicts = useDict('sys_normal_disable', 'sys_user_gender');
+  const dicts = useDict('sys_normal_disable');
   const [roleOptions, setRoleOptions] = useState<RoleVO[]>([]);
+  const [deptOptions, setDeptOptions] = useState<DeptTreeOption[]>([]);
   const [initPassword, setInitPassword] = useState('');
   const {
     ids: selectedIds,
@@ -75,9 +78,10 @@ export default function SystemUserPage() {
   }, []);
 
   const openAdd = async () => {
-    const res = await getUser();
+    const [res, depts] = await Promise.all([getUser(), deptTree()]);
     setModalTitle('新增用户');
-    setRoleOptions(res.data.roles || []);
+    setDeptOptions(depts.data || []);
+    setRoleOptions([]);
     form.resetFields();
     form.setFieldsValue({
       ...defaultForm,
@@ -89,11 +93,13 @@ export default function SystemUserPage() {
   const openEdit = async (row?: UserVO) => {
     const target = row || selectedOne;
     if (!target?.userId) return;
-    const res = await getUser(target.userId);
+    const [res, depts] = await Promise.all([getUser(target.userId), deptTree()]);
     const user = res.data.user || {};
+    const deptRoles = user.deptId ? await getDeptRoles(user.deptId) : undefined;
     setModalTitle('修改用户');
+    setDeptOptions(depts.data || []);
     setRoleOptions(
-      Array.from(new Map([...(res.data.roles || []), ...(user.roles || [])].map(role => [role.roleId, role])).values())
+      Array.from(new Map([...(deptRoles?.data || []), ...(user.roles || [])].map(role => [role.roleId, role])).values())
     );
     form.resetFields();
     form.setFieldsValue({
@@ -147,7 +153,7 @@ export default function SystemUserPage() {
   const handleResetPwd = (row: UserVO) => {
     let password = '';
     Modal.confirm({
-      title: `请输入"${row.userName}"的新密码`,
+      title: `请输入"${row.nickName || row.userName}"的新密码`,
       content: (
         <Input.Password
           autoFocus
@@ -179,7 +185,7 @@ export default function SystemUserPage() {
     const text = status === '0' ? '启用' : '停用';
     const previousStatus = row.status;
     try {
-      await confirmAction(`确认要"${text}""${row.userName}"用户吗?`);
+      await confirmAction(`确认要"${text}""${row.nickName || row.userName}"用户吗?`);
       await changeUserStatus(row.userId, status);
       message.success(`${text}成功`);
       actionRef.current?.reload();
@@ -198,22 +204,21 @@ export default function SystemUserPage() {
       hideInTable: true
     },
     {
-      title: '用户名称',
+      title: '用户账号',
       dataIndex: 'userName',
+      width: 160
+    },
+    {
+      title: '用户名称',
+      dataIndex: 'nickName',
       render: (_, row) => (
         <Button type="link" size="small" onClick={() => openView(row)}>
-          {row.userName}
+          {row.nickName || row.userName}
         </Button>
-      )
+      ),
+      width: 180
     },
-    {
-      title: '用户昵称',
-      dataIndex: 'nickName'
-    },
-    {
-      title: '手机号码',
-      dataIndex: 'phoneNumber'
-    },
+    { title: '所属部门', dataIndex: 'deptName', width: 150, search: false, ellipsis: true },
     {
       title: '状态',
       dataIndex: 'status',
@@ -261,7 +266,7 @@ export default function SystemUserPage() {
                 label: '删除',
                 icon: <DeleteOutlined />,
                 danger: true,
-                confirm: `是否确认删除用户编号为"${row.userId}"的数据项？`,
+                confirm: `是否确认删除用户"${row.nickName || row.userName}"？`,
                 onClick: () => handleDelete(row)
               },
               canResetPwd && {
@@ -344,7 +349,12 @@ export default function SystemUserPage() {
         initialValues={defaultForm}
         currentUserId={currentUserId}
         roleOptions={roleOptions}
-        genderOptions={dictOptions(dicts.sys_user_gender)}
+        deptOptions={deptOptions}
+        onDeptChange={async deptId => {
+          if (!deptId) { setRoleOptions([]); return; }
+          const result = await getDeptRoles(deptId);
+          setRoleOptions(result.data || []);
+        }}
         statusOptions={dictOptions(dicts.sys_normal_disable)}
         onClose={closeModal}
         onFinish={submitForm}
@@ -353,7 +363,6 @@ export default function SystemUserPage() {
       <UserDetailDrawer
         open={viewOpen}
         userId={viewUserId}
-        genderOptions={dicts.sys_user_gender}
         onClose={closeViewDrawer}
       />
     </PageContainer>

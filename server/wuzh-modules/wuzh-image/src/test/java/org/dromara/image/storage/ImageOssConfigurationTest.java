@@ -33,6 +33,11 @@ class ImageOssConfigurationTest {
             URI preview = URI.create(client.presignGetUrl("review/1/a.png", Duration.ofMinutes(10),
                 Map.of("x-oss-process", "image/resize,w_480")));
             assertTrue(URLDecoder.decode(preview.getRawQuery(), StandardCharsets.UTF_8).contains("x-oss-process=image/resize,w_480"));
+            URI thumbnail = URI.create(new OssImageStorage(properties, client, client)
+                .accessUrl("review/1/a.png", "image/png", true).orElseThrow());
+            String thumbnailQuery = URLDecoder.decode(thumbnail.getRawQuery(), StandardCharsets.UTF_8);
+            assertTrue(thumbnailQuery.contains("x-oss-process=image/auto-orient,1/resize,m_lfit,w_480,h_480/quality,q_82"));
+            assertFalse(thumbnailQuery.contains("response-content-type"));
         }
     }
 }

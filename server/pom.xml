@@ -55,6 +55,7 @@
         <pytorch.version>2.7.1</pytorch.version>
         <metadata-extractor.version>2.19.0</metadata-extractor.version>
         <twelvemonkeys.version>3.12.0</twelvemonkeys.version>
+        <google-genai.version>1.71.0</google-genai.version>
         <!-- Maven 构建插件版本 -->
         <maven-jar-plugin.version>3.5.0</maven-jar-plugin.version>
         <maven-compiler-plugin.version>3.15.0</maven-compiler-plugin.version>
@@ -314,6 +315,8 @@
         <module>wuzh-modules</module>
         <!-- api模块 -->
         <module>wuzh-api</module>
+        <!-- 独立 Gemini 网关 -->
+        <module>wuzh-ai-gateway</module>
     </modules>
     <packaging>pom</packaging>
 

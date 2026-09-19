@@ -1,7 +1,7 @@
 import { LockOutlined, SafetyOutlined, UserOutlined } from '@ant-design/icons';
 import { LoginForm, ProFormCheckbox, ProFormText } from '@ant-design/pro-components';
 import { history, useSearchParams } from '@umijs/max';
-import { Button, ConfigProvider, message } from 'antd';
+import { ConfigProvider, message } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { useCallback, useEffect, useState } from 'react';
 import type { VerifyCodeResult } from '@/api/types';
@@ -25,8 +25,8 @@ function getRememberedLogin() {
   const rememberMe = localStorage.getItem('rememberMe') === 'true';
   const username = localStorage.getItem('username') || undefined;
   return {
-    username: rememberMe ? username : 'admin',
-    password: rememberMe ? undefined : 'admin123',
+    username: rememberMe ? username : undefined,
+    password: undefined,
     rememberMe
   };
 }
@@ -41,14 +41,13 @@ const authText = {
     { value: '全栈技术集成', label: '主流技术栈' }
   ],
   formSubTitle: '使用现有后端账号登录',
-  username: '用户名',
+  username: '用户账号',
   password: '密码',
   code: '验证码',
   rememberMe: '记住我',
-  register: '注册账号',
   loginSuccess: '登录成功',
   loginFail: '登录失败',
-  usernameRequired: '请输入用户名',
+  usernameRequired: '请输入用户账号',
   passwordRequired: '请输入密码',
   codeRequired: '请输入验证码'
 };
@@ -183,9 +182,6 @@ export default function Login() {
               )}
               <div className="login-form-meta">
                 <ProFormCheckbox name="rememberMe">{text.rememberMe}</ProFormCheckbox>
-                <Button type="link" onClick={() => history.push('/register')}>
-                  {text.register}
-                </Button>
               </div>
             </LoginForm>
           </div>

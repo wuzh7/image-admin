@@ -1,9 +1,7 @@
 package org.dromara.system.domain.bo;
 
 import io.github.linpeilie.annotations.AutoMapper;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import org.dromara.system.domain.SysDept;
@@ -11,6 +9,7 @@ import org.dromara.system.domain.SysDept;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -52,8 +51,9 @@ public class SysDeptBo implements Serializable {
     /**
      * 显示顺序
      */
-    @NotNull(message = "显示顺序不能为空")
     private Integer orderNum;
+
+    private List<Long> roleIds;
 
     /**
      * 负责人
@@ -69,7 +69,6 @@ public class SysDeptBo implements Serializable {
     /**
      * 邮箱
      */
-    @Email(message = "邮箱格式不正确")
     @Size(min = 0, max = 50, message = "邮箱长度不能超过{max}个字符")
     private String email;
 

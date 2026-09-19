@@ -1,8 +1,9 @@
 ﻿import type { CSSProperties } from 'react';
-import { HomeOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
+import { HomeOutlined, LogoutOutlined } from '@ant-design/icons';
+import { createPortal } from 'react-dom';
 import { ProLayout } from '@ant-design/pro-components';
 import { history, Outlet, useLocation } from '@umijs/max';
-import { Avatar, Button, ConfigProvider, Dropdown, message, Spin, theme as antdTheme, type MenuProps } from 'antd';
+import { Avatar, Button, ConfigProvider, Dropdown, message, Spin, theme as antdTheme, type MenuProps, Watermark } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { RuntimeMenuItem } from '@/api/types';
@@ -10,7 +11,6 @@ import { logout } from '@/api/login';
 import { isHandledRequestError } from '@/api/request';
 import defaultAvatar from '@/assets/images/profile.jpg';
 import MenuSearch from '@/components/layout/MenuSearch';
-import MessageBox from '@/components/layout/MessageBox';
 import Screenfull from '@/components/layout/Screenfull';
 import { useAppStore } from '@/stores/appStore';
 import { usePermissionStore } from '@/stores/permissionStore';
@@ -19,7 +19,7 @@ import { useUserStore } from '@/stores/userStore';
 import { getToken, removeToken } from '@/utils/auth';
 import { appEnv } from '@/utils/env';
 import { appendRouteQuery, flattenBackendRoutes } from '@/utils/menu';
-import { closePush, initMessageBox, initPush } from '@/utils/push';
+import { closePush, initPush } from '@/utils/push';
 import { isHttp } from '@/utils/wuzh';
 
 function resolveMenuPath(item: RuntimeMenuItem) {
@@ -59,7 +59,6 @@ export default function BasicLayout() {
     reloadMenus()
       .then(async () => {
         if (!pushStartedRef.current) {
-          await initMessageBox();
           initPush();
           pushStartedRef.current = true;
         }
@@ -342,13 +341,6 @@ export default function BasicLayout() {
 
   const userMenu: MenuProps['items'] = [
     {
-      key: 'profile',
-      icon: <UserOutlined />,
-      label: '个人中心',
-      onClick: () => history.push('/user/profile')
-    },
-    { type: 'divider' },
-    {
       key: 'logout',
       icon: <LogoutOutlined />,
       label: '退出登录',
@@ -391,61 +383,72 @@ export default function BasicLayout() {
         }
       }}
     >
-      <ProLayout
-        key={proLayoutKey}
-        className={proLayoutClassName}
-        style={proLayoutStyle}
-        title={false}
-        logo={false}
-        colorPrimary={layoutSettings.theme}
-        token={proLayoutToken}
-        layout="mix"
-        contentStyle={proLayoutContentStyle}
-        navTheme="light"
-        theme={effectiveNavDark ? 'dark' : 'light'}
-        menuProps={{ theme: effectiveNavDark ? 'dark' : 'light' }}
-        fixedHeader={layoutSettings.fixedHeader}
-        menuHeaderRender={false}
-        headerTitleRender={false}
-        location={{
-          pathname: currentRoute?.meta?.activeMenu || location.pathname
-        }}
-        route={{ path: '/', routes: navigationMenuData }}
-        menuItemRender={(item, _dom) => (
-          <button
-            type="button"
-            className="layout-menu-link"
-            onClick={() => {
-              const targetPath = resolveMenuPath(item as RuntimeMenuItem);
-              if (!targetPath) return;
-              if (isHttp(targetPath)) {
-                window.open(targetPath, '_blank', 'noopener,noreferrer');
-                return;
-              }
-              history.push(targetPath);
-            }}
+      <>
+        <ProLayout
+          key={proLayoutKey}
+          className={proLayoutClassName}
+          style={proLayoutStyle}
+          title={false}
+          logo={false}
+          colorPrimary={layoutSettings.theme}
+          token={proLayoutToken}
+          layout="mix"
+          contentStyle={proLayoutContentStyle}
+          navTheme="light"
+          theme={effectiveNavDark ? 'dark' : 'light'}
+          menuProps={{ theme: effectiveNavDark ? 'dark' : 'light' }}
+          fixedHeader={layoutSettings.fixedHeader}
+          menuHeaderRender={false}
+          headerTitleRender={false}
+          location={{
+            pathname: currentRoute?.meta?.activeMenu || location.pathname
+          }}
+          route={{ path: '/', routes: navigationMenuData }}
+          menuItemRender={(item, _dom) => (
+            <button
+              type="button"
+              className="layout-menu-link"
+              onClick={() => {
+                const targetPath = resolveMenuPath(item as RuntimeMenuItem);
+                if (!targetPath) return;
+                if (isHttp(targetPath)) {
+                  window.open(targetPath, '_blank', 'noopener,noreferrer');
+                  return;
+                }
+                history.push(targetPath);
+              }}
+            >
+              {menuNode(item as RuntimeMenuItem)}
+            </button>
+          )}
+          subMenuItemRender={(item, _dom) => menuNode(item as RuntimeMenuItem)}
+          actionsRender={false}
+          headerContentRender={() => (
+            <div className="layout-header-actions">
+              <MenuSearch />
+              <Screenfull />
+              <Dropdown menu={{ items: userMenu }} placement="bottomRight" trigger={['click']}>
+                <Button type="text" className="layout-user-trigger">
+                  <Avatar size={24} src={userInfo?.user.avatarUrl || defaultAvatar} />
+                  <span className="layout-user-name">{userInfo?.user.nickName || userInfo?.user.userName}</span>
+                </Button>
+              </Dropdown>
+            </div>
+          )}
+        >
+          <Outlet key={location.pathname} />
+        </ProLayout>
+        {typeof document !== 'undefined' && createPortal(
+          <Watermark
+            content={`海益通 ${userInfo?.user.nickName || userInfo?.user.userName || ''}`.trim()}
+            zIndex={2147483647}
+            style={{ position: 'fixed', inset: 0, zIndex: 2147483647, pointerEvents: 'none' }}
           >
-            {menuNode(item as RuntimeMenuItem)}
-          </button>
+            <div aria-hidden style={{ width: '100%', height: '100%' }} />
+          </Watermark>,
+          document.body
         )}
-        subMenuItemRender={(item, _dom) => menuNode(item as RuntimeMenuItem)}
-        actionsRender={false}
-        headerContentRender={() => (
-          <div className="layout-header-actions">
-            <MenuSearch />
-            <MessageBox userId={userInfo?.user.userId} />
-            <Screenfull />
-            <Dropdown menu={{ items: userMenu }} placement="bottomRight" trigger={['click']}>
-              <Button type="text" className="layout-user-trigger">
-                <Avatar size={24} src={userInfo?.user.avatarUrl || defaultAvatar} />
-                <span className="layout-user-name">{userInfo?.user.nickName || userInfo?.user.userName}</span>
-              </Button>
-            </Dropdown>
-          </div>
-        )}
-      >
-        <Outlet key={location.pathname} />
-      </ProLayout>
+      </>
     </ConfigProvider>
   );
 }

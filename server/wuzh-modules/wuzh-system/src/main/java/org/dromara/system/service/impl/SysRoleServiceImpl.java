@@ -22,6 +22,7 @@ import org.dromara.common.satoken.utils.LoginHelper;
 import org.dromara.system.api.RoleService;
 import org.dromara.system.api.model.LoginUser;
 import org.dromara.system.domain.SysRole;
+import org.dromara.system.domain.SysDeptRole;
 import org.dromara.system.domain.SysRoleDept;
 import org.dromara.system.domain.SysRoleMenu;
 import org.dromara.system.domain.SysUserRole;
@@ -29,6 +30,7 @@ import org.dromara.system.domain.bo.SysRoleBo;
 import org.dromara.system.domain.vo.SysRoleVo;
 import org.dromara.system.event.OnlineUserCleanEvent;
 import org.dromara.system.mapper.SysRoleDeptMapper;
+import org.dromara.system.mapper.SysDeptRoleMapper;
 import org.dromara.system.mapper.SysRoleMapper;
 import org.dromara.system.mapper.SysRoleMenuMapper;
 import org.dromara.system.mapper.SysUserRoleMapper;
@@ -52,6 +54,7 @@ public class SysRoleServiceImpl implements ISysRoleService, RoleService {
     private final SysRoleMenuMapper roleMenuMapper;
     private final SysUserRoleMapper userRoleMapper;
     private final SysRoleDeptMapper roleDeptMapper;
+    private final SysDeptRoleMapper deptRoleMapper;
 
     /**
      * 分页查询角色列表
@@ -271,7 +274,7 @@ public class SysRoleServiceImpl implements ISysRoleService, RoleService {
      */
     @Override
     public void checkRoleDataScope(Collection<Long> roleIds) {
-        if (CollUtil.isEmpty(roleIds) || LoginHelper.isSuperAdmin()) {
+        if (CollUtil.isEmpty(roleIds) || LoginHelper.isAdmin()) {
             return;
         }
         long count = roleMapper.selectRoleCount(roleIds);
@@ -300,6 +303,9 @@ public class SysRoleServiceImpl implements ISysRoleService, RoleService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int insertRole(SysRoleBo bo) {
+        bo.setRoleName(bo.getRoleName().trim());
+        bo.setRoleKey("role_" + java.util.UUID.randomUUID().toString().replace("-", ""));
+        bo.setRoleSort(0);
         SysRole role = MapstructUtils.convert(bo, SysRole.class);
         // 新增角色信息
         roleMapper.insert(role);
@@ -316,6 +322,9 @@ public class SysRoleServiceImpl implements ISysRoleService, RoleService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int updateRoleBaseInfo(SysRoleBo bo) {
+        bo.setRoleKey(null);
+        bo.setRoleSort(null);
+        bo.setRoleName(bo.getRoleName().trim());
         SysRole role = MapstructUtils.convert(bo, SysRole.class);
 
         if (SystemConstants.DISABLE.equals(role.getStatus()) && this.countUserRoleByRoleId(role.getRoleId()) > 0) {
@@ -425,6 +434,7 @@ public class SysRoleServiceImpl implements ISysRoleService, RoleService {
         roleMenuMapper.lambda().eq(SysRoleMenu::getRoleId, roleId).delete();
         // 删除角色与部门关联
         roleDeptMapper.lambda().eq(SysRoleDept::getRoleId, roleId).delete();
+        deptRoleMapper.lambda().eq(SysDeptRole::getRoleId, roleId).delete();
         return roleMapper.deleteById(roleId);
     }
 
@@ -450,6 +460,7 @@ public class SysRoleServiceImpl implements ISysRoleService, RoleService {
         roleMenuMapper.lambda().in(SysRoleMenu::getRoleId, roleIds).delete();
         // 删除角色与部门关联
         roleDeptMapper.lambda().in(SysRoleDept::getRoleId, roleIds).delete();
+        deptRoleMapper.lambda().in(SysDeptRole::getRoleId, roleIds).delete();
         return roleMapper.deleteByIds(roleIds);
     }
 

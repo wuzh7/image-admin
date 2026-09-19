@@ -15,18 +15,55 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @org.junit.jupiter.api.Tag("local")
 class ImageTaskRunnerTest {
 
     @Test
-    void everyValidDetectionResultWaitsForHumanReview() {
-        assertEquals(ImageStatus.WAIT_REVIEW,
+    void lowerSimilarityAutoApprovesAndThresholdOrHigherWaitsForReview() {
+        assertEquals(ImageStatus.APPROVING,
             ImageStatus.forSimilarity(new BigDecimal("0.10"), new BigDecimal("0.60")));
         assertEquals(ImageStatus.WAIT_REVIEW,
-            ImageStatus.forSimilarity(new BigDecimal("0.80"), new BigDecimal("0.60")));
+            ImageStatus.forSimilarity(new BigDecimal("0.60"), new BigDecimal("0.60")));
         assertEquals(ImageStatus.WAIT_REVIEW,
-            ImageStatus.forSimilarity(BigDecimal.ONE, new BigDecimal("0.60")));
+            ImageStatus.forSimilarity(new BigDecimal("0.80"), new BigDecimal("0.60")));
+    }
+
+    @Test
+    void keepsOnlyThirtyDistinctMatchesOrderedByScore() {
+        List<ImageTaskRunner.Match> candidates = new java.util.ArrayList<>();
+        for (long id = 1; id <= 35; id++) {
+            candidates.add(new ImageTaskRunner.Match(id, id / 100d, "LIBRARY"));
+        }
+        candidates.add(new ImageTaskRunner.Match(35L, 0.99d, "LIBRARY"));
+
+        List<ImageTaskRunner.Match> matches = ImageTaskRunner.topMatches(candidates);
+
+        assertEquals(30, matches.size());
+        assertEquals(35L, matches.getFirst().imageId());
+        assertEquals(0.99d, matches.getFirst().score(), 0.00001);
+        assertEquals(34L, matches.get(1).imageId());
+        assertEquals(6L, matches.getLast().imageId());
+    }
+
+    @Test
+    void sscdUsesFiveViewsPerImage() {
+        assertEquals(5, SscdFeatureExtractor.queryViewCount());
+        assertTrue(SscdFeatureExtractor.queryViewCount() < 11);
+    }
+
+    @Test
+    void acceptsAnImageWhoseFilenameExtensionDiffersFromItsRealType() {
+        ImageAsset asset = new ImageAsset();
+        asset.setContentType("image/jpeg");
+        asset.setFileSize(123L);
+
+        ImageTaskRunner.applyValidatedMetadata(asset, new ImageStorage.StoredImage(
+            null, null, "wrong-name.jpg", "image/png", 123L, 20, 10, "hash"));
+
+        assertEquals("image/png", asset.getContentType());
+        assertEquals("2:1", asset.getAspectRatio());
     }
 
     @Test

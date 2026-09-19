@@ -36,6 +36,10 @@
         </dependency>
         <dependency>
             <groupId>org.dromara</groupId>
+            <artifactId>wuzh-common-excel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.dromara</groupId>
             <artifactId>wuzh-common-mybatis</artifactId>
         </dependency>
         <dependency>

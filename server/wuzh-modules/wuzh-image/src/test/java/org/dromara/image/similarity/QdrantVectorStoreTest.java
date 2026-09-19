@@ -45,7 +45,7 @@ class QdrantVectorStoreTest {
         List<float[]> vectors = List.of(new float[]{1, 0}, new float[]{0, 1});
         List<Map<String, Object>> searches = QdrantVectorStore.buildBatchSearches(42L, vectors, 30);
 
-        assertEquals(26, searches.size());
+        assertEquals(14, searches.size());
         assertTrue(searches.stream().allMatch(search -> search.get("filter").equals(Map.of(
             "must", List.of(Map.of("key", "batch_id", "match", Map.of("value", 42L)))))));
     }

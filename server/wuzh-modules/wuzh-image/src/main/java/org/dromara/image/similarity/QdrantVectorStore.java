@@ -22,7 +22,7 @@ import java.util.Set;
 public class QdrantVectorStore {
 
     private static final List<String> VECTOR_NAMES = List.of("global", "center");
-    private static final List<String> STAGING_VECTOR_NAMES = java.util.stream.IntStream.range(0, 11)
+    private static final List<String> STAGING_VECTOR_NAMES = java.util.stream.IntStream.range(0, SscdFeatureExtractor.queryViewCount())
         .mapToObj(index -> "view_" + index).toList();
 
     private final RestClient client;
@@ -130,7 +130,7 @@ public class QdrantVectorStore {
         List<Map<String, Object>> requestPoints = new ArrayList<>(points.size());
         for (StagingPoint point : points) {
             if (point.features().queryVectors().size() != STAGING_VECTOR_NAMES.size()) {
-                throw new IllegalArgumentException("批内索引必须包含11组SSCD视图");
+                throw new IllegalArgumentException("批内索引必须包含" + STAGING_VECTOR_NAMES.size() + "组SSCD视图");
             }
             Map<String, Object> vectors = new LinkedHashMap<>();
             for (int index = 0; index < STAGING_VECTOR_NAMES.size(); index++) {
@@ -177,6 +177,20 @@ public class QdrantVectorStore {
             .uri(uri -> uri.path("/collections/{collection}/points/delete")
                 .queryParam("wait", true).build(collection))
             .body(Map.of("points", ids))
+            .retrieve()
+            .toBodilessEntity();
+    }
+
+    public void clearAll() {
+        deleteAll(collection);
+        deleteAll(stagingCollection);
+    }
+
+    private void deleteAll(String collectionName) {
+        client.post()
+            .uri(uri -> uri.path("/collections/{collection}/points/delete")
+                .queryParam("wait", true).build(collectionName))
+            .body(Map.of("filter", Map.of()))
             .retrieve()
             .toBodilessEntity();
     }

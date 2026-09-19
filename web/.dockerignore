@@ -5,4 +5,6 @@ node_modules
 dist
 .umi
 .umi-production
+**/.umi
+**/.umi-production
 *.log

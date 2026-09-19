@@ -65,6 +65,8 @@ public class SysDeptVo implements Serializable {
      */
     private Integer orderNum;
 
+    private List<Long> roleIds;
+
     /**
      * 负责人ID
      */

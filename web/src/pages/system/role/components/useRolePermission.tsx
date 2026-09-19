@@ -8,7 +8,6 @@ import { roleMenuTreeselect } from '@/api/system/menu';
 import { getRole, updateRolePermission } from '@/api/system/role';
 
 export const defaultRoleForm: RoleForm = {
-  roleSort: 1,
   status: '0',
   menuCheckStrictly: true,
   dataScope: '1',

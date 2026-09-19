@@ -4,6 +4,8 @@ export interface OrderDetailQuery extends PageQuery {
   parentOrderSn?: string;
   orderSn?: string;
   fulfillmentMallId?: string;
+  storeName?: string;
+  storeRemark?: string;
   sendWarehouseName?: string;
   shippingCompanyName?: string;
 }
@@ -13,6 +15,10 @@ export interface OrderDetailForm {
   parentOrderSn: string;
   fulfillmentMallId?: string;
   estimatedAmount?: number;
+  shippingSettleAmount?: number;
+  salesSettleAmount?: number;
+  siteName?: string;
+  customizedProducts?: string;
   sendWarehouseName?: string;
   shippingCompanyName?: string;
   orderSn: string;

@@ -11,7 +11,8 @@ class ImageAccessContractTest {
     @Test void previewAddressIsResponseDataNotMessage() {
         var service = mock(ImageService.class);
         when(service.accessUrl(7L, true)).thenReturn("/images/7/content?thumbnail=true");
-        var response = new ImageController(service, mock(ImageUploadService.class)).access(7L, true);
+        var response = new ImageController(service, mock(ImageUploadService.class),
+            mock(ImageDataLock.class), mock(ImageResetService.class), mock(ImageLibraryLock.class)).access(7L, true);
         assertEquals("/images/7/content?thumbnail=true", response.getBody().getData());
         assertEquals("no-store", response.getHeaders().getCacheControl());
     }

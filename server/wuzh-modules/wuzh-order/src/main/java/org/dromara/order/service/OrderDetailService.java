@@ -2,7 +2,6 @@ package org.dromara.order.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.domain.PageResult;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.mybatis.core.page.PageQuery;
@@ -10,6 +9,7 @@ import org.dromara.order.domain.OrderDetail;
 import org.dromara.order.domain.OrderDetailDtos;
 import org.dromara.order.mapper.OrderDetailMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -23,12 +23,22 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 public class OrderDetailService {
 
     private static final int MAX_DETAILS_PER_REQUEST = 1000;
 
     private final OrderDetailMapper orderDetailMapper;
+    private final OrderStoreCatalog storeCatalog;
+
+    @Autowired
+    public OrderDetailService(OrderDetailMapper orderDetailMapper, OrderStoreCatalog storeCatalog) {
+        this.orderDetailMapper = orderDetailMapper;
+        this.storeCatalog = storeCatalog;
+    }
+
+    OrderDetailService(OrderDetailMapper orderDetailMapper) {
+        this(orderDetailMapper, new OrderStoreCatalog(""));
+    }
 
     @Transactional(rollbackFor = Exception.class)
     public OrderDetailDtos.ImportResult importBatch(List<OrderDetailDtos.ParentOrderRequest> requests) {
@@ -78,7 +88,8 @@ public class OrderDetailService {
 
     public PageResult<OrderDetailDtos.DetailView> queryPage(OrderDetailDtos.Query query, PageQuery pageQuery) {
         Page<OrderDetail> page = orderDetailMapper.selectPage(pageQuery.build(), buildQuery(query));
-        return PageResult.build(page.getRecords().stream().map(this::toView).toList(), page.getTotal());
+        Map<String, OrderStoreCatalog.StoreInfo> stores = storeCatalog.read();
+        return PageResult.build(page.getRecords().stream().map(detail -> toView(detail, stores)).toList(), page.getTotal());
     }
 
     public List<OrderDetailDtos.ExportRow> queryExport(OrderDetailDtos.Query query) {
@@ -90,7 +101,7 @@ public class OrderDetailService {
         if (detail == null) {
             throw new ServiceException("订单明细不存在");
         }
-        return toView(detail);
+        return toView(detail, storeCatalog.read());
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -150,6 +161,12 @@ public class OrderDetailService {
         detail.setFulfillmentMallId(trimToNull(request.getFulfillmentMallId()));
         detail.setEstimatedAmount(request.getEstimatedAmount() == null ? null
             : request.getEstimatedAmount().setScale(2, RoundingMode.HALF_UP));
+        detail.setShippingSettleAmount(request.getShippingSettleAmount() == null ? null
+            : request.getShippingSettleAmount().setScale(2, RoundingMode.HALF_UP));
+        detail.setSalesSettleAmount(request.getSalesSettleAmount() == null ? null
+            : request.getSalesSettleAmount().setScale(2, RoundingMode.HALF_UP));
+        detail.setSiteName(trimToNull(request.getSiteName()));
+        detail.setCustomizedProducts(request.getCustomizedProducts());
         detail.setSendWarehouseName(trimToNull(request.getSendWarehouseName()));
         detail.setShippingCompanyName(trimToNull(request.getShippingCompanyName()));
         detail.setOrderSn(request.getOrderSn().trim());
@@ -164,6 +181,12 @@ public class OrderDetailService {
         if (request.getEstimatedAmount() != null && request.getEstimatedAmount().signum() < 0) {
             throw new ServiceException("运费不能小于0");
         }
+        if (request.getShippingSettleAmount() != null && request.getShippingSettleAmount().signum() < 0) {
+            throw new ServiceException("订单运费预计冲回不能小于0");
+        }
+        if (request.getSalesSettleAmount() != null && request.getSalesSettleAmount().signum() < 0) {
+            throw new ServiceException("子订单预计回款不能小于0");
+        }
         validateThumbUrl(request.getThumbUrl(), "thumbUrl");
     }
 
@@ -175,10 +198,14 @@ public class OrderDetailService {
         return hasText(value) ? value.trim() : null;
     }
 
-    private OrderDetailDtos.DetailView toView(OrderDetail detail) {
+    private OrderDetailDtos.DetailView toView(OrderDetail detail, Map<String, OrderStoreCatalog.StoreInfo> stores) {
+        OrderStoreCatalog.StoreInfo store = stores.get(detail.getFulfillmentMallId());
         return new OrderDetailDtos.DetailView(
             detail.getId(), detail.getParentOrderSn(), detail.getFulfillmentMallId(),
-            detail.getEstimatedAmount(), detail.getSendWarehouseName(), detail.getShippingCompanyName(),
+            store == null ? null : store.name(), store == null ? null : store.remarks(),
+            detail.getEstimatedAmount(), detail.getShippingSettleAmount(), detail.getSalesSettleAmount(),
+            detail.getSiteName(), detail.getCustomizedProducts(), detail.getSendWarehouseName(),
+            detail.getShippingCompanyName(),
             detail.getOrderSn(), detail.getGoodsName(), detail.getSkuQuantity(), detail.getSpec(),
             detail.getThumbUrl(), detail.getCreateTime(), detail.getUpdateTime()
         );
@@ -189,6 +216,10 @@ public class OrderDetailService {
         row.setOrderNo(detail.getParentOrderSn());
         row.setFulfillmentMallId(detail.getFulfillmentMallId());
         row.setEstimatedAmount(detail.getEstimatedAmount());
+        row.setShippingSettleAmount(detail.getShippingSettleAmount());
+        row.setSalesSettleAmount(detail.getSalesSettleAmount());
+        row.setSiteName(detail.getSiteName());
+        row.setCustomizedProducts(detail.getCustomizedProducts());
         row.setSendWarehouseName(detail.getSendWarehouseName());
         row.setShippingCompanyName(detail.getShippingCompanyName());
         row.setOrderSn(detail.getOrderSn());
@@ -209,7 +240,9 @@ public class OrderDetailService {
         requireMaxLength(request.sendWarehouseName(), 128, path + ".sendWarehouseName");
         requireMaxLength(request.fulfillmentMallId(), 64, path + ".fulfillmentMallId");
         requireMaxLength(request.shippingCompanyName(), 128, path + ".shippingCompanyName");
+        requireMaxLength(request.siteName(), 128, path + ".siteName");
         parseAmount(request.estimatedAmount(), path + ".estimatedAmount");
+        parseAmount(request.shippingSettleAmount(), path + ".shippingSettleAmount");
         if (request.relatedGoodsInfoForAggregation() == null
             || request.relatedGoodsInfoForAggregation().isEmpty()) {
             throw new ServiceException(path + ".relatedGoodsInfoForAggregation不能为空");
@@ -235,6 +268,7 @@ public class OrderDetailService {
         requireMaxLength(goods.goodsName(), 1000, path + ".goodsName");
         requireMaxLength(goods.spec(), 512, path + ".spec");
         requireMaxLength(goods.thumbUrl(), 1000, path + ".thumbUrl");
+        parseAmount(goods.salesSettleAmount(), path + ".salesSettleAmount");
         validateThumbUrl(goods.thumbUrl(), path + ".thumbUrl");
     }
 
@@ -271,6 +305,10 @@ public class OrderDetailService {
         detail.setParentOrderSn(request.parentOrderSn());
         detail.setFulfillmentMallId(request.fulfillmentMallId());
         detail.setEstimatedAmount(parseAmount(request.estimatedAmount(), "estimatedAmount"));
+        detail.setShippingSettleAmount(parseAmount(request.shippingSettleAmount(), "shippingSettleAmount"));
+        detail.setSalesSettleAmount(parseAmount(goods.salesSettleAmount(), "salesSettleAmount"));
+        detail.setSiteName(request.siteName());
+        detail.setCustomizedProducts(goods.customizedProducts());
         detail.setSendWarehouseName(request.sendWarehouseName());
         detail.setShippingCompanyName(request.shippingCompanyName());
         detail.setOrderSn(goods.orderSn());

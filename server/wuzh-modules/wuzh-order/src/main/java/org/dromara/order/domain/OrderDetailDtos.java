@@ -1,5 +1,6 @@
 package org.dromara.order.domain;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -25,8 +26,16 @@ public final class OrderDetailDtos {
         String fulfillmentMallId,
         Object estimatedAmount,
         String shippingCompanyName,
-        List<GoodsRequest> relatedGoodsInfoForAggregation
+        String siteName,
+        List<GoodsRequest> relatedGoodsInfoForAggregation,
+        Object shippingSettleAmount
     ) {
+        public ParentOrderRequest(String parentOrderSn, String sendWarehouseName, String fulfillmentMallId,
+                                  Object estimatedAmount, String shippingCompanyName,
+                                  List<GoodsRequest> relatedGoodsInfoForAggregation) {
+            this(parentOrderSn, sendWarehouseName, fulfillmentMallId, estimatedAmount, shippingCompanyName,
+                null, relatedGoodsInfoForAggregation, null);
+        }
     }
 
     public record GoodsRequest(
@@ -35,8 +44,14 @@ public final class OrderDetailDtos {
         String parentOrderSn,
         Integer skuQuantity,
         String spec,
-        String thumbUrl
+        String thumbUrl,
+        Object salesSettleAmount,
+        @JsonProperty("customized_products") String customizedProducts
     ) {
+        public GoodsRequest(String goodsName, String orderSn, String parentOrderSn, Integer skuQuantity,
+                            String spec, String thumbUrl) {
+            this(goodsName, orderSn, parentOrderSn, skuQuantity, spec, thumbUrl, null, null);
+        }
     }
 
     public record ImportResult(int received, int created, int updated) {
@@ -64,6 +79,15 @@ public final class OrderDetailDtos {
         private String fulfillmentMallId;
 
         private BigDecimal estimatedAmount;
+
+        private BigDecimal shippingSettleAmount;
+
+        private BigDecimal salesSettleAmount;
+
+        @Size(max = 128, groups = {AddGroup.class, EditGroup.class})
+        private String siteName;
+
+        private String customizedProducts;
 
         @Size(max = 128, groups = {AddGroup.class, EditGroup.class})
         private String sendWarehouseName;
@@ -93,7 +117,13 @@ public final class OrderDetailDtos {
         Long id,
         String parentOrderSn,
         String fulfillmentMallId,
+        String storeName,
+        String storeRemark,
         BigDecimal estimatedAmount,
+        BigDecimal shippingSettleAmount,
+        BigDecimal salesSettleAmount,
+        String siteName,
+        String customizedProducts,
         String sendWarehouseName,
         String shippingCompanyName,
         String orderSn,
@@ -115,6 +145,14 @@ public final class OrderDetailDtos {
         private String fulfillmentMallId;
         @ExcelProperty("运费")
         private BigDecimal estimatedAmount;
+        @ExcelProperty("订单运费预计冲回")
+        private BigDecimal shippingSettleAmount;
+        @ExcelProperty("子订单预计回款")
+        private BigDecimal salesSettleAmount;
+        @ExcelProperty("销售站点")
+        private String siteName;
+        @ExcelProperty("是否定制")
+        private String customizedProducts;
         @ExcelProperty("下单工厂")
         private String sendWarehouseName;
         @ExcelProperty("物流商")

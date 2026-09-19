@@ -12,9 +12,10 @@ public enum ImageStatus {
     DELETE_PENDING,
     APPROVED,
     REJECTED,
+    REPLACED,
     FAILED;
 
     public static ImageStatus forSimilarity(BigDecimal similarity, BigDecimal reviewThreshold) {
-        return WAIT_REVIEW;
+        return similarity.compareTo(reviewThreshold) < 0 ? APPROVING : WAIT_REVIEW;
     }
 }

@@ -64,6 +64,9 @@ services:
       # 逐张渲染避免多个像素计算线程争抢 CPU；按实测吞吐再调整。
       RENDER_WORKER_CONCURRENCY: ${RENDER_WORKER_CONCURRENCY:-1}
       RENDER_WORKER_POLL_MS: ${RENDER_WORKER_POLL_MS:-2000}
+    deploy:
+      # 每个实例只渲染一张；多进程并行避开同一 Node 进程内的图像线程争抢。
+      replicas: 5
     networks: [image-admin-net]
     depends_on:
       backend:

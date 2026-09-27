@@ -80,6 +80,12 @@ docker info >/dev/null
 docker compose --env-file .env -f compose.yml config --images | grep -Fx 'image-admin-backend:latest' >/dev/null
 docker compose --env-file .env -f compose.yml config --images | grep -Fx 'image-admin-frontend:latest' >/dev/null
 docker compose --env-file .env -f compose.yml config --images | grep -Fx 'image-admin-render-worker:latest' >/dev/null
+backend_container=$(docker compose --env-file .env -f compose.yml ps -q backend)
+mysql_container=$(docker exec "$backend_container" printenv MYSQL_HOST)
+database=$(docker exec "$backend_container" printenv MYSQL_DATABASE)
+# 部门管理菜单及四个权限项必须存在，避免发布后功能从侧边栏消失。
+department_menu_count=$(docker exec "$mysql_container" sh -lc 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot -N "$1" -e "SELECT COUNT(*) FROM sys_menu WHERE menu_id IN (1761400000000000103,1761400000000001020,1761400000000001021,1761400000000001022,1761400000000001023)"' sh "$database")
+test "$department_menu_count" = 5 || { echo 'Department menu is incomplete; apply server/script/sql/migrations/20260919_department_roles.sql before publishing.' >&2; exit 1; }
 printf 'ECS connection and latest image configuration: OK\n'
 '@
 Write-Host (Invoke-EcsCommand $preflight)

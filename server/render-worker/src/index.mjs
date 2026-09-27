@@ -10,7 +10,7 @@ const baseUrl = env.JAVA_API_URL ?? 'http://backend:8080';
 const token = env.RENDER_WORKER_TOKEN;
 if (!token) throw new Error('RENDER_WORKER_TOKEN is required');
 const workerId = env.RENDER_WORKER_ID ?? `${hostname()}-${process.pid}`;
-const concurrency = Math.max(1, Number(env.RENDER_WORKER_CONCURRENCY ?? 5));
+const concurrency = Math.max(1, Number(env.RENDER_WORKER_CONCURRENCY ?? 1));
 const pollMs = Math.max(250, Number(env.RENDER_WORKER_POLL_MS ?? 2000));
 const client = new JavaClient({ baseUrl, token, timeoutMs: Number(env.RENDER_WORKER_HTTP_TIMEOUT_MS ?? 60000) });
 let stopping = false;

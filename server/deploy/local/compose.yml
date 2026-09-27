@@ -196,7 +196,8 @@ services:
       TZ: Asia/Shanghai
       JAVA_API_URL: http://backend:8080
       RENDER_WORKER_TOKEN: ${RENDER_WORKER_TOKEN:-local-render-worker-token}
-      RENDER_WORKER_CONCURRENCY: ${RENDER_WORKER_CONCURRENCY:-5}
+      # 逐张渲染避免多个像素计算线程争抢 CPU；按实测吞吐再调整。
+      RENDER_WORKER_CONCURRENCY: ${RENDER_WORKER_CONCURRENCY:-1}
       RENDER_WORKER_POLL_MS: ${RENDER_WORKER_POLL_MS:-2000}
     depends_on:
       backend:

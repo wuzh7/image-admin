@@ -29,10 +29,12 @@ public class TroCaseService {
     private final JsonMapper objectMapper;
 
     public PageResult<TroCase> list(String caseNoFormat, String caseName, String plaintiff, PageQuery pageQuery) {
+        String normalizedPlaintiff = plaintiff == null ? "" : plaintiff.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
         Page<TroCase> page = mapper.selectPage(pageQuery.build(), new QueryWrapper<TroCase>()
             .like(hasText(caseNoFormat), "case_no_format", caseNoFormat)
             .like(hasText(caseName), "case_name", caseName)
-            .like(hasText(plaintiff), "plaintiff", plaintiff)
+            .apply(!normalizedPlaintiff.isEmpty(),
+                "LOCATE({0}, LOWER(REGEXP_REPLACE(plaintiff, '[[:space:]]+', ''))) > 0", normalizedPlaintiff)
             .orderByDesc("date_filed", "id"));
         return PageResult.build(page.getRecords(), page.getTotal());
     }

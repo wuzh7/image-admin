@@ -1,5 +1,6 @@
 package org.dromara.order.tro;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import tools.jackson.databind.json.JsonMapper;
 import org.dromara.order.mapper.TroCaseMapper;
 import org.apache.ibatis.annotations.Select;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
@@ -18,6 +20,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -27,6 +30,26 @@ import static org.mockito.Mockito.when;
 class TroCaseServiceTest {
     @Mock
     private TroCaseMapper mapper;
+    @Captor
+    private ArgumentCaptor<QueryWrapper<TroCase>> queryCaptor;
+
+    @Test
+    void listSearchesPlaintiffIgnoringCaseAndWhitespace() {
+        when(mapper.selectPage(any(), any())).thenAnswer(invocation -> invocation.getArgument(0));
+        TroCaseService service = new TroCaseService(mapper, JsonMapper.builder().build());
+        for (String input : List.of("Grazyna Maniecka", "GrazynaManiecka", "grazyna", "grazynamaniecka")) {
+            service.list(null, null, input, new org.dromara.common.mybatis.core.page.PageQuery(20, 1));
+        }
+
+        verify(mapper, times(4)).selectPage(any(), queryCaptor.capture());
+        List<QueryWrapper<TroCase>> queries = queryCaptor.getAllValues();
+        assertThat(queries).allSatisfy(query ->
+            assertThat(query.getSqlSegment()).contains("LOCATE(", "REGEXP_REPLACE(plaintiff"));
+        assertThat(queries.get(0).getParamNameValuePairs()).containsValue("grazynamaniecka");
+        assertThat(queries.get(1).getParamNameValuePairs()).containsValue("grazynamaniecka");
+        assertThat(queries.get(2).getParamNameValuePairs()).containsValue("grazyna");
+        assertThat(queries.get(3).getParamNameValuePairs()).containsValue("grazynamaniecka");
+    }
 
     @Test
     void importsPartialObjectsAndDiscardsUnknownFields() {

@@ -33,6 +33,8 @@ class StoreObjectStorageTest {
         when(imageStorage.accessUrl(anyString(), anyString(), eq(false))).thenReturn(Optional.empty());
         @SuppressWarnings("unchecked") ObjectProvider<OssClient> oss = mock(ObjectProvider.class);
         StoreObjectStorage storage = new StoreObjectStorage(properties, imageStorage, oss);
+        assertTrue(storage.renderInputUrl("library/asset.jpg").isEmpty());
+        verify(imageStorage, never()).copy(anyString(), anyString());
 
         ByteArrayOutputStream png = new ByteArrayOutputStream();
         ImageIO.write(new BufferedImage(2, 3, BufferedImage.TYPE_INT_RGB), "png", png);
@@ -57,5 +59,30 @@ class StoreObjectStorageTest {
         assertNull(listing.width());
         assertThrows(Exception.class, () -> storage.save(42, "listing", new MockMultipartFile("file", "bad.xlsx", "application/octet-stream", new byte[]{'P', 'K', 3, 4})));
         assertThrows(Exception.class, () -> storage.open("../outside.xlsx"));
+    }
+
+    @Test
+    void renderCopiesOnlyInputsAndReturnsPermanentOssUrls() throws Exception {
+        ImageProperties properties = new ImageProperties();
+        properties.getStorage().setType("oss");
+        properties.getStorage().getOss().setBucket("render-bucket");
+        properties.getStorage().getOss().setPublicEndpoint("https://s3.oss-cn-hangzhou.aliyuncs.com");
+        ImageStorage imageStorage = mock(ImageStorage.class);
+        @SuppressWarnings("unchecked") ObjectProvider<OssClient> provider = mock(ObjectProvider.class);
+        OssClient client = mock(OssClient.class);
+        when(provider.getIfAvailable()).thenReturn(client);
+        StoreObjectStorage storage = new StoreObjectStorage(properties, imageStorage, provider);
+
+        assertEquals("https://render-bucket.oss-cn-hangzhou.aliyuncs.com/render-public/inputs/library/asset.jpg",
+            storage.renderInputUrl("library/asset.jpg").orElseThrow());
+        verify(imageStorage).copy("library/asset.jpg", "render-public/inputs/library/asset.jpg");
+
+        ByteArrayOutputStream png = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(2, 3, BufferedImage.TYPE_INT_RGB), "png", png);
+        var result = storage.save(42, "results", new MockMultipartFile("file", "result.png", "image/png", png.toByteArray()));
+        assertTrue(result.ossKey().startsWith("render-public/results/42/"));
+        assertEquals("https://render-bucket.oss-cn-hangzhou.aliyuncs.com/" + result.ossKey(), result.imageUrl());
+        verify(client).bucketUpload(eq("render-bucket"), eq(result.ossKey()), any(Path.class));
+        verify(imageStorage, never()).accessUrl(eq(result.ossKey()), anyString(), anyBoolean());
     }
 }

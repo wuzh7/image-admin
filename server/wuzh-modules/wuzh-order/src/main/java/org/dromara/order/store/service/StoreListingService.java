@@ -182,9 +182,9 @@ public class StoreListingService {
                 if (group.getValue().size() != templateCount) throw new ServiceException("原图 " + group.getKey() + " 的套图数量不完整");
                 List<String> urls = group.getValue().stream().map(item -> {
                     String key = item.getResultOssKey();
-                    if (!key.matches("store/results/" + export.getOwnerId() + "/[0-9a-f-]+\\.(jpg|jpeg|png|webp)"))
+                    if (!key.matches("(store|render-public)/results/" + export.getOwnerId() + "/[0-9a-f-]+\\.(jpg|jpeg|png|webp)"))
                         throw new ServiceException("成品图片地址无效");
-                    return publicResultUrl(configuredBase, key);
+                    return key.startsWith("render-public/") ? storage.url(key, "image/*") : publicResultUrl(configuredBase, key);
                 }).toList();
                 if (settings.previewIndex > urls.size() || urls.size() > workbook.carouselCount())
                     throw new ServiceException("预览图序号或轮播图列与套图数量不匹配");

@@ -13,11 +13,13 @@ import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -54,7 +56,9 @@ public class StoreObjectStorage {
                 if (image == null) throw new ServiceException("图片格式无效");
                 width = image.getWidth(); height = image.getHeight();
             }
-            String key = "store/" + kind + "/" + ownerId + "/" + UUID.randomUUID() + "." + extension;
+            String prefix = "results".equals(kind) && "oss".equalsIgnoreCase(properties.getStorage().getType())
+                ? "render-public/results" : "store/" + kind;
+            String key = prefix + "/" + ownerId + "/" + UUID.randomUUID() + "." + extension;
             if ("oss".equalsIgnoreCase(properties.getStorage().getType())) {
                 OssClient client = ossClient.getIfAvailable();
                 if (client == null) throw new ServiceException("OSS 存储不可用");
@@ -99,7 +103,22 @@ public class StoreObjectStorage {
     }
 
     public String url(String key, String contentType) {
+        if ("oss".equalsIgnoreCase(properties.getStorage().getType()) && key.startsWith("render-public/results/"))
+            return publicUrl(key);
         return imageStorage.accessUrl(key, contentType, false).orElse("/prod-api/store/files?key=" + URLEncoder.encode(key, StandardCharsets.UTF_8));
+    }
+
+    public Optional<String> renderInputUrl(String key) {
+        if (!"oss".equalsIgnoreCase(properties.getStorage().getType())) return Optional.empty();
+        String publicKey = "render-public/inputs/" + key;
+        imageStorage.copy(key, publicKey);
+        return Optional.of(publicUrl(publicKey));
+    }
+
+    private String publicUrl(String key) {
+        ImageProperties.Oss config = properties.getStorage().getOss();
+        String host = URI.create(config.getPublicEndpoint()).getHost().replaceFirst("^s3\\.", "");
+        return "https://" + config.getBucket() + "." + host + "/" + key;
     }
 
     public ImageStorage.LocalFile open(String key) {

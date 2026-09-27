@@ -110,7 +110,7 @@ redisson:
     # 发布和订阅连接池大小
     subscriptionConnectionPoolSize: 4
 
-# 生产图片必须使用私有 OSS；配置不完整时启动失败。
+# 生产图库原图保持私有；渲染副本存于 render-public/，仅该目录由 OSS 策略开放匿名读取。
 image:
   task-workers: ${IMAGE_TASK_WORKERS:1}
   infringement:

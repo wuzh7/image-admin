@@ -637,11 +637,13 @@ public class StoreWorkflowService {
     }
     public String imageAccess(long imageId) {
         ImageAsset image=imageMapper.selectById(imageId); if(image==null || !ImageStatus.APPROVED.name().equals(image.getStatus())) throw new ServiceException("图片不存在");
-        return storage.accessUrl(image.getStorageKey(), image.getContentType(), false).orElse("/store/internal/images/" + imageId + "/file");
+        return storeStorage.renderInputUrl(image.getStorageKey()).orElseGet(() ->
+            storage.accessUrl(image.getStorageKey(), image.getContentType(), false).orElse("/store/internal/images/" + imageId + "/file"));
     }
     public String templateAccess(long templateId) {
         StoreTemplate template=templateMapper.selectById(templateId); if(template==null) throw new ServiceException("模板不存在");
-        return storage.accessUrl(template.getOssKey(), "image/*", false).orElse("/store/internal/templates/" + templateId + "/file");
+        return storeStorage.renderInputUrl(template.getOssKey()).orElseGet(() ->
+            storage.accessUrl(template.getOssKey(), "image/*", false).orElse("/store/internal/templates/" + templateId + "/file"));
     }
     public ImageStorage.LocalFile imageFile(long imageId) {
         ImageAsset image=imageMapper.selectById(imageId); if(image==null || !ImageStatus.APPROVED.name().equals(image.getStatus())) throw new ServiceException("图片不存在");
@@ -654,7 +656,8 @@ public class StoreWorkflowService {
     public String maskAccess(long itemId) {
         StoreRenderItem item = itemMapper.selectById(itemId);
         if (item == null || item.getMaskOssKey() == null) throw new ServiceException("蒙版不存在");
-        return storage.accessUrl(item.getMaskOssKey(), "image/png", false).orElse("/store/internal/masks/" + itemId + "/file");
+        return storeStorage.renderInputUrl(item.getMaskOssKey()).orElseGet(() ->
+            storage.accessUrl(item.getMaskOssKey(), "image/png", false).orElse("/store/internal/masks/" + itemId + "/file"));
     }
     public ImageStorage.LocalFile maskFile(long itemId) {
         StoreRenderItem item = itemMapper.selectById(itemId);
@@ -670,15 +673,12 @@ public class StoreWorkflowService {
         Long prior = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM store_render_item WHERE image_id=? AND template_group_id=? AND status='SUCCEEDED' FOR UPDATE", Long.class, item.getImageId(), item.getTemplateGroupId());
         if (itemMapper.complete(itemId, request.workerId(), request.leaseToken(), request.result().ossKey(), request.result().sha256()) != 1)
             throw new ServiceException("渲染租约已失效");
-        item = itemMapper.selectById(itemId);
-        item.setResultUrl(storeStorage.url(request.result().ossKey(), "image/*"));
-        itemMapper.updateById(item);
         if (prior != null && prior == 0) imageMapper.update(null, Wrappers.<ImageAsset>lambdaUpdate()
             .eq(ImageAsset::getId, item.getImageId()).setSql("render_use_count = COALESCE(render_use_count, 0) + 1"));
         batchMapper.completeItem(item.getBatchId());
     }
     public ImageStorage.LocalFile ownedFile(String key) {
-        if (key == null || !key.matches("store/(templates|results|listing)/" + owner() + "/[0-9a-f-]+\\.(jpg|jpeg|png|webp|xlsx)")) throw new ServiceException("无权访问文件");
+        if (key == null || !key.matches("(store/(templates|results|listing)|render-public/results)/" + owner() + "/[0-9a-f-]+\\.(jpg|jpeg|png|webp|xlsx)")) throw new ServiceException("无权访问文件");
         return storeStorage.open(key);
     }
     @Transactional

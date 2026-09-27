@@ -38,5 +38,6 @@ class StoreRenderUseCountTest {
         service.complete(1L, request);
         service.complete(1L, request);
         verify(imageMapper, times(1)).update(isNull(), any());
+        verify(itemMapper, never()).updateById(any(StoreRenderItem.class));
     }
 }

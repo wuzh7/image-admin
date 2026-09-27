@@ -1,86 +1,63 @@
 package org.dromara.image.service;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import org.apache.fesod.sheet.FesodSheet;
-import org.apache.fesod.sheet.annotation.ExcelProperty;
-import org.dromara.image.config.ImageProperties;
+import org.dromara.image.domain.StoreProbe;
+import org.dromara.image.domain.StoreProbeDtos;
+import org.dromara.image.mapper.StoreProbeMapper;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 
-import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
-import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
-import static java.nio.file.StandardOpenOption.APPEND;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-@Tag("local")
+@org.junit.jupiter.api.Tags({@Tag("dev"), @Tag("local")})
 class StoreProbeServiceTest {
-
-    @TempDir
-    Path directory;
+    private final StoreProbeMapper mapper = mock(StoreProbeMapper.class);
+    private final StoreProbeService service = new StoreProbeService(mapper);
 
     @Test
-    void matchesStoreIdAndReloadsAfterTheFileChanges() {
-        Path file = directory.resolve("stores.xlsx");
-        write(file, "634418229831793");
-        ImageProperties properties = new ImageProperties();
-        properties.getInfringement().setStoreFile(file.toString());
-        StoreProbeService service = new StoreProbeService(properties);
+    void checksStoreIdAndReadsNamesFromTheDatabaseMapper() {
+        StoreProbe row = new StoreProbe();
+        row.setStoreId("store-1");
+        row.setStoreName("测试店铺");
+        row.setRemarks("主站备注");
+        when(mapper.selectCount(any())).thenReturn(1L, 0L);
+        when(mapper.selectList(any())).thenReturn(List.of(row));
 
-        assertTrue(service.contains("634418229831793"));
+        assertTrue(service.contains(" store-1 "));
         assertFalse(service.contains("missing"));
-
-        write(file, "new-store-id");
-        assertFalse(service.contains("634418229831793"));
-        assertTrue(service.contains("new-store-id"));
+        assertEquals(new StoreProbeService.StoreInfo("测试店铺", "主站备注"), service.read().get("store-1"));
     }
 
     @Test
-    void readsAnAtomicallyReplacedFileEvenWhenItsMetadataIsUnchanged() throws Exception {
-        Path file = directory.resolve("stores.xlsx");
-        write(file, "634418229831793");
-        Path replacement = directory.resolve("replacement.xlsx");
-        write(replacement, "634418229831794");
-        long size = Math.max(Files.size(file), Files.size(replacement));
-        padToSize(file, size);
-        padToSize(replacement, size);
-        var lastModified = Files.getLastModifiedTime(file);
-        ImageProperties properties = new ImageProperties();
-        properties.getInfringement().setStoreFile(file.toString());
-        StoreProbeService service = new StoreProbeService(properties);
+    void editingCanClearOptionalFields() {
+        StoreProbe row = new StoreProbe();
+        row.setId(1L);
+        row.setStoreId("store-1");
+        row.setStoreName("旧名称");
+        row.setRemarks("旧备注");
+        when(mapper.selectById(1L)).thenReturn(row);
+        when(mapper.updateById(row)).thenReturn(1);
 
-        assertTrue(service.contains("634418229831793"));
+        service.save(new StoreProbeDtos.SaveRequest(1L, "store-1", null, null), true);
 
-        assertEquals(size, Files.size(replacement));
-        Files.setLastModifiedTime(replacement, lastModified);
-        Files.move(replacement, file, ATOMIC_MOVE, REPLACE_EXISTING);
-
-        assertFalse(service.contains("634418229831793"));
-        assertTrue(service.contains("634418229831794"));
+        assertEquals("", row.getStoreName());
+        assertEquals("", row.getRemarks());
+        verify(mapper).updateById(row);
     }
 
-    private static void write(Path file, String storeId) {
-        FesodSheet.write(file.toFile(), StoreRow.class).sheet().doWrite(List.of(new StoreRow(storeId)));
-    }
+    @Test
+    void removesStoreFromDatabase() {
+        when(mapper.deleteById(1L)).thenReturn(1);
 
-    private static void padToSize(Path file, long size) throws Exception {
-        long padding = size - Files.size(file);
-        if (padding > 0) Files.write(file, new byte[Math.toIntExact(padding)], APPEND);
-    }
+        service.remove(1L);
 
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    static class StoreRow {
-        @ExcelProperty("store_id")
-        private String storeId;
+        verify(mapper).deleteById(1L);
     }
 }

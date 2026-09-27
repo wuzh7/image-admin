@@ -61,7 +61,6 @@ public class ImageProperties {
         private int requestTimeoutSeconds = 960;
         private int workers = 8;
         private int relayWorkers = 10;
-        private String storeFile = "/app/config/store-probe.xlsx";
     }
 
 }

@@ -8,15 +8,16 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-@SaIgnore
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/i/q")
 public class StoreProbeController {
     private final StoreProbeService service;
 
+    @SaIgnore
     @GetMapping("/r")
     public boolean r(@RequestParam(value = "store_id", required = false) String storeId) {
         return service.contains(storeId);
     }
+
 }

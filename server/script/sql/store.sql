@@ -1,5 +1,13 @@
 SET NAMES utf8mb4;
 
+-- 线上第三方店铺探测与订单店铺目录，数据由系统管理页面维护。
+CREATE TABLE IF NOT EXISTS store_probe (
+ id BIGINT NOT NULL, store_id VARCHAR(128) COLLATE utf8mb4_bin NOT NULL, store_name VARCHAR(255) DEFAULT NULL, remarks VARCHAR(500) DEFAULT NULL,
+ create_dept BIGINT DEFAULT NULL, create_by BIGINT DEFAULT NULL, create_time DATETIME DEFAULT NULL,
+ update_by BIGINT DEFAULT NULL, update_time DATETIME DEFAULT NULL,
+ PRIMARY KEY(id), UNIQUE KEY uk_store_probe_store_id(store_id)
+) ENGINE=InnoDB COMMENT='第三方接口店铺目录';
+
 -- 店铺管理套图流程，可重复执行。
 CREATE TABLE IF NOT EXISTS store_shop (
  id BIGINT NOT NULL, owner_id BIGINT NOT NULL, shop_code VARCHAR(80) DEFAULT NULL, name VARCHAR(128) NOT NULL, platform VARCHAR(64) DEFAULT NULL,
@@ -192,16 +200,49 @@ EXECUTE store_export_drop_unique_stmt;
 DEALLOCATE PREPARE store_export_drop_unique_stmt;
 
 INSERT INTO sys_menu VALUES
-(1990000000000000020,'店铺管理',0,4,'store-management','#','','N','Y','M','0','0','store:*','shop', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,'店铺套图管理'),
+(1990000000000000020,'店铺管理',0,4,'store-management','#','','N','Y','M','0','0','','shop', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,'店铺套图管理'),
 (1990000000000000027,'店铺运营',1990000000000000020,1,'operations','store/operations/index','','N','Y','C','0','0','store:shop:list','shop', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
 (1990000000000000021,'背景模板校准',1990000000000000020,2,'calibration','store/calibration/index','','N','Y','C','0','0','store:calibration:list','edit', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
 (1990000000000000022,'模板组',1990000000000000020,3,'template-group','store/template-group/index','','N','Y','C','0','0','store:template-group:list','list', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
 (1990000000000000026,'上架表格配置',1990000000000000020,4,'listing-config','store/listing-config/index','','N','Y','C','0','0','store:listing-template:list','edit', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
 (1990000000000000024,'渲染结果',1990000000000000020,5,'render-result','store/render-result/index','','N','Y','C','0','0','store:render:list','image', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
-(1990000000000000025,'上架表格',1990000000000000020,6,'listing','store/listing/index','','N','Y','C','0','0','store:listing-template:list','table', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000000025,'上架表格',1990000000000000020,6,'listing','store/listing/index','','N','Y','C','0','0','store:listing-export:list','table', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
 (1990000000000000028,'平台维护',1761400000000000001,4,'platforms','store/reference/index','','N','Y','C','0','0','store:reference:list','appstore', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
-(1990000000000000029,'站点维护',1761400000000000001,5,'sites','store/reference/index','','N','Y','C','0','0','store:reference:list','global', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,'')
+(1990000000000000029,'站点维护',1761400000000000001,5,'sites','store/reference/index','','N','Y','C','0','0','store:reference:list','global', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000000030,'店铺探测配置',1761400000000000001,6,'store-probe','system/store-probe/index','','N','Y','C','0','0','system:store-probe:list','shop', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,'维护线上第三方接口使用的店铺目录'),
+(1990000000000001101,'店铺探测查询',1990000000000000030,1,'','','','N','Y','F','0','0','system:store-probe:query','#', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001102,'店铺探测新增',1990000000000000030,2,'','','','N','Y','F','0','0','system:store-probe:add','#', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001103,'店铺探测修改',1990000000000000030,3,'','','','N','Y','F','0','0','system:store-probe:edit','#', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001104,'店铺探测删除',1990000000000000030,4,'','','','N','Y','F','0','0','system:store-probe:remove','#', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,'')
 ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name),parent_id=VALUES(parent_id),order_num=VALUES(order_num),path=VALUES(path),component=VALUES(component),menu_type=VALUES(menu_type),visible=VALUES(visible),perms=VALUES(perms),icon=VALUES(icon),remark=VALUES(remark);
+-- 店铺各页面的写操作独立授权；目录不使用 store:*，避免通配符绕过按钮权限。
+INSERT INTO sys_menu VALUES
+(1990000000000001201,'店铺新增',1990000000000000027,1,'','','','N','Y','F','0','0','store:shop:add','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001202,'店铺修改',1990000000000000027,2,'','','','N','Y','F','0','0','store:shop:edit','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001211,'校准新增',1990000000000000021,1,'','','','N','Y','F','0','0','store:calibration:add','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001212,'校准修改',1990000000000000021,2,'','','','N','Y','F','0','0','store:calibration:edit','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001213,'校准删除',1990000000000000021,3,'','','','N','Y','F','0','0','store:calibration:remove','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001221,'模板组查询',1990000000000000022,1,'','','','N','Y','F','0','0','store:template-group:query','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001222,'模板组新增',1990000000000000022,2,'','','','N','Y','F','0','0','store:template-group:add','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001223,'模板组修改',1990000000000000022,3,'','','','N','Y','F','0','0','store:template-group:edit','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001224,'模板组删除',1990000000000000022,4,'','','','N','Y','F','0','0','store:template-group:remove','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001225,'模板组上传',1990000000000000022,5,'','','','N','Y','F','0','0','store:template-group:upload','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001231,'上架模板新增',1990000000000000026,1,'','','','N','Y','F','0','0','store:listing-template:add','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001232,'上架模板修改',1990000000000000026,2,'','','','N','Y','F','0','0','store:listing-template:edit','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001233,'上架模板删除',1990000000000000026,3,'','','','N','Y','F','0','0','store:listing-template:remove','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001234,'上架模板上传',1990000000000000026,4,'','','','N','Y','F','0','0','store:listing-template:upload','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001241,'渲染批次查询',1990000000000000024,1,'','','','N','Y','F','0','0','store:render:query','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001242,'创建渲染批次',1990000000000000024,2,'','','','N','Y','F','0','0','store:render:add','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001243,'重试渲染',1990000000000000024,3,'','','','N','Y','F','0','0','store:render:retry','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001244,'下载渲染结果',1990000000000000024,4,'','','','N','Y','F','0','0','store:render:download','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001245,'查看渲染日志',1990000000000000024,5,'','','','N','Y','F','0','0','store:render:log','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001251,'生成上架表格',1990000000000000025,1,'','','','N','Y','F','0','0','store:listing-export:add','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001252,'重试上架表格',1990000000000000025,2,'','','','N','Y','F','0','0','store:listing-export:retry','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001253,'下载上架表格',1990000000000000025,3,'','','','N','Y','F','0','0','store:listing-export:download','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001261,'平台站点新增',1990000000000000028,1,'','','','N','Y','F','0','0','store:reference:add','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001262,'平台站点修改',1990000000000000028,2,'','','','N','Y','F','0','0','store:reference:edit','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001263,'平台站点删除',1990000000000000028,3,'','','','N','Y','F','0','0','store:reference:remove','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,'')
+ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name),parent_id=VALUES(parent_id),perms=VALUES(perms);
 DELETE FROM sys_role_menu WHERE menu_id=1990000000000000023;
 DELETE FROM sys_menu WHERE menu_id=1990000000000000023;
 INSERT IGNORE INTO sys_role_menu(role_id,menu_id)
@@ -212,6 +253,11 @@ INSERT IGNORE INTO sys_role_menu(role_id,menu_id)
 SELECT role_id,1990000000000000028 FROM sys_role WHERE role_key='superadmin';
 INSERT IGNORE INTO sys_role_menu(role_id,menu_id)
 SELECT role_id,1990000000000000029 FROM sys_role WHERE role_key='superadmin';
+INSERT IGNORE INTO sys_role_menu(role_id,menu_id)
+SELECT role_id,menu.menu_id FROM sys_role CROSS JOIN (
+ SELECT 1990000000000000030 menu_id UNION ALL SELECT 1990000000000001101 UNION ALL SELECT 1990000000000001102
+ UNION ALL SELECT 1990000000000001103 UNION ALL SELECT 1990000000000001104
+) menu WHERE role_key='superadmin';
 INSERT IGNORE INTO sys_role_menu(role_id,menu_id)
 SELECT access.role_id, menu.menu_id FROM sys_role_menu access CROSS JOIN (
  SELECT 1990000000000000020 menu_id UNION ALL SELECT 1990000000000000027 UNION ALL SELECT 1990000000000000021 UNION ALL SELECT 1990000000000000022 UNION ALL SELECT 1990000000000000026 UNION ALL SELECT 1990000000000000024 UNION ALL SELECT 1990000000000000025

@@ -54,7 +54,6 @@ image:
     request-timeout-seconds: ${AI_GATEWAY_TIMEOUT_SECONDS:960}
     workers: ${IMAGE_INFRINGEMENT_WORKERS:8}
     relay-workers: ${IMAGE_INFRINGEMENT_RELAY_WORKERS:10}
-    store-file: ${IMAGE_INFRINGEMENT_STORE_FILE:/app/config/store-probe.xlsx}
   storage:
     type: local
     root: ${IMAGE_STORAGE_ROOT:/data/images}

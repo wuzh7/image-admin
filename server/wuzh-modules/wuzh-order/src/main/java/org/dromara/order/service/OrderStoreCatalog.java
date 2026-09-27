@@ -1,52 +1,36 @@
 package org.dromara.order.service;
 
-import lombok.Data;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.fesod.sheet.FesodSheet;
-import org.apache.fesod.sheet.annotation.ExcelProperty;
-import org.springframework.beans.factory.annotation.Value;
+import org.dromara.image.service.StoreProbeService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
-@Slf4j
 @Component
 public class OrderStoreCatalog {
-    private final String file;
+    private final StoreProbeService storeProbeService;
+    private final Map<String, StoreInfo> fallback;
 
-    public OrderStoreCatalog(@Value("${image.infringement.store-file:/app/config/store-probe.xlsx}") String file) {
-        this.file = file;
+    @Autowired
+    public OrderStoreCatalog(StoreProbeService storeProbeService) {
+        this.storeProbeService = storeProbeService;
+        this.fallback = null;
+    }
+
+    OrderStoreCatalog(Map<String, StoreInfo> fallback) {
+        this.storeProbeService = null;
+        this.fallback = fallback;
     }
 
     public Map<String, StoreInfo> read() {
-        try {
-            Map<String, StoreInfo> stores = new LinkedHashMap<>();
-            List<StoreRow> rows = FesodSheet.read(Path.of(file).toFile()).head(StoreRow.class).sheet().doReadSync();
-            for (StoreRow row : rows) {
-                if (row.storeId != null && !row.storeId.isBlank()) {
-                    stores.put(row.storeId, new StoreInfo(row.storeName, row.remarks));
-                }
-            }
-            return stores;
-        } catch (Exception exception) {
-            log.warn("读取订单店铺数据失败，店铺名称和备注将留空: {} ({})", file, exception.getMessage());
-            return Map.of();
-        }
+        if (storeProbeService == null) return Map.copyOf(fallback);
+        return storeProbeService.read().entrySet().stream()
+            .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey,
+                entry -> new StoreInfo(entry.getValue().name(), entry.getValue().remarks()),
+                (left, right) -> right, java.util.LinkedHashMap::new));
     }
 
     public record StoreInfo(String name, String remarks) {
     }
 
-    @Data
-    public static class StoreRow {
-        @ExcelProperty("store_id")
-        private String storeId;
-        @ExcelProperty("store_name")
-        private String storeName;
-        @ExcelProperty("remarks")
-        private String remarks;
-    }
 }

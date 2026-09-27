@@ -43,7 +43,7 @@ public class OrderDetailService {
     }
 
     OrderDetailService(OrderDetailMapper orderDetailMapper) {
-        this(orderDetailMapper, new OrderStoreCatalog(""));
+        this(orderDetailMapper, new OrderStoreCatalog(Map.of()));
     }
 
     @Transactional(rollbackFor = Exception.class)

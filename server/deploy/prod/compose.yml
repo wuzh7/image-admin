@@ -33,7 +33,6 @@ services:
       AI_GATEWAY_TIMEOUT_SECONDS: ${AI_GATEWAY_TIMEOUT_SECONDS:-960}
       IMAGE_INFRINGEMENT_WORKERS: ${IMAGE_INFRINGEMENT_WORKERS:-2}
       IMAGE_INFRINGEMENT_RELAY_WORKERS: ${IMAGE_INFRINGEMENT_RELAY_WORKERS:-10}
-      IMAGE_INFRINGEMENT_STORE_FILE: /app/config/store-probe.xlsx
       OMP_NUM_THREADS: ${OMP_NUM_THREADS:-6}
       MKL_NUM_THREADS: ${MKL_NUM_THREADS:-6}
       JAVA_TOOL_OPTIONS: ${BACKEND_JAVA_OPTS:?}
@@ -45,7 +44,6 @@ services:
       STORE_LISTING_PUBLIC_BASE_URL: ${STORE_LISTING_PUBLIC_BASE_URL:-}
     volumes:
       - ${SSCD_MODEL_HOST_PATH:?}:/models/sscd_disc_mixup.torchscript.pt:ro
-      - ./data:/app/config:ro
     networks: [image-admin-net]
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS -u \"$${MANAGEMENT_USERNAME}:$${MANAGEMENT_PASSWORD}\" http://127.0.0.1:8080/actuator/health | grep -q '\"status\":\"UP\"'"]

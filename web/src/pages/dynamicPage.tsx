@@ -18,6 +18,7 @@ import SystemRolePage from '@/pages/system/role';
 import RoleAuthUserPage from '@/pages/system/role/authUser';
 import SystemUserPage from '@/pages/system/user';
 import UserAuthRolePage from '@/pages/system/user/authRole';
+import SystemStoreProbePage from '@/pages/system/store-probe';
 import { useUserStore } from '@/stores/userStore';
 import { hasRole } from '@/utils/permission';
 import { usePermissionStore } from '@/stores/permissionStore';
@@ -41,7 +42,8 @@ const migratedPages: Record<string, React.ComponentType> = {
   'system/role/authUser': RoleAuthUserPage,
   'system/role/index': SystemRolePage,
   'system/user/authRole': UserAuthRolePage,
-  'system/user/index': SystemUserPage
+  'system/user/index': SystemUserPage,
+  'system/store-probe/index': SystemStoreProbePage
 };
 
 const migratedPathPrefixes: Array<[string, React.ComponentType]> = [

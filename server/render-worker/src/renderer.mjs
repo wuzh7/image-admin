@@ -27,7 +27,27 @@ async function createImageBitmap(value) {
 }
 
 function getRuntimeFactory() {
-  return runtimeFactory ??= Function('self', 'OffscreenCanvas', 'createImageBitmap', `${workerSource}\nreturn self.onmessage;`);
+  return runtimeFactory ??= Function('self', 'OffscreenCanvas', 'createImageBitmap', `${optimizeDeclarativeSampling(workerSource)}\nreturn self.onmessage;`);
+}
+
+function optimizeDeclarativeSampling(source) {
+  const start = source.indexOf('B=(j,L,V)=>{');
+  const end = source.indexOf('},d=e.points', start);
+  if (start < 0 || end < 0) throw new Error('渲染运行时的像素采样函数已变化');
+  const sample = `B=(()=>{let lastU,lastV,rgba;return(j,L,V)=>{
+    if(j!==lastU||L!==lastV||!rgba){
+      lastU=j;lastV=L;
+      j=A+Math.max(0,Math.min(1,j))*D;L=z+Math.max(0,Math.min(1,L))*C;
+      let K=Math.max(0,Math.min(r.width-1,j*(r.width-1))),F=Math.max(0,Math.min(r.height-1,L*(r.height-1))),
+        $=Math.floor(K),_=Math.floor(F),X=Math.min($+1,r.width-1),Y=Math.min(_+1,r.height-1),Z=K-$,t5=F-_;
+      rgba=[];
+      for(let channel=0;channel<4;channel++) rgba[channel]=
+        (r.data[(_*r.width+$)*4+channel]*(1-Z)+r.data[(_*r.width+X)*4+channel]*Z)*(1-t5)+
+        (r.data[(Y*r.width+$)*4+channel]*(1-Z)+r.data[(Y*r.width+X)*4+channel]*Z)*t5;
+    }
+    return rgba[V];
+  }})()`;
+  return source.slice(0, start) + sample + source.slice(end + 1);
 }
 
 function parseJson(value, field) {

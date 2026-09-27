@@ -122,7 +122,7 @@ echo '[ECS 1/4] Verifying uploaded archive...'
 printf '%s  %s\n' '__CHECKSUM__' '__ARCHIVE__' | sha256sum -c -
 old_backend=$(docker inspect --format '{{.Image}}' "$(docker compose --env-file .env -f compose.yml ps -q backend)")
 old_frontend=$(docker inspect --format '{{.Image}}' "$(docker compose --env-file .env -f compose.yml ps -q frontend)")
-old_worker=$(docker compose --env-file .env -f compose.yml ps -q render-worker)
+old_worker=$(docker compose --env-file .env -f compose.yml ps -q render-worker | sed -n '1p')
 if [ -n "$old_worker" ]; then old_worker=$(docker inspect --format '{{.Image}}' "$old_worker"); fi
 echo '[ECS 2/4] Loading Docker images...'
 docker load -i '__ARCHIVE__'

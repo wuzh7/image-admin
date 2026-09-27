@@ -1,15 +1,17 @@
-# 图片去重 Demo 本地运行手册
+# 海益通管理系统本地运行手册
 
-这套本地环境用于演示“上传图片 → Java 提取 SSCD 特征 → Qdrant 召回 → 低相似图片自动入库 / 高相似图片人工确认 → 正式图库”的完整流程。除 Docker Desktop、Docker Compose V2 和 Git 外，不需要在 Windows 单独安装 JDK、Maven、MySQL、Redis、Qdrant、Node.js 或 Nginx。
+本地环境覆盖图库、去重、侵权检测、订单、TRO、店铺套图和渲染流程。除 Docker Desktop、Docker Compose V2 和 Git 外，不需要单独安装 JDK、Maven、MySQL、Redis、Qdrant、Node.js 或 Nginx。
 
 ## 1. 本地会启动什么
 
-| 容器 | 作用 | Windows 访问地址 | 数据是否持久化 |
+| 容器 | 作用 | 本机访问地址 | 数据是否持久化 |
 |---|---|---|---|
 | `image-admin-mysql` | 系统表、批次、图片元数据、原始向量 | `127.0.0.1:3306` | `mysql-data` 命名卷 |
 | `image-admin-redis` | 系统登录、Token 和缓存 | `127.0.0.1:6379` | `redis-data` 命名卷 |
 | `image-admin-qdrant` | SSCD 向量召回 | `http://127.0.0.1:6333` | `qdrant-data` 命名卷 |
+| `image-admin-ai-gateway` | 图片侵权检测的 AI 网关 | `http://127.0.0.1:18080` | 不保存业务数据 |
 | `image-admin-backend` | Spring Boot、DJL、图片任务 | `http://127.0.0.1:8080` | 图片使用 `image-files` 命名卷 |
+| `image-admin-render-worker` | 店铺商品详情图渲染 | 仅容器内网访问 | 成品由后端保存 |
 | `image-admin-frontend` | React 构建产物和 Nginx 反向代理 | `http://127.0.0.1:8088` | 不保存业务数据 |
 
 启动依赖顺序固定为：
@@ -21,9 +23,9 @@ MySQL + Redis + Qdrant（并行启动并等待健康）
   ↓
 临时执行 image.sql 数据库迁移后自动删除
   ↓
-Java 后端（校验模型、创建 Qdrant 集合、执行模型预热）
+Java 后端与 AI 网关（校验模型、创建 Qdrant 集合、执行模型预热）
   ↓
-React/Nginx 前端
+渲染 Worker + React/Nginx 前端
 ```
 
 关闭顺序相反：前端 → Java 后端 → Qdrant → Redis → MySQL。
@@ -39,6 +41,10 @@ React/Nginx 前端
    ```text
    image-admin/server/models/sscd_disc_mixup.torchscript.pt
    ```
+
+   首次克隆仓库时，按 [模型下载说明](../../models/README.md) 从官方地址下载并校验；模型文件不随 Git 仓库分发。
+
+   首次启动会从 `.env.example` 创建不入库的 `.env.local`；需要侵权检测时，在该文件中填写实际 AI 服务密钥。
 
 启动脚本会直接校验该模型（模型二进制已忽略 Git）：
 
@@ -218,7 +224,3 @@ docker logs --tail 200 image-admin-backend
 ### 页面能打开但接口报错
 
 先用 `status-local.ps1` 确认后端和 Qdrant，再退出并重新登录。生产前端统一访问 `/prod-api/`，由 Nginx 转发到 Java 后端，不应直接在前端代码写 `localhost:8080`。
-
-## 9. 本轮边界
-
-本地 Demo 已实现图片去重主流程，但本轮不包含侵权检测、阿里云 OSS、完整角色矩阵、批量下载、ECS 正式发布和向量量化。Qdrant 保持两组 512 维全精度 Named Vectors，不启用 Scalar Quantization、Binary Quantization 或 PDQ。

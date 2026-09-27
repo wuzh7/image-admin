@@ -209,11 +209,11 @@ INSERT INTO sys_menu VALUES
 (1990000000000000025,'上架表格',1990000000000000020,6,'listing','store/listing/index','','N','Y','C','0','0','store:listing-export:list','table', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
 (1990000000000000028,'平台维护',1761400000000000001,4,'platforms','store/reference/index','','N','Y','C','0','0','store:reference:list','appstore', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
 (1990000000000000029,'站点维护',1761400000000000001,5,'sites','store/reference/index','','N','Y','C','0','0','store:reference:list','global', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
-(1990000000000000030,'店铺探测配置',1761400000000000001,6,'store-probe','system/store-probe/index','','N','Y','C','0','0','system:store-probe:list','shop', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,'维护线上第三方接口使用的店铺目录'),
-(1990000000000001101,'店铺探测查询',1990000000000000030,1,'','','','N','Y','F','0','0','system:store-probe:query','#', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
-(1990000000000001102,'店铺探测新增',1990000000000000030,2,'','','','N','Y','F','0','0','system:store-probe:add','#', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
-(1990000000000001103,'店铺探测修改',1990000000000000030,3,'','','','N','Y','F','0','0','system:store-probe:edit','#', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
-(1990000000000001104,'店铺探测删除',1990000000000000030,4,'','','','N','Y','F','0','0','system:store-probe:remove','#', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,'')
+(1990000000000000031,'店铺探测配置',1761400000000000001,6,'store-probe','system/store-probe/index','','N','Y','C','0','0','system:store-probe:list','shop', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,'维护线上第三方接口使用的店铺目录'),
+(1990000000000001311,'店铺探测查询',1990000000000000031,1,'','','','N','Y','F','0','0','system:store-probe:query','#', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001312,'店铺探测新增',1990000000000000031,2,'','','','N','Y','F','0','0','system:store-probe:add','#', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001313,'店铺探测修改',1990000000000000031,3,'','','','N','Y','F','0','0','system:store-probe:edit','#', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
+(1990000000000001314,'店铺探测删除',1990000000000000031,4,'','','','N','Y','F','0','0','system:store-probe:remove','#', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,'')
 ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name),parent_id=VALUES(parent_id),order_num=VALUES(order_num),path=VALUES(path),component=VALUES(component),menu_type=VALUES(menu_type),visible=VALUES(visible),perms=VALUES(perms),icon=VALUES(icon),remark=VALUES(remark);
 -- 店铺各页面的写操作独立授权；目录不使用 store:*，避免通配符绕过按钮权限。
 INSERT INTO sys_menu VALUES
@@ -255,8 +255,8 @@ INSERT IGNORE INTO sys_role_menu(role_id,menu_id)
 SELECT role_id,1990000000000000029 FROM sys_role WHERE role_key='superadmin';
 INSERT IGNORE INTO sys_role_menu(role_id,menu_id)
 SELECT role_id,menu.menu_id FROM sys_role CROSS JOIN (
- SELECT 1990000000000000030 menu_id UNION ALL SELECT 1990000000000001101 UNION ALL SELECT 1990000000000001102
- UNION ALL SELECT 1990000000000001103 UNION ALL SELECT 1990000000000001104
+ SELECT 1990000000000000031 menu_id UNION ALL SELECT 1990000000000001311 UNION ALL SELECT 1990000000000001312
+ UNION ALL SELECT 1990000000000001313 UNION ALL SELECT 1990000000000001314
 ) menu WHERE role_key='superadmin';
 INSERT IGNORE INTO sys_role_menu(role_id,menu_id)
 SELECT access.role_id, menu.menu_id FROM sys_role_menu access CROSS JOIN (

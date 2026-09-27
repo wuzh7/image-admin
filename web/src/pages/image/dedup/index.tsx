@@ -72,7 +72,7 @@ import { useTableExport } from '@/hooks/useTableExport';
 import AuthorizedImage from '@/components/common/AuthorizedImage';
 import { isHandledRequestError } from '@/api/request';
 import { createLatestRequestGate } from './requestGate';
-import { createRenderBatch, getRenderBatch, listListingTemplates, listShops, listTemplateGroups, type StoreListingTemplate, type StoreRenderBatch, type StoreShop, type StoreTemplateGroup } from '@/api/store';
+import { createRenderBatch, getRenderBatch, listListingTemplates, listRenderBatches, listShops, listTemplateGroups, type StoreListingTemplate, type StoreRenderBatch, type StoreShop, type StoreTemplateGroup } from '@/api/store';
 import StoreImage from '../../store/StoreImage';
 
 const currentBatchKey = 'image-dedup-current-batch';
@@ -377,7 +377,6 @@ export default function ImageDedupPage() {
     ? requestedPageKey
     : availableWorkflowTabs[0]?.key ?? requestedPageKey;
   const pageTitle = pageKey === 'library' ? '正式图库' : '上传与人工复核';
-  const storeBatchKey = `store-render-current-batch:${String(userInfo?.user.userId || '')}`;
   const storeRendering = storeBatch?.status === 'CREATED' || storeBatch?.status === 'RUNNING';
   const storeGroup = storeGroups.find(group => String(group.id) === String(storeGroupId));
   const storeEligibleShops = storeShops.filter(shop => shopConfig(shop).categoryIds?.some(id => String(id) === String(storeCategoryId)));
@@ -597,9 +596,12 @@ export default function ImageDedupPage() {
 
   useEffect(() => {
     if (pageKey !== 'library' || !userInfo?.user.userId) return;
-    const batchId = localStorage.getItem(storeBatchKey);
-    if (batchId) void getRenderBatch(batchId).then(response => { setStoreBatch(response.data); setStorePollFailed(false); }).catch(() => setStorePollFailed(true));
-  }, [pageKey, storeBatchKey, userInfo?.user.userId]);
+    let cancelled = false;
+    void listRenderBatches({ pageSize: 1 })
+      .then(response => { if (!cancelled) { setStoreBatch(response.data?.records?.[0]); setStorePollFailed(false); } })
+      .catch(() => { if (!cancelled) setStorePollFailed(true); });
+    return () => { cancelled = true; };
+  }, [pageKey, userInfo?.user.userId]);
 
   useEffect(() => {
     if (pageKey !== 'library' || !storeRendering || !storeBatch || storePollFailed) return;
@@ -669,7 +671,6 @@ export default function ImageDedupPage() {
         quality: storeQuality,
         idempotencyKey
       });
-      localStorage.setItem(storeBatchKey, String(response.data.id));
       setStoreBatch(response.data);
       setStorePollFailed(false);
       message.success('渲染批次 ' + String(response.data.id) + ' 已提交');

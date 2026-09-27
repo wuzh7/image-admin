@@ -441,6 +441,7 @@ export default function BasicLayout() {
         {typeof document !== 'undefined' && createPortal(
           <Watermark
             content={`海益通 ${userInfo?.user.nickName || userInfo?.user.userName || ''}`.trim()}
+            font={{ color: 'rgba(0, 0, 0, 0.07)' }}
             zIndex={2147483647}
             style={{ position: 'fixed', inset: 0, zIndex: 2147483647, pointerEvents: 'none' }}
           >

@@ -29,6 +29,13 @@ import static org.mockito.Mockito.when;
 class SysUserServiceImplTest {
 
     @Test
+    void cannotGrantSuperAdminToAnotherUser() {
+        SysUserServiceImpl service = service(mock(SysUserMapper.class), mock(SysRoleMapper.class), mock(SysUserRoleMapper.class));
+        assertThrows(ServiceException.class, () -> service.insertUserAuth(2L,
+            new Long[]{SystemConstants.SUPER_ADMIN_ROLE_ID}));
+    }
+
+    @Test
     void registerUserAssignsDefaultImageUserRole() {
         SysUserMapper userMapper = mock(SysUserMapper.class);
         SysRoleMapper roleMapper = mock(SysRoleMapper.class);

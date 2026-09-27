@@ -1,21 +1,18 @@
-import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
-import { Button, Form, Input, message, Modal, Popconfirm, Space, Switch, Table, Tag } from 'antd';
+import { Button, Form, Input, message, Modal, Space, Table } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import {
   createImageCategory,
-  deleteImageCategory,
-  listImageCategories,
-  updateImageCategory
+  listImageCategories
 } from '@/api/image';
-import type { ImageCategory, ImageId } from '@/api/image/types';
+import type { ImageCategory } from '@/api/image/types';
 import { useUserStore } from '@/stores/userStore';
 import { hasRole } from '@/utils/permission';
 
 interface CategoryForm {
   name: string;
-  enabled: boolean;
 }
 
 export default function ImageCategoryPage() {
@@ -24,11 +21,8 @@ export default function ImageCategoryPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState<ImageId>();
   const userInfo = useUserStore(state => state.userInfo);
   const canAdd = hasRole(userInfo, ['superadmin']);
-  const canEdit = hasRole(userInfo, ['superadmin']);
-  const canRemove = hasRole(userInfo, ['superadmin']);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,17 +39,7 @@ export default function ImageCategoryPage() {
   }, [load]);
 
   const openCreate = () => {
-    setEditingId(undefined);
-    form.setFieldsValue({ name: '', enabled: true });
-    setModalOpen(true);
-  };
-
-  const openEdit = (category: ImageCategory) => {
-    setEditingId(category.id);
-    form.setFieldsValue({
-      name: category.name,
-      enabled: category.status === '0'
-    });
+    form.setFieldsValue({ name: '' });
     setModalOpen(true);
   };
 
@@ -63,17 +47,12 @@ export default function ImageCategoryPage() {
     const values = await form.validateFields();
     const data = {
       name: values.name.trim(),
-      status: values.enabled ? ('0' as const) : ('1' as const)
+      status: '0' as const
     };
     setSaving(true);
     try {
-      if (editingId == null) {
-        await createImageCategory(data);
-        message.success('类目已新增');
-      } else {
-        await updateImageCategory(editingId, data);
-        message.success('类目已更新');
-      }
+      await createImageCategory(data);
+      message.success('类目已新增');
       setModalOpen(false);
       await load();
     } finally {
@@ -83,38 +62,6 @@ export default function ImageCategoryPage() {
 
   const columns: TableColumnsType<ImageCategory> = [
     { title: '类目名称', dataIndex: 'name' },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 100,
-      render: status => status === '0' ? <Tag color="success">启用</Tag> : <Tag>停用</Tag>
-    },
-    {
-      title: '操作',
-      width: 180,
-      render: (_, category) => (
-        <Space size={0}>
-          {canEdit && (
-            <Button type="link" icon={<EditOutlined />} onClick={() => openEdit(category)}>
-              修改
-            </Button>
-          )}
-          {canRemove && (
-            <Popconfirm
-              title="确认删除该类目？"
-              description="已被图片使用的类目不能删除，可以改为停用。"
-              onConfirm={async () => {
-                await deleteImageCategory(category.id);
-                message.success('类目已删除');
-                await load();
-              }}
-            >
-              <Button danger type="link" icon={<DeleteOutlined />}>删除</Button>
-            </Popconfirm>
-          )}
-        </Space>
-      )
-    }
   ];
 
   return (
@@ -133,7 +80,7 @@ export default function ImageCategoryPage() {
         />
       </ProCard>
       <Modal
-        title={editingId == null ? '新增类目' : '修改类目'}
+        title="新增类目"
         open={modalOpen}
         confirmLoading={saving}
         onOk={() => void save()}
@@ -143,9 +90,6 @@ export default function ImageCategoryPage() {
         <Form form={form} layout="vertical" preserve={false}>
           <Form.Item label="类目名称" name="name" rules={[{ required: true, whitespace: true, message: '请输入类目名称' }, { max: 50 }]}>
             <Input placeholder="例如：家居收纳" />
-          </Form.Item>
-          <Form.Item label="启用" name="enabled" valuePropName="checked">
-            <Switch />
           </Form.Item>
         </Form>
       </Modal>

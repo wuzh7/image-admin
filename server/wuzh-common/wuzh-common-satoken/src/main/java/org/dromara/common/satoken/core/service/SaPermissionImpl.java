@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.StpInterface;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.ObjectUtil;
 import org.dromara.common.core.exception.ServiceException;
+import org.dromara.common.core.constant.SystemConstants;
 import org.dromara.common.core.service.PermissionService;
 import org.dromara.common.core.utils.SpringUtils;
 import org.dromara.common.satoken.utils.LoginHelper;
@@ -30,7 +31,9 @@ public class SaPermissionImpl implements StpInterface {
      */
     @Override
     public List<String> getPermissionList(Object loginId, String loginType) {
-        return resolvePermissionList(loginId, LoginUser::getMenuPermission, PermissionService::getMenuPermission);
+        List<String> permissions = resolvePermissionList(loginId, LoginUser::getMenuPermission, PermissionService::getMenuPermission);
+        if (!LoginHelper.isSuperAdmin(resolveUserId(loginId))) permissions.remove("*:*:*");
+        return permissions;
     }
 
     /**
@@ -42,7 +45,9 @@ public class SaPermissionImpl implements StpInterface {
      */
     @Override
     public List<String> getRoleList(Object loginId, String loginType) {
-        return resolvePermissionList(loginId, LoginUser::getRolePermission, PermissionService::getRolePermission);
+        List<String> roles = resolvePermissionList(loginId, LoginUser::getRolePermission, PermissionService::getRolePermission);
+        if (!LoginHelper.isSuperAdmin(resolveUserId(loginId))) roles.remove(SystemConstants.SUPER_ADMIN_ROLE_KEY);
+        return roles;
     }
 
     /**

@@ -1,0 +1,868 @@
+.store-calibration-editor {
+  --ink: var(--app-text-react);
+  --line: var(--app-border-react);
+  --muted: var(--app-text-secondary-react);
+  --accent: var(--cal-primary);
+  --green: var(--cal-primary);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.store-calibration-editor *,
+.store-calibration-editor *::before,
+.store-calibration-editor *::after {
+  box-sizing: border-box;
+}
+.store-calibration-editor button,
+.store-calibration-editor input,
+.store-calibration-editor select {
+  font: inherit;
+}
+.store-calibration-editor button {
+  cursor: pointer;
+  color: inherit;
+}
+.store-calibration-editor button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+.store-calibration-editor h1,
+.store-calibration-editor h2,
+.store-calibration-editor h3,
+.store-calibration-editor p {
+  margin: 0;
+}
+.store-calibration-editor select {
+  width: 100%;
+  height: 40px;
+  border: 1px solid var(--app-border-strong-react);
+  background: var(--app-surface-react);
+  border-radius: 6px;
+  padding: 0 10px;
+  color: var(--ink);
+  font-size: 12px;
+}
+.store-calibration-editor .panel {
+  background: var(--app-surface-react);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.store-calibration-editor .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--app-border-strong-react);
+  border-radius: 6px;
+  background: white;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.store-calibration-editor .button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.cal-editor {
+  --cal-radius: 12px;
+}
+.cal-editor.is-expanded {
+  position: fixed;
+  inset: 12px;
+  z-index: 60;
+  padding: 20px;
+  background: var(--app-bg-react);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 12px 60px #26342f35;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+.cal-editor.is-expanded .calibration-layout {
+  flex: 1;
+  min-height: 430px;
+  height: auto;
+}
+.cal-editor.is-expanded .cal-page-header {
+  margin-bottom: 14px;
+}
+/* Keep save/error feedback above the expanded editor, not behind it. */
+main:has(.cal-editor.is-expanded) > .notice {
+  position: fixed;
+  z-index: 61;
+  bottom: 28px;
+  left: 32px;
+  right: 32px;
+  max-width: 760px;
+  margin: 0 auto;
+  box-shadow: 0 5px 24px #26342f26;
+}
+.cal-editor [hidden] {
+  display: none !important;
+}
+.cal-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin: 0 0 18px;
+}
+.cal-page-header p {
+  color: var(--muted);
+  font-size: 13px;
+}
+.cal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.cal-save-state {
+  color: var(--muted);
+  font-size: 11px;
+  margin-right: 4px;
+}
+.calibration-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 328px;
+  gap: 16px;
+  height: clamp(430px, calc(100dvh - 280px), 1000px);
+}
+.calibration-work {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--cal-radius);
+}
+.cal-editor .button.small {
+  padding: 7px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.cal-editor button:focus-visible,
+.cal-editor summary:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.cal-canvas-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.cal-toolset {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--app-surface-muted-react);
+  border-radius: 8px;
+}
+.cal-tool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12px;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cal-tool span {
+  font-size: 17px;
+  line-height: 1;
+}
+.cal-tool.is-active {
+  background: var(--app-surface-react);
+  color: var(--green);
+  box-shadow: 0 1px 4px #243e2820;
+  font-weight: 600;
+}
+.cal-tool-utilities {
+  display: flex;
+  gap: 5px;
+}
+.cal-regions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  min-height: 50px;
+}
+.cal-region-caption {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cal-region-caption b {
+  font-weight: 500;
+  margin-left: 3px;
+}
+.cal-region-list {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.cal-region-chip {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  background: var(--app-surface-react);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.cal-region-chip span {
+  font-size: 10px;
+  opacity: 0.7;
+}
+.cal-region-chip.is-active {
+  background: var(--app-primary-soft-react);
+  border-color: var(--app-link-border-react);
+  color: var(--green);
+}
+.cal-context-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 14px;
+  min-height: 40px;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--app-surface-muted-react);
+}
+.cal-context-line > div {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.cal-context-line .button:not(.primary) {
+  padding: 4px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+.cal-canvas-area {
+  position: relative;
+  container: cal-canvas / size;
+  flex: 1;
+  min-height: 140px;
+}
+.calibration-viewport {
+  position: absolute;
+  inset: 0;
+  overflow-anchor: none;
+  overflow: auto;
+  padding: 16px;
+  background: repeating-conic-gradient(var(--app-border-react) 0% 25%, var(--app-surface-muted-react) 0% 50%) 0 / 16px 16px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.cal-canvas-area.is-empty .calibration-stage {
+  visibility: hidden;
+}
+.cal-canvas-area.is-empty .calibration-viewport {
+  background: var(--app-surface-muted-react);
+  overflow: hidden;
+}
+.cal-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  text-align: center;
+  padding: 16px;
+}
+.cal-empty-mark {
+  border: 1px dashed var(--app-link-border-react);
+  border-radius: 16px;
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  color: var(--green);
+  font-size: 30px;
+  background: var(--app-primary-soft-react);
+}
+.cal-empty h2 {
+  margin: 12px 0 0;
+  font-size: 17px;
+}
+.cal-empty p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.9;
+  margin: 8px 0 14px;
+}
+.cal-empty > span {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-top: 15px;
+}
+@container cal-canvas (max-height: 260px) {
+  .cal-empty-mark,
+  .cal-empty > span {
+    display: none;
+  }
+  .cal-empty h2 {
+    margin-top: 0;
+    font-size: 15px;
+  }
+  .cal-empty p {
+    margin: 6px 0 10px;
+  }
+}
+.cal-viewbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding: 10px 14px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.cal-viewbar label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cal-viewbar select {
+  width: auto;
+  font-size: 11px;
+  padding: 6px;
+  max-width: 152px;
+}
+.cal-dimensions {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.cal-work-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 14px 10px;
+  font-size: 10px;
+  color: var(--muted);
+  min-height: 25px;
+}
+.cal-shortcuts {
+  position: relative;
+  flex-shrink: 0;
+}
+.cal-shortcuts summary {
+  cursor: pointer;
+  color: var(--green);
+}
+.cal-shortcuts > div {
+  position: absolute;
+  bottom: 28px;
+  right: 0;
+  z-index: 5;
+  width: 295px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+  box-shadow: 0 6px 24px #26342f22;
+  line-height: 1.8;
+}
+.cal-shortcuts p {
+  margin: 5px 0;
+}
+.cal-shortcuts kbd {
+  background: var(--app-surface-muted-react);
+  border-radius: 3px;
+  padding: 2px 4px;
+}
+.cal-material-status,
+#cal-error {
+  margin: 0 14px 8px;
+  font-size: 11px;
+}
+.cal-material-status {
+  color: #935c23;
+}
+.cal-material-status:empty,
+#cal-error:empty {
+  display: none;
+}
+.calibration-controls {
+  padding: 0;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--cal-radius);
+}
+.cal-inspector-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+  gap: 10px;
+}
+.cal-inspector-heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.cal-inspector-heading span {
+  font-size: 10px;
+  color: var(--muted);
+}
+.cal-inspector-heading strong {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cal-tag {
+  display: inline-block;
+  font-size: 10px;
+  color: var(--green);
+  background: var(--app-primary-soft-react);
+  border: 1px solid var(--app-link-border-react);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.cal-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.cal-tabs button {
+  position: relative;
+  border: 0;
+  background: transparent;
+  padding: 11px 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.cal-tabs button[aria-selected='true'] {
+  color: var(--green);
+  font-weight: 600;
+}
+.cal-tabs button[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--green);
+}
+.cal-inspector-panel {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  flex: 1;
+  padding: 16px;
+  background: var(--app-surface-react);
+}
+.cal-inspector-panel:focus {
+  outline: none;
+}
+.cal-inspector-panel:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -3px;
+}
+.cal-card {
+  display: grid;
+  gap: 12px;
+  padding-bottom: 18px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+.cal-card:last-child {
+  margin-bottom: 0;
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.cal-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cal-card h3 {
+  font-size: 13px;
+  margin: 0;
+}
+.cal-help {
+  font-size: 11px;
+  line-height: 1.8;
+  color: var(--muted);
+  margin: 0;
+}
+.calibration-controls label {
+  display: block;
+  font-size: 12px;
+  color: var(--ink);
+}
+.calibration-controls input,
+.calibration-controls select {
+  width: 100%;
+  margin: 6px 0 0;
+  font-size: 12px;
+  padding: 8px;
+}
+.calibration-controls .cal-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.calibration-controls .cal-checkbox input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--green);
+  flex-shrink: 0;
+}
+.cal-upload {
+  border: 1px dashed var(--app-link-border-react);
+  background: var(--app-primary-soft-react);
+  padding: 12px;
+  border-radius: 8px;
+}
+.cal-upload > span {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 5px;
+  font-weight: 500;
+}
+.cal-upload-status {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.cal-upload input {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 10px;
+  margin-top: 9px;
+}
+.cal-upload input::file-selector-button {
+  background: var(--app-surface-react);
+  border: 1px solid var(--app-border-strong-react);
+  border-radius: 4px;
+  color: var(--green);
+  font-size: 11px;
+  padding: 5px 9px;
+  margin-right: 8px;
+  cursor: pointer;
+}
+.cal-disclosure {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  background: var(--app-surface-react);
+}
+.cal-disclosure:last-child {
+  margin-bottom: 0;
+}
+.cal-disclosure summary {
+  padding: 11px 10px;
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--ink);
+}
+.cal-disclosure[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+.cal-disclosure-body {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+.cal-disclosure .cal-disclosure {
+  background: var(--app-surface-muted-react);
+}
+.cal-disclosure .cal-disclosure summary {
+  font-size: 11px;
+}
+.cal-disclosure .cal-disclosure-body {
+  padding: 10px;
+}
+.cal-slider output {
+  float: right;
+  font:
+    11px ui-monospace,
+    monospace;
+  color: var(--green);
+  border-radius: 3px;
+  background: var(--app-primary-soft-react);
+  padding: 1px 4px;
+}
+.calibration-controls input[type='range'] {
+  padding: 0;
+  accent-color: var(--green);
+  cursor: ew-resize;
+  height: 17px;
+}
+.calibration-controls input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cal-field-pair,
+.cal-source-fields,
+.cal-side-widths {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.cal-side-widths {
+  padding: 10px;
+  background: var(--app-surface-muted-react);
+  border-radius: 6px;
+}
+.cal-side-widths label span {
+  font-size: 10px;
+  color: var(--muted);
+}
+.cal-side-widths input:focus {
+  outline: 2px solid var(--green);
+  outline-offset: 1px;
+}
+.calibration-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+}
+.cal-inspector-footer {
+  border-top: 1px solid var(--line);
+  padding: 10px 12px;
+  font-size: 10px;
+  text-align: center;
+  color: var(--muted);
+  background: var(--app-surface-react);
+}
+.cal-review-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 12px;
+}
+.cal-review-note span {
+  font-weight: 600;
+  color: var(--green);
+}
+.calibration-stage {
+  position: relative;
+  width: 100%;
+  margin-inline: auto;
+  overflow: visible;
+}
+#cal-overlay .cal-region-outline {
+  fill: none;
+  stroke: #748bc7;
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+#cal-overlay .cal-region-outline.is-disabled {
+  opacity: 0.4;
+}
+#cal-overlay .cal-region-label {
+  font: 16px sans-serif;
+  fill: #405879;
+  stroke: #fff;
+  stroke-width: 3px;
+  paint-order: stroke;
+  cursor: pointer;
+}
+#cal-overlay .cal-region-label.is-active {
+  fill: #166347;
+  font-weight: 700;
+}
+.calibration-stage canvas,
+.calibration-stage svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+.calibration-stage canvas {
+  inset: var(--cal-paper-offset) auto auto var(--cal-paper-offset);
+  width: var(--cal-paper-size);
+  height: var(--cal-paper-size);
+  outline: 1px solid #a6ada4;
+  box-shadow: 0 2px 10px #253b2914;
+  background: #fff;
+}
+.calibration-stage svg {
+  overflow: visible;
+}
+.calibration-stage svg polyline {
+  fill: none;
+  stroke: #20bca0;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.calibration-stage svg circle {
+  fill: #fff;
+  stroke: #24735e;
+  stroke-width: 3;
+  cursor: grab;
+  vector-effect: non-scaling-stroke;
+}
+.calibration-stage svg .selection-handle {
+  fill: #fff4db;
+  stroke: #b78940;
+}
+.calibration-stage svg circle.is-selected {
+  fill: #f4bc64;
+  stroke: #885615;
+}
+.cal-point-label {
+  pointer-events: none;
+}
+.cal-point-label rect {
+  fill: #fff8e9;
+  stroke: #c19040;
+  stroke-width: 1px;
+}
+.cal-point-label text {
+  font:
+    11px ui-monospace,
+    monospace;
+  fill: #6b491e;
+}
+#cal-overlay .selection-area {
+  fill: #b7894030;
+  stroke: #b78940;
+  stroke-dasharray: 8 5;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+#cal-overlay .rounded-outline {
+  fill: none;
+  stroke: #e09b34;
+  stroke-width: 2;
+  pointer-events: none;
+}
+@media (max-width: 1350px) {
+  .calibration-layout {
+    grid-template-columns: minmax(0, 1fr) 305px;
+    gap: 12px;
+  }
+  .cal-tool {
+    font-size: 11px;
+    padding: 7px 8px;
+  }
+  .cal-toolset {
+    gap: 1px;
+  }
+  .cal-header-actions {
+    gap: 6px;
+  }
+  .cal-save-state {
+    flex-basis: 100%;
+    text-align: right;
+  }
+  .cal-viewbar {
+    gap: 8px;
+  }
+}
+@media (max-width: 1000px) {
+  .calibration-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .calibration-work {
+    height: 650px;
+  }
+  .calibration-controls {
+    height: 570px;
+  }
+  .cal-page-header {
+    flex-wrap: wrap;
+  }
+  .cal-header-actions {
+    justify-content: flex-start;
+  }
+  .cal-save-state {
+    flex-basis: auto;
+  }
+  .cal-inspector-panel {
+    padding: 18px;
+  }
+}
+@media (max-width: 600px) {
+  .calibration-work {
+    height: 640px;
+  }
+  .cal-toolset {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .cal-tool {
+    gap: 4px;
+    font-size: 11px;
+  }
+  .cal-canvas-toolbar {
+    padding: 9px;
+  }
+  .cal-context-line {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .cal-empty p {
+    font-size: 11px;
+  }
+  .cal-region-caption {
+    display: none;
+  }
+  .cal-shortcuts > div {
+    width: 250px;
+  }
+}

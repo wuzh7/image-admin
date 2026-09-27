@@ -40,6 +40,7 @@ public class SysPermissionServiceImpl implements ISysPermissionService, Permissi
             roles.add(SystemConstants.SUPER_ADMIN_ROLE_KEY);
         } else {
             roles.addAll(roleService.selectRolePermissionByUserId(userId));
+            roles.remove(SystemConstants.SUPER_ADMIN_ROLE_KEY);
         }
         return roles;
     }

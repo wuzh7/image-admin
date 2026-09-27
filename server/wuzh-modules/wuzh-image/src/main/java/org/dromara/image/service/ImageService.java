@@ -29,6 +29,7 @@ import org.dromara.image.mapper.ImageCategoryMapper;
 import org.dromara.image.similarity.QdrantVectorStore;
 import org.dromara.image.similarity.SscdFeatureExtractor;
 import org.dromara.image.storage.ImageStorage;
+import javax.imageio.ImageIO;
 import org.dromara.system.api.UserService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -185,6 +186,37 @@ public class ImageService {
         return toBatchView(batch, assets);
     }
 
+    public ImageDtos.BatchSummary getBatchSummary(long batchId) {
+        ImageBatch batch = requireBatch(batchId);
+        Map<Long, String> creatorNames = batch.getCreateBy() == null
+            ? Map.of() : userNames(Set.of(batch.getCreateBy()));
+        return toBatchSummary(batch, creatorNames.get(batch.getCreateBy()));
+    }
+
+    public PageResult<ImageDtos.ImageView> listReviewImages(long batchId, PageQuery pageQuery) {
+        requireBatch(batchId);
+        Page<ImageAsset> requestedPage = pageQuery.build();
+        Page<ImageAsset> page = assetMapper.selectPage(
+            new Page<>(Math.max(1, requestedPage.getCurrent()), Math.min(20, Math.max(1, requestedPage.getSize()))),
+            Wrappers.<ImageAsset>lambdaQuery()
+                .eq(ImageAsset::getBatchId, batchId)
+                .eq(ImageAsset::getStatus, ImageStatus.WAIT_REVIEW.name())
+                .orderByAsc(ImageAsset::getId));
+        return PageResult.build(toImageViews(page.getRecords(), false), page.getTotal());
+    }
+
+    public PageResult<ImageDtos.ImageView> listFailedImages(long batchId, PageQuery pageQuery) {
+        requireBatch(batchId);
+        Page<ImageAsset> requestedPage = pageQuery.build();
+        Page<ImageAsset> page = assetMapper.selectPage(
+            new Page<>(Math.max(1, requestedPage.getCurrent()), Math.min(20, Math.max(1, requestedPage.getSize()))),
+            Wrappers.<ImageAsset>lambdaQuery()
+                .eq(ImageAsset::getBatchId, batchId)
+                .in(ImageAsset::getStatus, ImageStatus.FAILED.name(), ImageStatus.APPROVAL_FAILED.name())
+                .orderByAsc(ImageAsset::getId));
+        return PageResult.build(toImageViews(page.getRecords(), false), page.getTotal());
+    }
+
     public PageResult<ImageDtos.BatchSummary> listBatches(PageQuery pageQuery, String status) {
         return listBatches(pageQuery, status, null);
     }
@@ -274,9 +306,7 @@ public class ImageService {
             }
         }
         List<Long> prohibitedIds = selectedAssets.stream()
-            .filter(asset -> "EXACT_HASH".equals(asset.getMatchMethod())
-                || asset.getSimilarity() != null
-                && asset.getSimilarity().compareTo(MAX_ADMISSION_SIMILARITY) > 0)
+            .filter(this::isAdmissionProhibited)
             .map(ImageAsset::getId)
             .toList();
         if (!prohibitedIds.isEmpty()) {
@@ -295,6 +325,12 @@ public class ImageService {
         batch.setStatus(BatchStatus.CONFIRMING.name());
         batch.setErrorMessage(null);
         batchMapper.updateById(batch);
+    }
+
+    private boolean isAdmissionProhibited(ImageAsset asset) {
+        return "EXACT_HASH".equals(asset.getMatchMethod())
+            || asset.getSimilarity() != null
+            && asset.getSimilarity().compareTo(MAX_ADMISSION_SIMILARITY) > 0;
     }
 
     public PageResult<ImageDtos.ImageView> listApproved(ImageDtos.ImageQuery query, PageQuery pageQuery) {
@@ -384,6 +420,18 @@ public class ImageService {
             || ImageStatus.REJECTED.name().equals(asset.getStatus())) throw new ServiceException("图片当前不可访问");
         return storage.accessUrl(asset.getStorageKey(), asset.getContentType(), thumbnail)
             .orElse(contentUrl(imageId, thumbnail));
+    }
+
+    public byte[] preview(long imageId) {
+        accessUrl(imageId, false);
+        ImageAsset asset = requireAsset(imageId);
+        try (ImageStorage.LocalFile file = storage.open(asset.getStorageKey());
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            ImageIO.write(SscdFeatureExtractor.readOriented(file.path(), 640), "jpeg", output);
+            return output.toByteArray();
+        } catch (Exception exception) {
+            throw new ServiceException("图片预览生成失败: " + exception.getMessage());
+        }
     }
 
     public void delete(long imageId) {
@@ -724,7 +772,7 @@ public class ImageService {
             return new ImageDtos.ImageView(
                 asset.getId(), asset.getBatchId(), asset.getCategoryId(),
                 categoryNames.getOrDefault(asset.getCategoryId(), "未分类"),
-                asset.getOriginalName(), asset.getDisplayName(),
+                asset.getOriginalName(), asset.getDisplayName(), InfringementService.aiListingKeywords(infringement),
                 asset.getContentType(), asset.getFileSize(), asset.getWidth(), asset.getHeight(), asset.getAspectRatio(),
                 asset.getStatus(), asset.getDuplicateFlag(),
                 duplicate == null ? null : duplicate.getId(), duplicate == null ? null : duplicate.getDisplayName(),
@@ -740,6 +788,7 @@ public class ImageService {
                 detectionSucceeded ? infringement.getRiskReason() : null,
                 detectionSucceeded ? InfringementRiskRules.cases(infringement.getCaseNumbersJson()) : List.of(),
                 infringement == null ? null : infringement.getErrorMessage(),
+                asset.getRenderUseCount(),
                 asset.getCreateTime(), uploaders.getOrDefault(asset.getCreateBy(), "未知用户"),
                 tags.subjects(),
                 tags.scenes(),

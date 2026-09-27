@@ -26,6 +26,7 @@ import org.mockito.MockedStatic;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -39,6 +40,18 @@ import static org.mockito.Mockito.when;
 
 @Tag("local")
 class InfringementServiceTest {
+    @Test void listingKeywordsUseOnlySuccessfulAiDetection() {
+        InfringementScanItem result = new InfringementScanItem();
+        result.setStatus("SUCCESS");
+        result.setImageDescription("  Autumn wall art  ");
+        assertEquals("Autumn wall art", InfringementService.aiListingKeywords(result));
+        result.setStatus("FAILED");
+        assertNull(InfringementService.aiListingKeywords(result));
+        result.setStatus("SUCCESS");
+        result.setImageDescription("(15).png");
+        assertNull(InfringementService.aiListingKeywords(result));
+    }
+
     @Test void libraryTagsPreserveOriginalEnglishArraysWithoutTruncationOrTranslation() {
         var tags = InfringementService.imageVisualTags("{\"subjects\":[\"Lion\"],\"scenes\":[\"Savanna\"],\"themes\":[\"Wildlife\"],\"visualStyles\":[\"Watercolor\"],\"colors\":[\"Red\",\"Blue\"]}");
         assertEquals(List.of("Lion"), tags.subjects());

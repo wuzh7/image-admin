@@ -115,6 +115,24 @@ public class ImageController {
         return R.ok(imageService.getBatch(id));
     }
 
+    @SaCheckPermission("image:dedup:query")
+    @GetMapping("/image/batches/{id}/summary")
+    public R<ImageDtos.BatchSummary> batchSummary(@PathVariable long id) {
+        return R.ok(imageService.getBatchSummary(id));
+    }
+
+    @SaCheckPermission("image:dedup:query")
+    @GetMapping("/image/batches/{id}/review-images")
+    public R<PageResult<ImageDtos.ImageView>> reviewImages(@PathVariable long id, PageQuery pageQuery) {
+        return R.ok(imageService.listReviewImages(id, pageQuery));
+    }
+
+    @SaCheckPermission("image:dedup:query")
+    @GetMapping("/image/batches/{id}/failed-images")
+    public R<PageResult<ImageDtos.ImageView>> failedImages(@PathVariable long id, PageQuery pageQuery) {
+        return R.ok(imageService.listFailedImages(id, pageQuery));
+    }
+
     @Log(title = "图片人工确认", businessType = BusinessType.UPDATE)
     @SaCheckPermission("image:dedup:confirm")
     @PostMapping("/image/batches/{id}/confirm")
@@ -172,6 +190,13 @@ public class ImageController {
             .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
                 .filename(content.filename(), StandardCharsets.UTF_8).build().toString())
             .body(body);
+    }
+
+    @SaCheckPermission("image:dedup:query")
+    @GetMapping("/images/{id}/preview")
+    public ResponseEntity<byte[]> preview(@PathVariable long id) {
+        return ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG)
+            .cacheControl(CacheControl.noStore()).body(imageService.preview(id));
     }
 
     @Log(title = "正式图库删除", businessType = BusinessType.DELETE)

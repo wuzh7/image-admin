@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS img_asset (
     feature_version       VARCHAR(64)     DEFAULT NULL COMMENT '特征版本',
     infringement_scan_item_id BIGINT      DEFAULT NULL COMMENT '当前侵权检测明细ID',
     error_message         VARCHAR(2000)   DEFAULT NULL COMMENT '处理错误',
+    render_use_count      INT             NOT NULL DEFAULT 0 COMMENT '成功渲染成品次数',
     approved_at           DATETIME        DEFAULT NULL COMMENT '正式入库时间',
     deleted_at            DATETIME        DEFAULT NULL COMMENT '文件待清理时间起点',
     del_flag              CHAR(1)         NOT NULL DEFAULT '0' COMMENT '逻辑删除（0存在 1删除）',
@@ -100,6 +101,17 @@ CREATE TABLE IF NOT EXISTS img_asset (
     KEY idx_img_asset_library (status, del_flag, approved_at, id),
     KEY idx_img_asset_cleanup (deleted_at)
 ) ENGINE=InnoDB COMMENT='图片资源及去重结果';
+
+SET @render_use_count_sql = (
+    SELECT IF(COUNT(*) = 0,
+        'ALTER TABLE img_asset ADD COLUMN render_use_count INT NOT NULL DEFAULT 0',
+        'SELECT 1')
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE() AND table_name = 'img_asset' AND column_name = 'render_use_count'
+);
+PREPARE render_use_count_stmt FROM @render_use_count_sql;
+EXECUTE render_use_count_stmt;
+DEALLOCATE PREPARE render_use_count_stmt;
 
 CREATE TABLE IF NOT EXISTS infringement_scan_task (
     id                    BIGINT          NOT NULL COMMENT '任务ID',
@@ -445,7 +457,7 @@ PREPARE add_asset_owner_index_stmt FROM @add_asset_owner_index;
 EXECUTE add_asset_owner_index_stmt;
 DEALLOCATE PREPARE add_asset_owner_index_stmt;
 
--- 图片管理采用与系统管理一致的目录 + 子页面结构；旧图片去重菜单原地升级，避免遗留重复入口。
+-- 图片管理采用目录 + 子页面结构，旧图片去重菜单原地升级。
 INSERT INTO sys_menu VALUES
 (1980000000000000001, '图片管理', 0, 2, 'image', '', '', 'N', 'Y', 'M', '0', '0', '', 'picture', '', '', 1761000000000000103, 1761100000000000001, SYSDATE(), NULL, NULL, '图片上传、进度与人工复核')
 ON DUPLICATE KEY UPDATE menu_name = VALUES(menu_name), parent_id = VALUES(parent_id), order_num = VALUES(order_num),
@@ -474,7 +486,10 @@ ON DUPLICATE KEY UPDATE menu_name = VALUES(menu_name), parent_id = VALUES(parent
     perms = VALUES(perms), icon = VALUES(icon), remark = VALUES(remark);
 
 -- 自助注册用户默认使用图片用户角色；可操作工作台、上传与人工复核、正式图库，不授予删除和类目维护。
-INSERT INTO sys_role VALUES
+INSERT INTO sys_role
+(role_id, role_name, role_key, role_sort, data_scope, menu_check_strictly, dept_check_strictly,
+ status, del_flag, create_dept, create_by, create_time, update_by, update_time, remark)
+VALUES
 (1980000000000000201, '图片用户', 'image_user', 10, '5', 1, 1, '0', '0', 1761000000000000103, 1761100000000000001, SYSDATE(), NULL, NULL, '自助注册用户默认角色')
 ON DUPLICATE KEY UPDATE role_name = VALUES(role_name), role_key = VALUES(role_key), role_sort = VALUES(role_sort),
     data_scope = VALUES(data_scope), status = VALUES(status), del_flag = VALUES(del_flag), remark = VALUES(remark);
@@ -526,6 +541,12 @@ UPDATE sys_user
 SET nick_name = '管理员'
 WHERE user_name = 'admin'
   AND nick_name = '疯狂的狮子Li';
+
+-- 超级管理员固定为 admin，且不隶属部门；部门管理员使用各部门自己的普通角色。
+UPDATE sys_user SET dept_id = NULL WHERE user_id = 1761100000000000001 AND user_name = 'admin';
+DELETE FROM sys_user_role WHERE role_id = 1761300000000000001 AND user_id <> 1761100000000000001;
+INSERT IGNORE INTO sys_user_role (user_id, role_id) VALUES (1761100000000000001, 1761300000000000001);
+DELETE FROM sys_dept_role WHERE role_id = 1761300000000000001;
 
 -- 精简系统功能，仅保留用户、角色、菜单及其必要按钮权限；图片去重使用上方独立ID。
 DELETE FROM sys_role_menu

@@ -24,6 +24,7 @@ export interface ImageView {
   categoryName: string;
   originalName: string;
   displayName: string;
+  infringementDescriptionKeywords?: string;
   contentType: string;
   fileSize: number;
   width: number;
@@ -48,6 +49,7 @@ export interface ImageView {
   infringementRiskReason?: string;
   infringementCaseNumbers?: string[];
   infringementErrorMessage?: string;
+  renderUseCount: number;
   createTime?: string;
   uploaderName: string;
   subjects: string[];

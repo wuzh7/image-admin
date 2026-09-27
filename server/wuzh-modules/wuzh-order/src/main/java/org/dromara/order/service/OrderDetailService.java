@@ -16,6 +16,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +30,8 @@ import java.util.stream.Collectors;
 public class OrderDetailService {
 
     private static final int MAX_DETAILS_PER_REQUEST = 1000;
+    private static final DateTimeFormatter PARENT_ORDER_TIME_FORMAT = DateTimeFormatter
+        .ofPattern("uuuu-MM-dd HH:mm:ss").withResolverStyle(ResolverStyle.STRICT);
 
     private final OrderDetailMapper orderDetailMapper;
     private final OrderStoreCatalog storeCatalog;
@@ -87,13 +93,13 @@ public class OrderDetailService {
     }
 
     public PageResult<OrderDetailDtos.DetailView> queryPage(OrderDetailDtos.Query query, PageQuery pageQuery) {
-        Page<OrderDetail> page = orderDetailMapper.selectPage(pageQuery.build(), buildQuery(query));
         Map<String, OrderStoreCatalog.StoreInfo> stores = storeCatalog.read();
+        Page<OrderDetail> page = orderDetailMapper.selectPage(pageQuery.build(), buildQuery(query, stores));
         return PageResult.build(page.getRecords().stream().map(detail -> toView(detail, stores)).toList(), page.getTotal());
     }
 
     public List<OrderDetailDtos.ExportRow> queryExport(OrderDetailDtos.Query query) {
-        return orderDetailMapper.selectList(buildQuery(query)).stream().map(this::toExportRow).toList();
+        return orderDetailMapper.selectList(buildQuery(query, storeCatalog.read())).stream().map(this::toExportRow).toList();
     }
 
     public OrderDetailDtos.DetailView queryById(long id) {
@@ -133,12 +139,25 @@ public class OrderDetailService {
         }
     }
 
-    private QueryWrapper<OrderDetail> buildQuery(OrderDetailDtos.Query query) {
+    private QueryWrapper<OrderDetail> buildQuery(OrderDetailDtos.Query query,
+                                                 Map<String, OrderStoreCatalog.StoreInfo> stores) {
         OrderDetailDtos.Query safeQuery = query == null ? new OrderDetailDtos.Query() : query;
+        boolean filtersStoreRemark = hasText(safeQuery.getStoreRemark());
+        List<String> matchingStoreIds = filtersStoreRemark ? stores.entrySet().stream()
+            .filter(entry -> entry.getValue() != null && hasText(entry.getValue().remarks())
+                && entry.getValue().remarks().contains(safeQuery.getStoreRemark().trim()))
+            .map(Map.Entry::getKey)
+            .toList() : List.of();
         return new QueryWrapper<OrderDetail>()
             .like(hasText(safeQuery.getParentOrderSn()), "parent_order_sn", safeQuery.getParentOrderSn())
+            .ge(safeQuery.getBeginParentOrderTime() != null, "parent_order_time", safeQuery.getBeginParentOrderTime())
+            .le(safeQuery.getEndParentOrderTime() != null, "parent_order_time", safeQuery.getEndParentOrderTime())
             .like(hasText(safeQuery.getOrderSn()), "order_sn", safeQuery.getOrderSn())
             .eq(hasText(safeQuery.getFulfillmentMallId()), "fulfillment_mall_id", safeQuery.getFulfillmentMallId())
+            .like(hasText(safeQuery.getCustomizedProducts()), "customized_products",
+                safeQuery.getCustomizedProducts())
+            .in(filtersStoreRemark && !matchingStoreIds.isEmpty(), "fulfillment_mall_id", matchingStoreIds)
+            .apply(filtersStoreRemark && matchingStoreIds.isEmpty(), "1 = 0")
             .like(hasText(safeQuery.getSendWarehouseName()), "send_warehouse_name", safeQuery.getSendWarehouseName())
             .like(hasText(safeQuery.getShippingCompanyName()), "shipping_company_name",
                 safeQuery.getShippingCompanyName())
@@ -199,9 +218,12 @@ public class OrderDetailService {
     }
 
     private OrderDetailDtos.DetailView toView(OrderDetail detail, Map<String, OrderStoreCatalog.StoreInfo> stores) {
-        OrderStoreCatalog.StoreInfo store = stores.get(detail.getFulfillmentMallId());
+        OrderStoreCatalog.StoreInfo store = detail.getFulfillmentMallId() == null
+            ? null : stores.get(detail.getFulfillmentMallId());
         return new OrderDetailDtos.DetailView(
-            detail.getId(), detail.getParentOrderSn(), detail.getFulfillmentMallId(),
+            detail.getId(), detail.getParentOrderSn(),
+            detail.getParentOrderTime() == null ? null : PARENT_ORDER_TIME_FORMAT.format(detail.getParentOrderTime()),
+            detail.getFulfillmentMallId(),
             store == null ? null : store.name(), store == null ? null : store.remarks(),
             detail.getEstimatedAmount(), detail.getShippingSettleAmount(), detail.getSalesSettleAmount(),
             detail.getSiteName(), detail.getCustomizedProducts(), detail.getSendWarehouseName(),
@@ -237,6 +259,7 @@ public class OrderDetailService {
             throw new ServiceException(path + "不能为空");
         }
         requireText(request.parentOrderSn(), 64, path + ".parentOrderSn");
+        parseParentOrderTime(request.parentOrderTimeStr(), path + ".parentOrderTimeStr");
         requireMaxLength(request.sendWarehouseName(), 128, path + ".sendWarehouseName");
         requireMaxLength(request.fulfillmentMallId(), 64, path + ".fulfillmentMallId");
         requireMaxLength(request.shippingCompanyName(), 128, path + ".shippingCompanyName");
@@ -303,6 +326,7 @@ public class OrderDetailService {
     private OrderDetail toEntity(OrderDetailDtos.ParentOrderRequest request, OrderDetailDtos.GoodsRequest goods) {
         OrderDetail detail = new OrderDetail();
         detail.setParentOrderSn(request.parentOrderSn());
+        detail.setParentOrderTime(parseParentOrderTime(request.parentOrderTimeStr(), "parentOrderTimeStr"));
         detail.setFulfillmentMallId(request.fulfillmentMallId());
         detail.setEstimatedAmount(parseAmount(request.estimatedAmount(), "estimatedAmount"));
         detail.setShippingSettleAmount(parseAmount(request.shippingSettleAmount(), "shippingSettleAmount"));
@@ -317,6 +341,15 @@ public class OrderDetailService {
         detail.setSpec(goods.spec());
         detail.setThumbUrl(goods.thumbUrl());
         return detail;
+    }
+
+    private LocalDateTime parseParentOrderTime(String value, String path) {
+        if (!hasText(value)) return null;
+        try {
+            return LocalDateTime.parse(value.trim(), PARENT_ORDER_TIME_FORMAT);
+        } catch (DateTimeParseException e) {
+            throw new ServiceException(path + "格式应为 yyyy-MM-dd HH:mm:ss");
+        }
     }
 
     private BigDecimal parseAmount(Object value, String path) {

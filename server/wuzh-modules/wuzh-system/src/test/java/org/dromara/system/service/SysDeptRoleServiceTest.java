@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import org.dromara.common.core.constant.SystemConstants;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
@@ -22,6 +23,15 @@ class SysDeptRoleServiceTest {
     private SysDeptRoleMapper deptRoleMapper;
     @Mock
     private SysRoleMapper roleMapper;
+
+    @Test
+    void rejectsSuperAdminAsDepartmentRole() {
+        SysDeptRoleService service = new SysDeptRoleService(deptRoleMapper, roleMapper);
+        assertThatThrownBy(() -> service.validate(10L, List.of(SystemConstants.SUPER_ADMIN_ROLE_ID)))
+            .isInstanceOf(ServiceException.class);
+        assertThatThrownBy(() -> service.replace(10L, List.of(SystemConstants.SUPER_ADMIN_ROLE_ID)))
+            .isInstanceOf(ServiceException.class);
+    }
 
     @Test
     void rejectsRolesOutsideTheUsersDepartment() {

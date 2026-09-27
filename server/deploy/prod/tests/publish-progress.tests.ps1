@@ -36,6 +36,10 @@ foreach ($name in @('build-images.ps1', 'package-release.ps1', 'deploy.sh')) {
 }
 if ($build.Contains('pnpm lint') -or $build.Contains('docker run')) { throw 'Old release-time build pipeline is still present.' }
 if (-not $build.Contains('--progress=plain')) { throw 'Plain Docker progress is missing.' }
+if ([regex]::Matches($build, "'--platform', 'linux/amd64'").Count -ne 3) { throw 'Production images must target linux/amd64.' }
+if ([regex]::Matches($build, "--format '{{.Architecture}}'").Count -ne 3) { throw 'Uploaded images must be checked for amd64 before activation.' }
+if ([regex]::Matches($build, 'image-admin-(backend|frontend|render-worker):rollback').Count -ne 3) { throw 'Exactly one rollback image per service must be kept.' }
+if ($build.Contains('docker image prune') -or $build.Contains('docker system prune')) { throw 'Release cleanup must stay scoped to old application images.' }
 $cmd = [IO.File]::ReadAllBytes((Join-Path $prodRoot 'publish-prod.cmd'))
 if ($cmd.Length -ge 3 -and $cmd[0] -eq 239 -and $cmd[1] -eq 187 -and $cmd[2] -eq 191) { throw 'CMD must not have a UTF-8 BOM.' }
 Write-Host 'PASS: syntax, live output, silent-stage heartbeat, failure propagation, job cleanup, and CMD encoding.'

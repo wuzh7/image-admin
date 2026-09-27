@@ -17,8 +17,13 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.MutablePropertyValues;
+import org.springframework.format.support.DefaultFormattingConversionService;
+import org.springframework.web.bind.WebDataBinder;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -26,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -36,6 +42,79 @@ class OrderDetailServiceTest {
 
     @Mock
     private OrderDetailMapper orderDetailMapper;
+
+    @Test
+    void filtersByCustomizedProductsAndStoreRemark() {
+        OrderStoreCatalog storeCatalog = mock(OrderStoreCatalog.class);
+        when(storeCatalog.read()).thenReturn(Map.of(
+            "MALL-1", new OrderStoreCatalog.StoreInfo("一号店", "重点客户"),
+            "MALL-2", new OrderStoreCatalog.StoreInfo("二号店", "普通客户")
+        ));
+        when(orderDetailMapper.selectList(any())).thenReturn(List.of());
+        OrderDetailDtos.Query query = new OrderDetailDtos.Query();
+        query.setCustomizedProducts("是");
+        query.setStoreRemark("重点");
+
+        new OrderDetailService(orderDetailMapper, storeCatalog).queryExport(query);
+
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<OrderDetail>> wrapper =
+            ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.query.QueryWrapper.class);
+        verify(orderDetailMapper).selectList(wrapper.capture());
+        assertThat(wrapper.getValue().getCustomSqlSegment())
+            .contains("customized_products", "fulfillment_mall_id");
+        assertThat(wrapper.getValue().getParamNameValuePairs().values())
+            .contains("%是%", "MALL-1")
+            .doesNotContain("MALL-2");
+    }
+
+    @Test
+    void filtersExportByParentOrderCreationTime() {
+        OrderStoreCatalog storeCatalog = mock(OrderStoreCatalog.class);
+        when(storeCatalog.read()).thenReturn(Map.of());
+        when(orderDetailMapper.selectList(any())).thenReturn(List.of());
+        OrderDetailDtos.Query query = new OrderDetailDtos.Query();
+        query.setBeginParentOrderTime(LocalDateTime.parse("2026-09-23T00:00:00"));
+        query.setEndParentOrderTime(LocalDateTime.parse("2026-09-23T23:59:59"));
+
+        new OrderDetailService(orderDetailMapper, storeCatalog).queryExport(query);
+
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<OrderDetail>> wrapper =
+            ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.query.QueryWrapper.class);
+        verify(orderDetailMapper).selectList(wrapper.capture());
+        assertThat(wrapper.getValue().getCustomSqlSegment()).contains("parent_order_time", ">=", "<=");
+        assertThat(wrapper.getValue().getParamNameValuePairs().values())
+            .contains(query.getBeginParentOrderTime(), query.getEndParentOrderTime());
+    }
+
+    @Test
+    void bindsParentOrderTimeRangeFromRequestParameters() {
+        OrderDetailDtos.Query query = new OrderDetailDtos.Query();
+        WebDataBinder binder = new WebDataBinder(query);
+        binder.setConversionService(new DefaultFormattingConversionService());
+
+        binder.bind(new MutablePropertyValues(Map.of(
+            "beginParentOrderTime", "2026-09-23 00:00:00",
+            "endParentOrderTime", "2026-09-23 23:59:59"
+        )));
+
+        assertThat(binder.getBindingResult().hasErrors()).isFalse();
+        assertThat(query.getBeginParentOrderTime()).isEqualTo(LocalDateTime.parse("2026-09-23T00:00:00"));
+        assertThat(query.getEndParentOrderTime()).isEqualTo(LocalDateTime.parse("2026-09-23T23:59:59"));
+    }
+
+    @Test
+    void returnsParentOrderCreationTimeForDetailView() {
+        OrderStoreCatalog storeCatalog = mock(OrderStoreCatalog.class);
+        when(storeCatalog.read()).thenReturn(Map.of());
+        OrderDetail detail = new OrderDetail();
+        detail.setId(1L);
+        detail.setParentOrderTime(LocalDateTime.parse("2026-09-23T14:30:00"));
+        when(orderDetailMapper.selectById(1L)).thenReturn(detail);
+
+        OrderDetailDtos.DetailView view = new OrderDetailService(orderDetailMapper, storeCatalog).queryById(1L);
+
+        assertThat(view.parentOrderTimeStr()).isEqualTo("2026-09-23 14:30:00");
+    }
 
     @Test
     void customizedProductsAllowsNullToClearExistingValue() throws Exception {
@@ -53,6 +132,7 @@ class OrderDetailServiceTest {
         List<OrderDetailDtos.ParentOrderRequest> requests = new ObjectMapper().readValue("""
             [{
               "parentOrderSn":"PARENT-1",
+              "parentOrderTimeStr":"2026-09-23 14:30:00",
               "shippingSettleAmount":"$2.22",
               "siteName":"US",
               "relatedGoodsInfoForAggregation":[{
@@ -84,6 +164,8 @@ class OrderDetailServiceTest {
             .containsExactly("子订单一", "子订单二");
         assertThat(inserted.getAllValues()).extracting(OrderDetail::getSalesSettleAmount)
             .containsExactly(new java.math.BigDecimal("10.51"), new java.math.BigDecimal("11.52"));
+        assertThat(inserted.getAllValues()).extracting(OrderDetail::getParentOrderTime)
+            .containsExactly(LocalDateTime.parse("2026-09-23T14:30:00"), LocalDateTime.parse("2026-09-23T14:30:00"));
     }
 
     @Test
@@ -142,6 +224,18 @@ class OrderDetailServiceTest {
         )))
             .isInstanceOf(ServiceException.class)
             .hasMessage("orders[0].estimatedAmount格式错误");
+    }
+
+    @Test
+    void rejectsInvalidParentOrderTimeBeforeWriting() {
+        OrderDetailDtos.ParentOrderRequest request = new OrderDetailDtos.ParentOrderRequest(
+            "PARENT-1", "2026-02-30 12:00:00", "Factory", "Mall-1", "$1.00", "Carrier", null,
+            List.of(goods("CHILD-1", "PARENT-1", 1, null)), null);
+
+        assertThatThrownBy(() -> new OrderDetailService(orderDetailMapper).importBatch(List.of(request)))
+            .isInstanceOf(ServiceException.class)
+            .hasMessage("orders[0].parentOrderTimeStr格式应为 yyyy-MM-dd HH:mm:ss");
+        verifyNoInteractions(orderDetailMapper);
     }
 
     @Test

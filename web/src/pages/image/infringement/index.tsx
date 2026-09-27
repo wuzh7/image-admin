@@ -1,10 +1,8 @@
 import { CodeOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
 import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
-import { Alert, Button, Descriptions, Drawer, Image, message, Progress, Space, Spin, Tag, Typography } from 'antd';
+import { Alert, Button, Descriptions, Drawer, message, Progress, Space, Spin, Tag, Typography } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import {
-  getImageAccess,
-  getImageContent,
   getInfringementCallResponse,
   listInfringementItems,
   listInfringementCallLogs,
@@ -14,6 +12,7 @@ import {
 import type { InfringementCallLogView, InfringementItemView, InfringementTaskSummary } from '@/api/image/types';
 import { useUserStore } from '@/stores/userStore';
 import { hasPermi } from '@/utils/permission';
+import AuthorizedImage from '@/components/common/AuthorizedImage';
 import { toPageQuery, toTableData } from '@/utils/wuzh';
 import { usedPromptNames } from './usedPrompts';
 
@@ -122,34 +121,6 @@ const itemStatus = {
   SUCCESS: { color: 'success', text: '检测完成' },
   FAILED: { color: 'error', text: '检测失败' }
 } as const;
-
-function AuthorizedThumbnail({ row, size = 64 }: { row: InfringementItemView; size?: number }) {
-  const [source, setSource] = useState<string>();
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    let active = true;
-    let objectUrl: string | undefined;
-    setFailed(false);
-    void getImageAccess(row.thumbnailUrl).then(async response => {
-      if (!active) return;
-      if (response.data.startsWith('https://')) setSource(response.data);
-      else {
-        const blob = await getImageContent(response.data);
-        if (!active) return;
-        objectUrl = URL.createObjectURL(blob);
-        setSource(objectUrl);
-      }
-    }).catch(() => { if (active) setFailed(true); });
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [row.thumbnailUrl]);
-  if (failed) return <Text type="secondary">预览失败</Text>;
-  return source
-    ? <Image src={source} alt={row.imageDescription || row.imageName} width={size} height={size} style={{ objectFit: 'contain' }} />
-    : <Text type="secondary">加载中</Text>;
-}
 
 const riskTag = (riskLevel?: InfringementItemView['riskLevel']) => {
   if (riskLevel === 'HIGH') return <Tag color="error">高风险</Tag>;
@@ -262,7 +233,8 @@ export default function ImageInfringementPage() {
   ];
 
   const itemColumns: ProColumns<InfringementItemView>[] = [
-    { title: '图片', dataIndex: 'thumbnailUrl', width: 88, search: false, render: (_, row) => <AuthorizedThumbnail row={row} /> },
+    { title: '图片', dataIndex: 'thumbnailUrl', width: 88, search: false, render: (_, row) =>
+      <AuthorizedImage url={row.thumbnailUrl} alt={row.imageDescription || row.imageName} width={64} height={64} /> },
     { title: '图片名称', dataIndex: 'imageName', width: 180, search: false, ellipsis: true },
     { title: '图片ID', dataIndex: 'imageId', width: 190, search: false, copyable: true },
     {
@@ -412,7 +384,7 @@ export default function ImageInfringementPage() {
       >
         {selectedItem && (
           <Space direction="vertical" size={20} style={{ width: '100%' }}>
-            <AuthorizedThumbnail row={selectedItem} size={260} />
+            <AuthorizedImage url={selectedItem.thumbnailUrl} alt={selectedItem.imageDescription || selectedItem.imageName} width={260} height={260} />
             <Descriptions bordered column={1} size="small">
               <Descriptions.Item label="检测状态"><Tag color={itemStatus[selectedItem.status].color}>{itemStatus[selectedItem.status].text}</Tag></Descriptions.Item>
               <Descriptions.Item label="风险等级">{riskTag(selectedItem.riskLevel)}</Descriptions.Item>

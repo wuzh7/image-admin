@@ -45,6 +45,7 @@ public class ImageAsset extends BaseEntity {
     private Long replacesImageId;
     private String featureVersion;
     private String errorMessage;
+    private Integer renderUseCount;
     private LocalDateTime approvedAt;
     private LocalDateTime deletedAt;
     @TableLogic

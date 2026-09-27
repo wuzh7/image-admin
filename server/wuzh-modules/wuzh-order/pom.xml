@@ -15,6 +15,10 @@
     <dependencies>
         <dependency>
             <groupId>org.dromara</groupId>
+            <artifactId>wuzh-image</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.dromara</groupId>
             <artifactId>wuzh-common-core</artifactId>
         </dependency>
         <dependency>

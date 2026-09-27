@@ -9,6 +9,7 @@ import lombok.EqualsAndHashCode;
 import org.dromara.common.mybatis.core.domain.BaseEntity;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -18,6 +19,7 @@ public class OrderDetail extends BaseEntity {
     @TableId
     private Long id;
     private String parentOrderSn;
+    private LocalDateTime parentOrderTime;
     private String fulfillmentMallId;
     private BigDecimal estimatedAmount;
     private BigDecimal shippingSettleAmount;

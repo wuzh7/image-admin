@@ -9,7 +9,7 @@ import {
 import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { history } from '@umijs/max';
 import { useBoolean } from 'ahooks';
-import { Button, Form, Input, message, Modal, Popconfirm, Switch } from 'antd';
+import { Button, Form, Input, message, Modal, Popconfirm, Switch, Tag } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import type { RoleVO } from '@/api/system/role/types';
 import type { DeptTreeOption } from '@/api/system/dept/types';
@@ -43,6 +43,7 @@ const defaultForm: UserForm = {
   status: '0',
   roleIds: []
 };
+const superAdminUserId = '1761100000000000001';
 
 export default function SystemUserPage() {
   const actionRef = useRef<ActionType | undefined>(undefined);
@@ -212,13 +213,17 @@ export default function SystemUserPage() {
       title: '用户名称',
       dataIndex: 'nickName',
       render: (_, row) => (
-        <Button type="link" size="small" onClick={() => openView(row)}>
-          {row.nickName || row.userName}
-        </Button>
+        <>
+          <Button type="link" size="small" onClick={() => openView(row)}>
+            {row.nickName || row.userName}
+          </Button>
+          {String(row.userId) === superAdminUserId && <Tag color="gold">超级管理员</Tag>}
+        </>
       ),
       width: 180
     },
-    { title: '所属部门', dataIndex: 'deptName', width: 150, search: false, ellipsis: true },
+    { title: '所属部门', dataIndex: 'deptName', width: 150, search: false, ellipsis: true,
+      render: (_, row) => String(row.userId) === superAdminUserId ? '-' : row.deptName || '-' },
     {
       title: '状态',
       dataIndex: 'status',
@@ -256,7 +261,7 @@ export default function SystemUserPage() {
       width: 160,
       fixed: 'right',
       render: (_, row) => {
-        if (row.userId === '1761100000000000001') return null;
+        if (String(row.userId) === superAdminUserId) return null;
         return (
           <RowActions
             actions={[

@@ -4,6 +4,7 @@ SET NAMES utf8mb4;
 CREATE TABLE IF NOT EXISTS ord_order_detail (
     id                       BIGINT          NOT NULL COMMENT '订单明细ID',
     parent_order_sn          VARCHAR(64)     NOT NULL COMMENT '主订单号',
+    parent_order_time        DATETIME        DEFAULT NULL COMMENT '订单创建时间',
     fulfillment_mall_id      VARCHAR(64)     DEFAULT NULL COMMENT '店铺ID',
     estimated_amount         DECIMAL(12,2)   DEFAULT NULL COMMENT '运费',
     shipping_settle_amount   DECIMAL(12,2)   DEFAULT NULL COMMENT '订单运费预计冲回',
@@ -40,6 +41,17 @@ SET @add_shipping_settle_amount = IF(
     'ALTER TABLE ord_order_detail ADD COLUMN shipping_settle_amount DECIMAL(12,2) DEFAULT NULL COMMENT ''订单运费预计冲回'' AFTER estimated_amount'
 );
 PREPARE stmt FROM @add_shipping_settle_amount;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @add_parent_order_time = IF(
+    EXISTS(SELECT 1 FROM information_schema.columns
+           WHERE table_schema = DATABASE() AND table_name = 'ord_order_detail'
+             AND column_name = 'parent_order_time'),
+    'DO 0',
+    'ALTER TABLE ord_order_detail ADD COLUMN parent_order_time DATETIME DEFAULT NULL COMMENT ''订单创建时间'' AFTER parent_order_sn'
+);
+PREPARE stmt FROM @add_parent_order_time;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 

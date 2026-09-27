@@ -34,7 +34,9 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 用户信息
@@ -80,8 +82,14 @@ public class SysUserController extends BaseController {
             return R.fail("没有权限访问用户数据!");
         }
         userInfoVo.setUser(user);
-        userInfoVo.setPermissions(loginUser.getMenuPermission());
-        userInfoVo.setRoles(loginUser.getRolePermission());
+        Set<String> permissions = new HashSet<>(loginUser.getMenuPermission());
+        Set<String> roles = new HashSet<>(loginUser.getRolePermission());
+        if (!LoginHelper.isSuperAdmin(loginUser.getUserId())) {
+            permissions.remove("*:*:*");
+            roles.remove(SystemConstants.SUPER_ADMIN_ROLE_KEY);
+        }
+        userInfoVo.setPermissions(permissions);
+        userInfoVo.setRoles(roles);
         return R.ok(userInfoVo);
     }
 

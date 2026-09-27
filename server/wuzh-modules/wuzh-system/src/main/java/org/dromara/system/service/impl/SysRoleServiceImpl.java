@@ -472,6 +472,8 @@ public class SysRoleServiceImpl implements ISysRoleService, RoleService {
      */
     @Override
     public int deleteAuthUser(SysUserRole userRole) {
+        if (SystemConstants.SUPER_ADMIN_ROLE_ID.equals(userRole.getRoleId()))
+            throw new ServiceException("不允许修改超级管理员角色");
         if (LoginHelper.getUserId().equals(userRole.getUserId())) {
             throw new ServiceException("不允许修改当前用户角色!");
         }
@@ -494,6 +496,8 @@ public class SysRoleServiceImpl implements ISysRoleService, RoleService {
      */
     @Override
     public int deleteAuthUsers(Long roleId, Collection<Long> userIds) {
+        if (SystemConstants.SUPER_ADMIN_ROLE_ID.equals(roleId))
+            throw new ServiceException("不允许修改超级管理员角色");
         if (userIds.contains(LoginHelper.getUserId())) {
             throw new ServiceException("不允许修改当前用户角色!");
         }
@@ -516,6 +520,8 @@ public class SysRoleServiceImpl implements ISysRoleService, RoleService {
      */
     @Override
     public int insertAuthUsers(Long roleId, Collection<Long> userIds) {
+        if (SystemConstants.SUPER_ADMIN_ROLE_ID.equals(roleId))
+            throw new ServiceException("超级管理员角色只能由 admin 持有");
         // 新增用户与角色管理
         int rows = 1;
         if (userIds.contains(LoginHelper.getUserId())) {

@@ -191,6 +191,13 @@ public class InfringementService {
         return result;
     }
 
+    public static String aiListingKeywords(InfringementScanItem result) {
+        if (result == null || !SUCCESS.equals(result.getStatus())) return null;
+        String keywords = StringUtils.trimToNull(result.getImageDescription());
+        return keywords != null && keywords.matches("(?s).*[A-Za-z].*")
+            && !keywords.matches("(?i).*\\.(jpg|jpeg|png|webp)$") ? keywords : null;
+    }
+
     public InfringementDtos.CallResponseView callResponse(long taskId, long callId) {
         requireTask(taskId);
         InfringementDtos.CallResponseView result = callLogs.selectRawResponse(taskId, callId);

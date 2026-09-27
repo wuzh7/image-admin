@@ -36,6 +36,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.io.ByteArrayInputStream;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.zip.ZipInputStream;
@@ -58,6 +60,34 @@ import static org.mockito.Mockito.when;
 
 @Tags({@Tag("dev"), @Tag("local")})
 class ImageServiceTest {
+
+    @Test
+    void previewReducesLargeStoredImage() throws Exception {
+        Path source = Files.createTempFile("large-preview-", ".png");
+        try {
+            ImageIO.write(new BufferedImage(1600, 1000, BufferedImage.TYPE_INT_RGB), "png", source.toFile());
+            ImageAssetMapper assets = mock(ImageAssetMapper.class);
+            ImageStorage storage = mock(ImageStorage.class);
+            ImageAsset asset = new ImageAsset();
+            asset.setId(7L);
+            asset.setCreateBy(1L);
+            asset.setStatus(ImageStatus.WAIT_REVIEW.name());
+            asset.setStorageKey("review/7.png");
+            when(assets.selectById(7L)).thenReturn(asset);
+            when(storage.accessUrl("review/7.png", null, false)).thenReturn(Optional.of("https://example.test/original"));
+            when(storage.open("review/7.png")).thenReturn(new ImageStorage.LocalFile(source, false));
+            ImageService service = new ImageService(new ImageProperties(), mock(ImageBatchMapper.class), assets,
+                mock(ImageCategoryMapper.class), storage, mock(QdrantVectorStore.class), mock(ImageTaskRunner.class),
+                mock(UserService.class), mock(InfringementService.class), mock(ImageRecordMapper.class));
+            try (MockedStatic<LoginHelper> login = mockStatic(LoginHelper.class)) {
+                login.when(LoginHelper::getUserId).thenReturn(1L);
+                BufferedImage preview = ImageIO.read(new ByteArrayInputStream(service.preview(7L)));
+                assertTrue(Math.max(preview.getWidth(), preview.getHeight()) <= 640);
+            }
+        } finally {
+            Files.deleteIfExists(source);
+        }
+    }
 
     @Test
     void confirmPersistsDecisionWithoutCallingStorageOrQdrant() {
@@ -267,6 +297,67 @@ class ImageServiceTest {
             assertEquals(1, view.images().size());
             assertNull(view.images().getFirst().infringementStatus());
         }
+    }
+
+    @Test
+    void reviewImagesAreLoadedOneServerPageAtATime() {
+        ImageBatchMapper batchMapper = mock(ImageBatchMapper.class);
+        ImageAssetMapper assetMapper = mock(ImageAssetMapper.class);
+        InfringementService infringementService = mock(InfringementService.class);
+        ImageRecordMapper records = mock(ImageRecordMapper.class);
+        ImageService service = new ImageService(new ImageProperties(), batchMapper, assetMapper,
+            mock(ImageCategoryMapper.class), mock(LocalImageStorage.class), mock(QdrantVectorStore.class),
+            mock(ImageTaskRunner.class), mock(UserService.class), infringementService, records);
+        ImageBatch batch = new ImageBatch();
+        batch.setId(51L);
+        batch.setCreateBy(100L);
+        batch.setStatus(BatchStatus.WAIT_REVIEW.name());
+        when(batchMapper.selectById(51L)).thenReturn(batch);
+        ImageAsset image = asset(511L, 51L, new byte[0]);
+        image.setCreateBy(100L);
+        when(assetMapper.selectPage(any(Page.class), any())).thenAnswer(invocation -> {
+            Page<ImageAsset> requested = invocation.getArgument(0);
+            assertEquals(2L, requested.getCurrent());
+            assertEquals(5L, requested.getSize());
+            Page<ImageAsset> result = new Page<>(2, 5);
+            result.setRecords(List.of(image));
+            result.setTotal(12);
+            return result;
+        });
+
+        PageResult<ImageDtos.ImageView> result;
+        try (MockedStatic<LoginHelper> login = loginAs(1L, true)) {
+            result = service.listReviewImages(51L, new PageQuery(5, 2));
+        }
+
+        assertEquals(12, result.getTotal());
+        assertEquals(List.of(511L), result.getRows().stream().map(ImageDtos.ImageView::id).toList());
+        verify(assetMapper, never()).selectList(any());
+    }
+
+    @Test
+    void taskDrawerSummaryDoesNotLoadImageAssets() {
+        ImageBatchMapper batchMapper = mock(ImageBatchMapper.class);
+        ImageAssetMapper assetMapper = mock(ImageAssetMapper.class);
+        UserService userService = mock(UserService.class);
+        ImageService service = new ImageService(new ImageProperties(), batchMapper, assetMapper,
+            mock(ImageCategoryMapper.class), mock(LocalImageStorage.class), mock(QdrantVectorStore.class),
+            mock(ImageTaskRunner.class), userService, mock(InfringementService.class), mock(ImageRecordMapper.class));
+        ImageBatch batch = new ImageBatch();
+        batch.setId(515L);
+        batch.setCreateBy(100L);
+        batch.setStatus(BatchStatus.CHECKING.name());
+        batch.setProcessedCount(0);
+        batch.setDuplicateCount(0);
+        batch.setFailedCount(0);
+        when(batchMapper.selectById(515L)).thenReturn(batch);
+        when(userService.selectListByIds(any())).thenReturn(List.of());
+
+        try (MockedStatic<LoginHelper> login = loginAs(1L, true)) {
+            assertEquals(515L, service.getBatchSummary(515L).id());
+        }
+
+        verify(assetMapper, never()).selectList(any());
     }
 
     @Test

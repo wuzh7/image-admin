@@ -52,6 +52,22 @@ export function getImageBatch(batchId: ImageId) {
   return request<R<BatchView>>({ url: `/image/batches/${batchId}`, method: 'get' });
 }
 
+export function getImageBatchSummary(batchId: ImageId) {
+  return request<R<BatchSummary>>({ url: `/image/batches/${batchId}/summary`, method: 'get' });
+}
+
+export function listImageReviewImages(batchId: ImageId, params: { pageNum: number; pageSize: number }) {
+  return request<R<PageResult<ImageView>>>({
+    url: `/image/batches/${batchId}/review-images`, method: 'get', params
+  });
+}
+
+export function listImageFailedImages(batchId: ImageId, params: { pageNum: number; pageSize: number }) {
+  return request<R<PageResult<ImageView>>>({
+    url: `/image/batches/${batchId}/failed-images`, method: 'get', params
+  });
+}
+
 export function listImageBatches(params: { pageNum: number; pageSize: number; status?: BatchSummary['status']; userName?: string }) {
   return request<R<PageResult<BatchSummary>>>({ url: '/image/batches', method: 'get', params });
 }

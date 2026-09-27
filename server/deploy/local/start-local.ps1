@@ -80,7 +80,7 @@ foreach ($container in @('image-admin-mysql', 'image-admin-redis', 'image-admin-
 
 # 迁移容器只执行一次，完成后由 --rm 自动删除，不会作为第二个 MySQL 常驻。
 Invoke-Compose @('--profile', 'maintenance', 'run', '--rm', 'migrate')
-Invoke-Compose @('up', '--build', '-d', 'backend', 'frontend')
+Invoke-Compose @('up', '--build', '-d', 'backend', 'render-worker', 'frontend')
 
 for ($attempt = 1; $attempt -le 180; $attempt++) {
     $health = & docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' image-admin-frontend 2>$null

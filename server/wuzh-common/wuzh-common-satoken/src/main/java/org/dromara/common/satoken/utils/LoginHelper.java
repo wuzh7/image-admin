@@ -239,7 +239,7 @@ public class LoginHelper {
 
     public static boolean isAdmin() {
         LoginUser user = getLoginUser();
-        return user != null && user.getRolePermission() != null
+        return user != null && isSuperAdmin(user.getUserId()) && user.getRolePermission() != null
             && user.getRolePermission().contains(SystemConstants.SUPER_ADMIN_ROLE_KEY);
     }
 

@@ -2,10 +2,8 @@ import {
   CheckCircleOutlined,
   CheckOutlined,
   CloseOutlined,
-  DeleteOutlined,
   DownloadOutlined,
   InboxOutlined,
-  InfoCircleOutlined,
   ReloadOutlined,
   SearchOutlined
 } from '@ant-design/icons';
@@ -22,7 +20,6 @@ import {
   Drawer,
   Empty,
   Flex,
-  Image,
   Input,
   InputNumber,
   List,
@@ -44,24 +41,22 @@ import {
 } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  getImageAccess,
   getImageStorageMode,
   prepareImageUploads,
   completeImageUploads,
   postImageToOss,
   confirmImageBatch,
   createImageBatch,
-  deleteApprovedImage,
   getApprovedImage,
-  getImageBatch,
-  getImageContent,
+  getImageBatchSummary,
   getImageCategoryOptions,
   getImageHealth,
   listImageAspectRatios,
   listImageBatches,
+  listImageFailedImages,
+  listImageReviewImages,
   listApprovedImages,
   repairImageVectorIndex,
-  resetImageData,
   prepareImageReplacement,
   replaceApprovedImage,
   listImageReplacementLogs,
@@ -70,15 +65,21 @@ import {
   startImageBatch,
   uploadBatchFiles
 } from '@/api/image';
-import type { BatchStatus, BatchSummary, BatchView, HealthView, ImageCategory, ImageId, ImageView, ImageQuery, ImageReplacementLog, InfringementMode, SimilarImageView } from '@/api/image/types';
+import type { BatchStatus, BatchSummary, HealthView, ImageCategory, ImageId, ImageView, ImageQuery, ImageReplacementLog, InfringementMode, SimilarImageView } from '@/api/image/types';
 import { useUserStore } from '@/stores/userStore';
 import { hasPermi, hasRole } from '@/utils/permission';
 import { useTableExport } from '@/hooks/useTableExport';
+import AuthorizedImage from '@/components/common/AuthorizedImage';
+import { isHandledRequestError } from '@/api/request';
+import { createLatestRequestGate } from './requestGate';
+import { createRenderBatch, getRenderBatch, listListingTemplates, listShops, listTemplateGroups, type StoreListingTemplate, type StoreRenderBatch, type StoreShop, type StoreTemplateGroup } from '@/api/store';
+import StoreImage from '../../store/StoreImage';
 
 const currentBatchKey = 'image-dedup-current-batch';
 const maxFilesPerBatch = 1000;
 const uploadPreviewPageSize = 100;
 const reviewCandidatePageSize = 6;
+const reviewPageSize = 5;
 const aspectRatioOrder = ['1:2', '9:16', '2:3', '3:4', '4:5', '1:1', '5:4', '4:3', '3:2', '16:9', '2:1', '其他'];
 const infringementModeText: Record<InfringementMode, string> = {
   RELAY: '中转站',
@@ -89,10 +90,20 @@ const infringementModeText: Record<InfringementMode, string> = {
 };
 
 const isSupportedImageFile = (fileName: string) => /\.(?:jpe?g|png|webp)$/i.test(fileName);
+const shopConfig = (shop: StoreShop): { categoryIds?: ImageId[]; sites?: string[] } => {
+  try { return JSON.parse(shop.configJson || '{}'); } catch { return {}; }
+};
 
 type ImagePageKey = 'upload' | 'tasks' | 'review' | 'library';
 type WorkflowPageKey = Exclude<ImagePageKey, 'library'>;
 type UploadIssue = { name: string; reason: string };
+type ReviewPageState = {
+  rows: ImageView[];
+  total: number;
+  page: number;
+  pageSize: number;
+  loading: boolean;
+};
 
 const pageByPath: Partial<Record<string, { key: Exclude<ImagePageKey, 'upload'>; title: string }>> = {
   '/image/tasks': { key: 'tasks', title: '上传进度' },
@@ -158,62 +169,27 @@ function UploadPreviewCard({
   );
 }
 
-function AuthorizedImage({ url, width = 96, height = 96, alt = '' }: { url?: string; width?: number; height?: number; alt?: string }) {
-  const [source, setSource] = useState<string>();
-  const [failed, setFailed] = useState(false);
-  const [reload, setReload] = useState(0);
-
-  useEffect(() => {
-    let active = true;
-    let objectUrl: string | undefined;
-    if (!url) {
-      setSource(undefined);
-      return;
-    }
-    setSource(undefined);
-    setFailed(false);
-    void getImageAccess(url).then(async response => {
-      if (!active) return;
-      if (response.data.startsWith('https://')) {
-        setSource(response.data);
-      } else {
-        const blob = await getImageContent(response.data);
-        if (!active) return;
-        objectUrl = URL.createObjectURL(blob);
-        setSource(objectUrl);
-      }
-    }).catch(() => { if (active) setFailed(true); });
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [url, reload]);
-
-  if (!url) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="无匹配图" />;
-  if (failed) return <Button size="small" onClick={() => setReload(value => value + 1)}>预览失败，重试</Button>;
-  return source ? <Image src={source} alt={alt} loading="lazy" onError={() => { if (reload < 1) setReload(reload + 1); else setFailed(true); }} width={width} height={height} style={{ objectFit: 'contain' }} /> : <Progress type="circle" size={32} percent={60} showInfo={false} />;
-}
-
-function SimilarImageGrid({ images }: { images: SimilarImageView[] }) {
-  const [page, setPage] = useState(1);
-
-  useEffect(() => setPage(1), [images]);
-
-  if (!images.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有可展示的相似图片" />;
-  const firstIndex = (page - 1) * reviewCandidatePageSize;
-  const visibleImages = images.slice(firstIndex, firstIndex + reviewCandidatePageSize);
+function SimilarImageGrid({ images, threshold }: { images: SimilarImageView[]; threshold: number }) {
+  const visibleImages = images
+    .filter(candidate => Number(candidate.similarity) >= threshold)
+    .slice(0, reviewCandidatePageSize);
+  if (!visibleImages.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有达到阈值的相似图片" />;
   return (
     <>
+      <Flex justify="space-between" align="center" wrap gap={8}>
+        <Typography.Text strong>达到阈值的相似图片（最多 6 张）</Typography.Text>
+        <Tag color="purple">共 {visibleImages.length} 张</Tag>
+      </Flex>
       <div className="image-similar-grid">
         {visibleImages.map((candidate, index) => {
-          const rank = firstIndex + index + 1;
+          const rank = index + 1;
           return (
             <article className="image-similar-card" key={String(candidate.imageId)}>
               <div className="image-similar-card__preview">
                 <AuthorizedImage
                   url={candidate.thumbnailUrl}
-                  width={240}
-                  height={180}
+                  width={112}
+                  height={84}
                   alt={`第${rank}名相似图片：${candidate.name}`}
                 />
               </div>
@@ -230,21 +206,6 @@ function SimilarImageGrid({ images }: { images: SimilarImageView[] }) {
           );
         })}
       </div>
-      {images.length > reviewCandidatePageSize && (
-        <Flex className="image-similar-pagination" justify="space-between" align="center" gap={12} wrap>
-          <Typography.Text type="secondary">
-            第 {firstIndex + 1}-{Math.min(firstIndex + reviewCandidatePageSize, images.length)} 张，共 {images.length} 张
-          </Typography.Text>
-          <Pagination
-            size="small"
-            current={page}
-            pageSize={reviewCandidatePageSize}
-            total={images.length}
-            showSizeChanger={false}
-            onChange={setPage}
-          />
-        </Flex>
-      )}
     </>
   );
 }
@@ -343,16 +304,15 @@ export default function ImageDedupPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadPreviewPage, setUploadPreviewPage] = useState(1);
-  const [confirming, setConfirming] = useState(false);
-  const [batch, setBatch] = useState<BatchView>();
+  const [confirmingBatchId, setConfirmingBatchId] = useState<ImageId>();
   const [health, setHealth] = useState<HealthView>();
   const [library, setLibrary] = useState<ImageView[]>([]);
   const [libraryTotal, setLibraryTotal] = useState(0);
   const [libraryPage, setLibraryPage] = useState(1);
-  const [libraryPageSize, setLibraryPageSize] = useState(12);
+  const [libraryPageSize, setLibraryPageSize] = useState(50);
   const [keyword, setKeyword] = useState('');
   const [libraryBatchId, setLibraryBatchId] = useState('');
-  const [libraryCategoryId, setLibraryCategoryId] = useState<ImageId>();
+  const [libraryCategoryId, setLibraryCategoryId] = useState<ImageId | undefined>(() => new URLSearchParams(location.search).get('storeCategoryId') || undefined);
   const [libraryAspectRatio, setLibraryAspectRatio] = useState<string>();
   const [libraryFilters, setLibraryFilters] = useState<ImageQuery>(() => ({ imageId: new URLSearchParams(location.search).get('imageId') || undefined }));
   const libraryFiltersRef = useRef(libraryFilters);
@@ -365,27 +325,41 @@ export default function ImageDedupPage() {
   const [replacingImageId, setReplacingImageId] = useState<ImageId>();
   const [aspectRatios, setAspectRatios] = useState<string[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
+  const [selectedLibraryIds, setSelectedLibraryIds] = useState<ImageId[]>([]);
+  const [storeGroups, setStoreGroups] = useState<StoreTemplateGroup[]>([]);
+  const [storeShops, setStoreShops] = useState<StoreShop[]>([]);
+  const [storeListingTemplates, setStoreListingTemplates] = useState<Record<string, StoreListingTemplate[]>>({});
+  const [storeCategoryId, setStoreCategoryId] = useState<ImageId | undefined>(() => new URLSearchParams(location.search).get('storeCategoryId') || undefined);
+  const [storeGroupId, setStoreGroupId] = useState<ImageId | undefined>(() => new URLSearchParams(location.search).get('storeGroupId') || undefined);
+  const [storeGenerateListing, setStoreGenerateListing] = useState(true);
+  const [storeShopIds, setStoreShopIds] = useState<ImageId[]>([]);
+  const [storeListingByShop, setStoreListingByShop] = useState<Record<string, ImageId>>({});
+  const [storeFormat, setStoreFormat] = useState<'JPEG' | 'PNG'>('JPEG');
+  const [storeQuality, setStoreQuality] = useState(90);
+  const [storeBatch, setStoreBatch] = useState<StoreRenderBatch>();
+  const [storePollFailed, setStorePollFailed] = useState(false);
+  const [storeSubmitting, setStoreSubmitting] = useState(false);
   const [detailImage, setDetailImage] = useState<ImageView>();
   const [rescanningImage, setRescanningImage] = useState(false);
-  const [clearLibraryOpen, setClearLibraryOpen] = useState(false);
-  const [clearingLibrary, setClearingLibrary] = useState(false);
   const [tasks, setTasks] = useState<BatchSummary[]>([]);
   const [taskTotal, setTaskTotal] = useState(0);
   const [taskPage, setTaskPage] = useState(1);
   const [taskPageSize, setTaskPageSize] = useState(10);
   const [taskLoading, setTaskLoading] = useState(false);
   const [taskDrawerOpen, setTaskDrawerOpen] = useState(false);
+  const [taskBatchId, setTaskBatchId] = useState<ImageId>();
+  const [taskBatch, setTaskBatch] = useState<BatchSummary>();
+  const [taskBatchLoading, setTaskBatchLoading] = useState(false);
+  const [taskFailures, setTaskFailures] = useState<ReviewPageState>();
   const [reviewBatches, setReviewBatches] = useState<BatchSummary[]>([]);
-  const [reviewDetails, setReviewDetails] = useState<Record<string, BatchView>>({});
+  const [reviewPages, setReviewPages] = useState<Record<string, ReviewPageState>>({});
   const [reviewSelectedIds, setReviewSelectedIds] = useState<Record<string, ImageId[]>>({});
   const [activeReviewKeys, setActiveReviewKeys] = useState<string[]>([]);
   const reviewInitialOpenRef = useRef(false);
+  const requestGateRef = useRef(createLatestRequestGate());
   const submittingRef = useRef(false);
   const selectedFileUidSet = useMemo(() => new Set(selectedFileUids), [selectedFileUids]);
-  const failedImages = useMemo(
-    () => batch?.images.filter(image => image.status === 'FAILED' || image.status === 'APPROVAL_FAILED') || [],
-    [batch]
-  );
+  const failedImages = taskFailures?.rows || [];
   const appendUploadIssues = (issues: UploadIssue[]) => {
     setUploadIssues(current => [...current, ...issues]);
   };
@@ -403,6 +377,34 @@ export default function ImageDedupPage() {
     ? requestedPageKey
     : availableWorkflowTabs[0]?.key ?? requestedPageKey;
   const pageTitle = pageKey === 'library' ? '正式图库' : '上传与人工复核';
+  const storeBatchKey = `store-render-current-batch:${String(userInfo?.user.userId || '')}`;
+  const storeRendering = storeBatch?.status === 'CREATED' || storeBatch?.status === 'RUNNING';
+  const storeGroup = storeGroups.find(group => String(group.id) === String(storeGroupId));
+  const storeEligibleShops = storeShops.filter(shop => shopConfig(shop).categoryIds?.some(id => String(id) === String(storeCategoryId)));
+  const storeMissingListing = storeGenerateListing && (!storeShopIds.length || storeShopIds.some(shopId =>
+    !storeListingTemplates[String(shopId)]?.some(template => String(template.id) === String(storeListingByShop[String(shopId)]) && !!template.configJson)));
+  const storeMissingKeywords = storeGenerateListing && selectedLibraryIds.some(id => {
+    const image = library.find(item => String(item.id) === String(id));
+    const keywords = image?.infringementDescriptionKeywords?.trim() || '';
+    return image && (!/[A-Za-z]/.test(keywords) || /\.(jpg|jpeg|png|webp)$/i.test(keywords));
+  });
+  const selectedLibraryIdSet = useMemo(() => new Set(selectedLibraryIds.map(String)), [selectedLibraryIds]);
+  const currentPageSelectedCount = library.filter(image => selectedLibraryIdSet.has(String(image.id))).length;
+  const currentPageFullySelected = library.length > 0 && currentPageSelectedCount === library.length;
+  const toggleCurrentPageSelection = (checked: boolean) => {
+    if (storeRendering) return;
+    if (checked) {
+      const category = storeCategoryId ?? library.find(image => image.categoryId != null)?.categoryId;
+      if (category != null && storeCategoryId == null) setStoreCategoryId(category);
+      const sameCategory = category == null ? library : library.filter(image => String(image.categoryId) === String(category));
+      if (sameCategory.length !== library.length) message.warning('正式图库当前页包含多个类目，仅选择当前类目的图片');
+      setSelectedLibraryIds(current => Array.from(new Map([...current, ...sameCategory.map(image => image.id)].map(id => [String(id), id])).values()));
+      return;
+    }
+    const pageIds = new Set(library.map(image => String(image.id)));
+    setSelectedLibraryIds(current => current.filter(id => !pageIds.has(String(id))));
+  };
+  const selectedRiskImages = library.filter(image => selectedLibraryIdSet.has(String(image.id)) && image.infringementRiskLevel !== 'LOW');
 
   const loadHealth = useCallback(async () => {
     const response = await getImageHealth();
@@ -448,6 +450,11 @@ export default function ImageDedupPage() {
     }
   }, []);
 
+  const openImageDetail = useCallback(async (imageId: ImageId) => {
+    const response = await getApprovedImage(imageId);
+    setDetailImage(response.data);
+  }, []);
+
   const aspectRatioOptions = useMemo(() => Array.from(aspectRatios)
     .sort((left, right) => {
       const leftIndex = aspectRatioOrder.indexOf(left);
@@ -467,42 +474,82 @@ export default function ImageDedupPage() {
     ]);
   }, [keyword, libraryAspectRatio, libraryBatchId, libraryCategoryId, libraryPage, libraryPageSize, loadHealth, loadLibrary]);
 
-  const clearLibrary = useCallback(async () => {
-    setClearingLibrary(true);
+  const loadTaskFailures = useCallback(async (batchId: ImageId, page = 1, pageSize = 10) => {
+    const token = requestGateRef.current.begin('task-failures', `${String(batchId)}:${page}:${pageSize}`);
+    setTaskFailures(current => ({
+      rows: current?.rows || [], total: current?.total || 0, page, pageSize, loading: true
+    }));
     try {
-      const response = await resetImageData();
-      message.success(`图库已清空：${response.data.assets} 张图片、${response.data.batches} 个批次`);
-      setClearLibraryOpen(false);
-      setDetailImage(undefined);
-      localStorage.removeItem(currentBatchKey);
-      await Promise.all([
-        loadHealth(),
-        loadAspectRatios(),
-        loadLibrary(1, libraryPageSize, keyword, libraryCategoryId, libraryBatchId, libraryAspectRatio)
-      ]);
+      const response = await listImageFailedImages(batchId, { pageNum: page, pageSize });
+      if (!requestGateRef.current.accepts(token)) return;
+      setTaskFailures({
+        rows: Array.from(response.data.rows || []), total: response.data.total, page, pageSize, loading: false
+      });
     } finally {
-      setClearingLibrary(false);
+      if (requestGateRef.current.accepts(token)) {
+        setTaskFailures(current => current ? { ...current, loading: false } : current);
+      }
     }
-  }, [keyword, libraryAspectRatio, libraryBatchId, libraryCategoryId, libraryPageSize, loadAspectRatios, loadHealth, loadLibrary]);
-
-  const loadBatch = useCallback(async (batchId: ImageId) => {
-    const response = await getImageBatch(batchId);
-    const next = response.data;
-    setBatch(next);
-    return next;
   }, []);
 
-  const loadReviewBatch = useCallback(async (batchId: ImageId) => {
-    const response = await getImageBatch(batchId);
-    const next = response.data;
-    const key = String(next.id);
-    setReviewDetails(current => ({ ...current, [key]: next }));
-    setReviewSelectedIds(current => current[key] ? current : {
-      ...current,
-      [key]: next.images
-        .filter(image => image.status === 'WAIT_REVIEW' && !image.duplicate && !isAdmissionProhibited(image))
-        .map(image => image.id)
+  const loadTaskBatch = useCallback(async (batchId: ImageId) => {
+    const token = requestGateRef.current.begin('task-drawer', String(batchId));
+    setTaskBatchLoading(true);
+    try {
+      const response = await getImageBatchSummary(batchId);
+      if (!requestGateRef.current.accepts(token)) return undefined;
+      setTaskBatch(response.data);
+      if (response.data.failedCount > 0) {
+        void loadTaskFailures(batchId);
+      } else {
+        requestGateRef.current.invalidate('task-failures');
+        setTaskFailures(undefined);
+      }
+      return response.data;
+    } finally {
+      if (requestGateRef.current.accepts(token)) setTaskBatchLoading(false);
+    }
+  }, [loadTaskFailures]);
+
+  const loadReviewPage = useCallback(async (batchId: ImageId, page: number, pageSize = reviewPageSize, append = false) => {
+    const key = String(batchId);
+    const scope = `review-${key}`;
+    const token = requestGateRef.current.begin(scope, `${page}:${pageSize}`);
+    setReviewPages(current => {
+      const previous = current[key];
+      return {
+        ...current,
+        [key]: {
+          rows: previous?.rows || [],
+          total: previous?.total || 0,
+          page: append ? previous?.page || page - 1 : page,
+          pageSize,
+          loading: true
+        }
+      };
     });
+    try {
+      const response = await listImageReviewImages(batchId, { pageNum: page, pageSize });
+      if (!requestGateRef.current.accepts(token)) return;
+      setReviewPages(current => ({
+        ...current,
+        [key]: {
+          rows: append
+            ? [...(current[key]?.rows || []), ...Array.from(response.data.rows || [])]
+            : Array.from(response.data.rows || []),
+          total: response.data.total,
+          page,
+          pageSize,
+          loading: false
+        }
+      }));
+    } finally {
+      if (requestGateRef.current.accepts(token)) {
+        setReviewPages(current => current[key]
+          ? { ...current, [key]: { ...current[key], loading: false } }
+          : current);
+      }
+    }
   }, []);
 
   const loadTasks = useCallback(async (page: number, pageSize: number) => {
@@ -540,17 +587,97 @@ export default function ImageDedupPage() {
     if ((pageKey === 'upload' && canUpload) || pageKey === 'library') void loadCategoryOptions();
     if (pageKey === 'upload' && canUpload && !canRemove) void getImageStorageMode().then(result => setThreshold(Number(result.data.similarityThreshold)));
     if (pageKey === 'library') {
-      void loadLibrary(1, libraryPageSize, '', undefined, undefined, undefined);
+      void loadLibrary(1, libraryPageSize, '', storeCategoryId, undefined, undefined);
       void loadAspectRatios();
+      void listTemplateGroups().then(response => setStoreGroups((response.data || []).filter(group => group.status === 'ACTIVE')));
+      void listShops().then(response => setStoreShops(response.data || []));
     }
     if (pageKey === 'tasks') void loadTasks(1, taskPageSize);
-    if (pageKey === 'upload' && canQuery) {
-      const savedBatchId = localStorage.getItem(currentBatchKey);
-      if (savedBatchId) {
-        void loadBatch(savedBatchId).catch(() => localStorage.removeItem(currentBatchKey));
+  }, [canUpload, canRemove, libraryPageSize, loadAspectRatios, loadCategoryOptions, loadHealth, loadLibrary, loadTasks, pageKey, taskPageSize]);
+
+  useEffect(() => {
+    if (pageKey !== 'library' || !userInfo?.user.userId) return;
+    const batchId = localStorage.getItem(storeBatchKey);
+    if (batchId) void getRenderBatch(batchId).then(response => { setStoreBatch(response.data); setStorePollFailed(false); }).catch(() => setStorePollFailed(true));
+  }, [pageKey, storeBatchKey, userInfo?.user.userId]);
+
+  useEffect(() => {
+    if (pageKey !== 'library' || !storeRendering || !storeBatch || storePollFailed) return;
+    let timer: number;
+    let cancelled = false;
+    const poll = async () => {
+      let failed = false;
+      try {
+        const response = await getRenderBatch(storeBatch.id);
+        if (!cancelled) {
+          setStoreBatch(response.data);
+          if (['COMPLETED', 'PARTIAL_FAILURE', 'FAILED'].includes(response.data.status)) {
+            void loadLibrary(libraryPage, libraryPageSize, keyword, libraryCategoryId, libraryBatchId, libraryAspectRatio);
+          }
+        }
+      } catch {
+        failed = true;
+        if (!cancelled) setStorePollFailed(true);
+      } finally {
+        if (!cancelled && !failed) timer = window.setTimeout(() => void poll(), 2000);
       }
-    }
-  }, [canUpload, canRemove, libraryPageSize, loadAspectRatios, loadBatch, loadCategoryOptions, loadHealth, loadLibrary, loadTasks, pageKey, taskPageSize]);
+    };
+    timer = window.setTimeout(() => void poll(), 2000);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [keyword, libraryAspectRatio, libraryBatchId, libraryCategoryId, libraryPage, libraryPageSize, loadLibrary, pageKey, storeBatch?.id, storeRendering, storePollFailed]);
+
+  useEffect(() => {
+    if (pageKey !== 'library' || storeCategoryId == null) { setStoreListingTemplates({}); return; }
+    let cancelled = false;
+    const available = storeShops.filter(shop => shopConfig(shop).categoryIds?.some(id => String(id) === String(storeCategoryId)));
+    setStoreShopIds(current => current.filter(id => available.some(shop => String(shop.id) === String(id))));
+    setStoreListingByShop({}); setStoreListingTemplates({});
+    void Promise.all(available.map(async shop => [String(shop.id), (await listListingTemplates({ shopId: shop.id, categoryId: storeCategoryId })).data || []] as const))
+      .then(entries => { if (!cancelled) setStoreListingTemplates(Object.fromEntries(entries)); })
+      .catch(() => { if (!cancelled) message.error('加载店铺上架表格失败，请刷新页面重试'); });
+    return () => { cancelled = true; };
+  }, [pageKey, storeCategoryId, storeShops]);
+
+  const startStoreRender = async () => {
+    if (storeCategoryId == null || storeGroupId == null || !selectedLibraryIds.length) { message.warning('请选择类目、模板组和正式图库图片'); return; }
+    const group = storeGroups.find(item => String(item.id) === String(storeGroupId));
+    if (!group || String(group.categoryId) !== String(storeCategoryId)) { message.warning('模板组与图片类目不一致'); return; }
+    if (selectedRiskImages.length) { message.warning('仅低风险图片可以渲染，请重新选择图片'); return; }
+    if (storeMissingListing) { message.warning('请选择目标店铺及各店铺已配置的上架表格'); return; }
+    if (storeMissingKeywords) { message.warning('选中的图片缺少侵权检测 AI 英文描述关键词'); return; }
+    const destinations = storeGenerateListing ? storeShopIds.map(shopId => ({
+      shopId, listingTemplateId: storeListingByShop[String(shopId)]
+    })).sort((left, right) => String(left.shopId).localeCompare(String(right.shopId))) : [];
+    setStoreSubmitting(true);
+    try {
+      const identity = JSON.stringify({
+        categoryId: String(storeCategoryId), groupId: String(group.id), groupConfig: group.calibrationConfigJson,
+        templates: group.templates.map(template => [String(template.id), template.ossKey, template.templateConfigJson]),
+        imageIds: selectedLibraryIds.map(String).sort(),
+        destinations: destinations.map(destination => [String(destination.shopId), String(destination.listingTemplateId),
+          storeListingTemplates[String(destination.shopId)]?.find(item => String(item.id) === String(destination.listingTemplateId))?.configJson]),
+        format: storeFormat, quality: storeQuality
+      });
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity));
+      const idempotencyKey = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+      const response = await createRenderBatch({
+        categoryId: storeCategoryId,
+        templateGroupId: group.id,
+        imageIds: selectedLibraryIds,
+        destinations,
+        format: storeFormat,
+        quality: storeQuality,
+        idempotencyKey
+      });
+      localStorage.setItem(storeBatchKey, String(response.data.id));
+      setStoreBatch(response.data);
+      setStorePollFailed(false);
+      message.success('渲染批次 ' + String(response.data.id) + ' 已提交');
+      setSelectedLibraryIds([]);
+    } catch (error) {
+      if (!isHandledRequestError(error)) message.error('任务提交失败，请重试');
+    } finally { setStoreSubmitting(false); }
+  };
 
   useEffect(() => {
     const lastPage = Math.max(1, Math.ceil(files.length / uploadPreviewPageSize));
@@ -558,16 +685,17 @@ export default function ImageDedupPage() {
   }, [files.length, uploadPreviewPage]);
 
   useEffect(() => {
-    if (pageKey !== 'tasks' || !taskDrawerOpen || !batch || !['QUEUED', 'CHECKING', 'CONFIRMING'].includes(batch.status)) return;
+    if (pageKey !== 'tasks' || !taskDrawerOpen || taskBatchId == null || !taskBatch
+      || !['QUEUED', 'CHECKING', 'CONFIRMING'].includes(taskBatch.status)) return;
     const timer = window.setInterval(() => {
-      void loadBatch(batch.id).then(next => {
-        if (!['QUEUED', 'CHECKING', 'CONFIRMING'].includes(next.status)) {
+      void loadTaskBatch(taskBatchId).then(next => {
+        if (next && !['QUEUED', 'CHECKING', 'CONFIRMING'].includes(next.status)) {
           void Promise.all([loadHealth(), loadTasks(1, taskPageSize)]);
         }
       });
     }, 2000);
     return () => window.clearInterval(timer);
-  }, [batch, loadBatch, loadHealth, loadTasks, pageKey, taskDrawerOpen, taskPageSize]);
+  }, [loadHealth, loadTaskBatch, loadTasks, pageKey, taskBatch, taskBatchId, taskDrawerOpen, taskPageSize]);
 
   useEffect(() => {
     if (pageKey !== 'tasks' || !tasks.some(task => ['QUEUED', 'CHECKING', 'CONFIRMING'].includes(task.status))) return;
@@ -584,13 +712,13 @@ export default function ImageDedupPage() {
 
   useEffect(() => {
     activeReviewKeys.forEach(key => {
-      if (!reviewDetails[key]) void loadReviewBatch(key);
+      if (!reviewPages[key]) void loadReviewPage(key, 1);
     });
-  }, [activeReviewKeys, loadReviewBatch, reviewDetails]);
+  }, [activeReviewKeys, loadReviewPage, reviewPages]);
 
-  const processedPercent = batch?.totalCount
-    ? Math.round((batch.processedCount / batch.totalCount) * 100)
-    : uploadProgress;
+  const taskProcessedPercent = taskBatch?.totalCount
+    ? Math.round((taskBatch.processedCount / taskBatch.totalCount) * 100)
+    : 0;
 
   const taskColumns: TableColumnsType<BatchSummary> = [
     { title: '批次 ID', dataIndex: 'id', width: 210 },
@@ -620,10 +748,14 @@ export default function ImageDedupPage() {
       render: (_, row) => (
         <Button
           type="link"
-          onClick={async () => {
+          onClick={() => {
             localStorage.setItem(currentBatchKey, String(row.id));
-            await loadBatch(row.id);
+            requestGateRef.current.invalidate('task-failures');
+            setTaskBatchId(row.id);
+            setTaskBatch(undefined);
+            setTaskFailures(undefined);
             setTaskDrawerOpen(true);
+            void loadTaskBatch(row.id);
           }}
         >
           查看
@@ -656,7 +788,6 @@ export default function ImageDedupPage() {
         infringementMode
       });
       const batchId = created.data.id;
-      setBatch(created.data);
       if (canQuery) localStorage.setItem(currentBatchKey, String(batchId));
       const rawFiles = files
         .filter(file => selectedFileUidSet.has(file.uid))
@@ -744,7 +875,6 @@ export default function ImageDedupPage() {
       }
       await startImageBatch(batchId);
       if (canQuery) {
-        await loadBatch(batchId);
         await loadTasks(1, taskPageSize);
       }
       setFiles(current => current.filter(file => !selectedFileUidSet.has(file.uid) || retryUids.includes(file.uid)));
@@ -767,11 +897,22 @@ export default function ImageDedupPage() {
   };
 
   const confirmReviewBatch = async (batchId: ImageId) => {
-    const selectedIds = reviewSelectedIds[String(batchId)] || [];
-    setConfirming(true);
+    const key = String(batchId);
+    const selectedIds = reviewSelectedIds[key] || [];
+    setConfirmingBatchId(batchId);
     try {
       await confirmImageBatch(batchId, selectedIds);
-      message.success(`已提交审核决定，${selectedIds.length}张图片正在后台入库，可在任务中查看结果`);
+      message.success(`已提交审核决定，${selectedIds.length} 张图片正在后台入库`);
+      setReviewPages(current => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+      setReviewSelectedIds(current => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
       await Promise.all([
         loadLibrary(1, libraryPageSize, keyword, libraryCategoryId, libraryBatchId, libraryAspectRatio),
         loadHealth(),
@@ -779,14 +920,14 @@ export default function ImageDedupPage() {
         loadReviewBatches(batchId)
       ]);
     } finally {
-      setConfirming(false);
+      setConfirmingBatchId(undefined);
     }
   };
 
   const retry = async () => {
-    if (!batch) return;
-    await retryImageBatch(batch.id);
-    await loadBatch(batch.id);
+    if (!taskBatch) return;
+    await retryImageBatch(taskBatch.id);
+    await loadTaskBatch(taskBatch.id);
     await loadTasks(1, taskPageSize);
     message.success('失败图片已重新排队');
   };
@@ -965,41 +1106,42 @@ export default function ImageDedupPage() {
     </Space>
   );
 
-  const taskDetail = batch && (
+  const taskDetail = taskBatch && (
     <Space direction="vertical" style={{ width: '100%' }} size="large">
-      {['QUEUED', 'CHECKING', 'CONFIRMING'].includes(batch.status) && (
+      {['QUEUED', 'CHECKING', 'CONFIRMING'].includes(taskBatch.status) && (
         <Alert
           type="info"
           showIcon
-          message={batch.status === 'QUEUED' ? '任务正在排队' : '任务正在后台检测'}
+          message={taskBatch.status === 'QUEUED' ? '任务正在排队' : '任务正在后台检测'}
           description="此窗口会每2秒自动刷新；关闭窗口或离开页面不会中断任务。"
         />
       )}
-      <Progress percent={processedPercent} status={batch.status === 'FAILED' ? 'exception' : batch.status === 'COMPLETED' ? 'success' : 'active'} />
+      <Progress percent={taskProcessedPercent} status={taskBatch.status === 'FAILED' ? 'exception' : taskBatch.status === 'COMPLETED' ? 'success' : 'active'} />
       <Space wrap>
-        <Tag color="cyan">类目 {batch.categoryName}</Tag>
-        <Tag color="geekblue">侵权检测 {infringementModeText[batch.infringementMode]}</Tag>
-        <Tag>总数 {batch.totalCount}</Tag>
-        <Tag color="blue">已处理 {batch.processedCount}</Tag>
-        <Tag color="green">唯一 {batch.uniqueCount}</Tag>
-        <Tag color="orange">重复 {batch.duplicateCount}</Tag>
-        <Tag color="red">失败 {batch.failedCount}</Tag>
-        <Tag color="purple">阈值 {(Number(batch.similarityThreshold) * 100).toFixed(0)}%</Tag>
-        {batch.detectionCompletedAt && <Tag color="success">检测完成 {batch.detectionCompletedAt}</Tag>}
+        <Tag color="cyan">类目 {taskBatch.categoryName}</Tag>
+        <Tag color="geekblue">侵权检测 {infringementModeText[taskBatch.infringementMode]}</Tag>
+        <Tag>总数 {taskBatch.totalCount}</Tag>
+        <Tag color="blue">已处理 {taskBatch.processedCount}</Tag>
+        <Tag color="green">唯一 {taskBatch.uniqueCount}</Tag>
+        <Tag color="orange">重复 {taskBatch.duplicateCount}</Tag>
+        <Tag color="red">失败 {taskBatch.failedCount}</Tag>
+        <Tag color="purple">阈值 {(Number(taskBatch.similarityThreshold) * 100).toFixed(0)}%</Tag>
+        {taskBatch.detectionCompletedAt && <Tag color="success">检测完成 {taskBatch.detectionCompletedAt}</Tag>}
       </Space>
-      {batch.errorMessage && <Alert type="error" showIcon message={batch.errorMessage} />}
-      {failedImages.length > 0 && (
+      {taskBatch.errorMessage && <Alert type="error" showIcon message={taskBatch.errorMessage} />}
+      {taskBatch.failedCount > 0 && (
         <>
           <Alert
             type="error"
             showIcon
-            message={`失败明细：${failedImages.length} 张图片需要处理`}
+            message={`失败明细：${taskBatch.failedCount} 张图片需要处理`}
             description="检测或正式入库失败不会影响已成功入库的图片；请根据下方原因修复后再重试。"
           />
           <Table<ImageView>
             size="small"
             rowKey="id"
             pagination={false}
+            loading={taskFailures?.loading}
             dataSource={failedImages}
             columns={[
               { title: '图片名称', dataIndex: 'originalName', width: 220, ellipsis: true },
@@ -1015,12 +1157,27 @@ export default function ImageDedupPage() {
               }
             ]}
           />
+          {taskFailures && taskFailures.total > taskFailures.pageSize && (
+            <Pagination
+              current={taskFailures.page}
+              pageSize={taskFailures.pageSize}
+              total={taskFailures.total}
+              showSizeChanger={false}
+              showTotal={total => `共 ${total} 张失败图片`}
+              onChange={page => taskBatchId != null && void loadTaskFailures(taskBatchId, page, taskFailures.pageSize)}
+            />
+          )}
         </>
       )}
       <Space>
-        {batch.status === 'FAILED' && canRetry && <Button icon={<ReloadOutlined />} onClick={retry}>重试失败图片</Button>}
-        {batch.status === 'WAIT_REVIEW' && (
-          <Button type="primary" onClick={() => { setTaskDrawerOpen(false); history.push('/image/upload?tab=review'); }}>
+        {taskBatch.status === 'FAILED' && canRetry && <Button icon={<ReloadOutlined />} onClick={retry}>重试失败图片</Button>}
+        {taskBatch.status === 'WAIT_REVIEW' && (
+          <Button type="primary" onClick={() => {
+            requestGateRef.current.invalidate('task-drawer');
+            requestGateRef.current.invalidate('task-failures');
+            setTaskDrawerOpen(false);
+            history.push(`/image/upload?tab=review&batchId=${String(taskBatch.id)}`);
+          }}>
             进入人工审核
           </Button>
         )}
@@ -1045,7 +1202,7 @@ export default function ImageDedupPage() {
           }}
           items={reviewBatches.map(summary => {
             const key = String(summary.id);
-            const detail = reviewDetails[key];
+            const pageState = reviewPages[key];
             const selectedIds = reviewSelectedIds[key] || [];
             return {
               key,
@@ -1058,7 +1215,7 @@ export default function ImageDedupPage() {
                   <Tag color="orange">重复 {summary.duplicateCount}</Tag>
                 </Space>
               ),
-              children: !detail ? (
+              children: !pageState ? (
                 <Progress percent={60} showInfo={false} />
               ) : (
                 <>
@@ -1068,32 +1225,38 @@ export default function ImageDedupPage() {
                     message="仅显示达到相似阈值的图片；低于阈值的图片已自动入库。勾选后可保留当前待审图片。"
                     style={{ marginBottom: 16 }}
                   />
-                  <List<ImageView>
-                    className="image-review-list"
-                    dataSource={detail.images.filter(image => image.status === 'WAIT_REVIEW')}
-                    pagination={{
-                      pageSize: 5,
-                      hideOnSinglePage: true,
-                      showSizeChanger: false,
-                      showTotal: total => `共 ${total} 张待审图片`
+                  <div
+                    className="image-review-scroll"
+                    role="region"
+                    aria-label={`批次 ${key} 待审图片`}
+                    tabIndex={0}
+                    onScroll={event => {
+                      const target = event.currentTarget;
+                      if (!pageState.loading && pageState.rows.length < pageState.total
+                        && target.scrollHeight - target.scrollTop - target.clientHeight < 120) {
+                        void loadReviewPage(summary.id, pageState.page + 1, pageState.pageSize, true);
+                      }
                     }}
-                    renderItem={image => (
+                  >
+                    <List<ImageView>
+                      className="image-review-list"
+                      loading={pageState.loading}
+                      dataSource={pageState.rows}
+                      pagination={false}
+                      locale={{ emptyText: pageState.loading ? '正在加载待审图片' : '当前批次没有待审图片' }}
+                      renderItem={image => (
                       <List.Item key={String(image.id)}>
                         <div className="image-review-comparison">
                           <div className="image-review-asset">
                             <Typography.Text strong>待审图片</Typography.Text>
                             <div className="image-review-asset__preview">
-                              <AuthorizedImage url={image.thumbnailUrl} width={200} height={160} alt={`待审图片：${image.originalName}`} />
+                              <AuthorizedImage url={image.thumbnailUrl} width={140} height={112} alt={`待审图片：${image.originalName}`} />
                             </div>
                             <Typography.Text ellipsis={{ tooltip: image.originalName }}>{image.originalName}</Typography.Text>
                             {statusTag(image.status)}
                           </div>
                           <div className="image-review-matches">
-                            <Flex justify="space-between" align="center" wrap gap={8}>
-                              <Typography.Text strong>当前图片的最相似 30 张</Typography.Text>
-                              <Tag color="purple">共 {(image.similarImages || []).length} 张</Tag>
-                            </Flex>
-                            <SimilarImageGrid images={image.similarImages || []} />
+                            <SimilarImageGrid images={image.similarImages || []} threshold={Number(summary.similarityThreshold)} />
                           </div>
                           <Flex className="image-review-decision" justify="space-between" align="center" gap={16} wrap>
                             <Space wrap>
@@ -1110,11 +1273,11 @@ export default function ImageDedupPage() {
                               disabled={!canConfirm || isAdmissionProhibited(image) || image.status === 'FAILED' || image.status === 'REJECTED' || image.status === 'APPROVED'}
                               onChange={event => {
                                 setReviewSelectedIds(current => {
-                                  const selected = current[String(detail.id)] || [];
+                                  const selected = current[key] || [];
                                   return {
                                     ...current,
-                                    [String(detail.id)]: event.target.checked
-                                      ? [...selected, image.id]
+                                    [key]: event.target.checked
+                                      ? selected.map(String).includes(String(image.id)) ? selected : [...selected, image.id]
                                       : selected.filter(id => String(id) !== String(image.id))
                                   };
                                 });
@@ -1125,16 +1288,17 @@ export default function ImageDedupPage() {
                           </Flex>
                         </div>
                       </List.Item>
-                    )}
-                  />
+                      )}
+                    />
+                  </div>
                   <Button
                     type="primary"
-                    loading={confirming}
+                    loading={String(confirmingBatchId) === key}
                     disabled={!canConfirm}
-                    onClick={() => void confirmReviewBatch(detail.id)}
+                    onClick={() => void confirmReviewBatch(summary.id)}
                     style={{ marginTop: 16 }}
                   >
-                    确认入库（{selectedIds.length}张）
+                    确认入库（{selectedIds.length} 张）
                   </Button>
                 </>
               )
@@ -1148,8 +1312,7 @@ export default function ImageDedupPage() {
   const libraryPanel = (
     <ProCard
       title="图片资产库"
-      extra={<Space><Typography.Text type="secondary">共 {libraryTotal} 张</Typography.Text>{canRemove && <Button danger icon={<DeleteOutlined />}
-        onClick={() => setClearLibraryOpen(true)}>一键清空</Button>}<Button icon={<DownloadOutlined />}
+      extra={<Space><Typography.Text type="secondary">共 {libraryTotal} 张</Typography.Text><Button icon={<DownloadOutlined />}
         disabled={!libraryTotal}
         onClick={() => void exportFile('/images/export', '正式图库图片.zip', {
           ...libraryFiltersRef.current,
@@ -1175,7 +1338,6 @@ export default function ImageDedupPage() {
         <DatePicker.RangePicker showTime placeholder={['上传开始时间', '上传结束时间']} onChange={values => updateLibraryFilters({
           uploadStart: values?.[0]?.format('YYYY-MM-DD HH:mm:ss'), uploadEnd: values?.[1]?.format('YYYY-MM-DD HH:mm:ss')
         })} />
-        <Button type="primary" onClick={() => void loadLibrary(1, libraryPageSize, keyword, libraryCategoryId, libraryBatchId, libraryAspectRatio)}>查询</Button>
         <Input.Search
           allowClear
           prefix={<SearchOutlined />}
@@ -1216,89 +1378,63 @@ export default function ImageDedupPage() {
           }}
         />
         <Button icon={<ReloadOutlined />} onClick={() => void loadLibrary(libraryPage, libraryPageSize, keyword, libraryCategoryId, libraryBatchId, libraryAspectRatio)}>刷新</Button>
+        <Button type="primary" onClick={() => void loadLibrary(1, libraryPageSize, keyword, libraryCategoryId, libraryBatchId, libraryAspectRatio)}>查询</Button>
       </div>
       {library.length ? (
         <>
+          <Flex justify="space-between" align="center" className="image-library-selection-toolbar">
+            <Checkbox
+              checked={currentPageFullySelected}
+              indeterminate={currentPageSelectedCount > 0 && !currentPageFullySelected}
+              disabled={storeRendering}
+              onChange={event => toggleCurrentPageSelection(event.target.checked)}
+            >全选当前页</Checkbox>
+            <Typography.Text type="secondary">已跨页选择 {selectedLibraryIds.length} 张</Typography.Text>
+          </Flex>
           <div className="image-library-grid">
             {library.map(image => (
-              <article className={`image-library-card${image.vectorIndexMissing ? ' is-index-abnormal' : ''}`} key={String(image.id)}>
+              <article
+                className={`image-library-card${image.vectorIndexMissing ? ' is-index-abnormal' : ''}`}
+                key={String(image.id)}
+                role="button"
+                tabIndex={0}
+                aria-label={`打开图片 ${image.displayName} 详情`}
+                onClick={event => {
+                  const target = event.target as HTMLElement;
+                  if (target.closest('button, input, a, .ant-checkbox-wrapper')) return;
+                  void openImageDetail(image.id);
+                }}
+                onKeyDown={event => {
+                  if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) {
+                    event.preventDefault();
+                    void openImageDetail(image.id);
+                  }
+                }}
+              >
                 <div className="image-library-card__preview">
-                  <AuthorizedImage url={image.thumbnailUrl} width={240} height={168} />
-                  <Tag color="blue">{image.categoryName}</Tag>
-                </div>
-                <div className="image-library-card__body">
-                  <Typography.Text strong ellipsis={{ tooltip: image.displayName }}>
-                    {image.displayName}
-                  </Typography.Text>
-                  <div>{infringementTag(image)}</div>
-                  {image.vectorIndexMissing && (
-                    <Flex justify="space-between" align="center" gap={8}>
-                      <Tag color="error">向量索引异常</Tag>
-                      {canRemove && (
-                        <Popconfirm title="将核对并修复正式图库向量索引，是否继续？" onConfirm={() => void repairVectorIndex()}>
-                          <Button danger size="small" type="link">修复</Button>
-                        </Popconfirm>
-                      )}
-                    </Flex>
-                  )}
-                  <Typography.Text type="secondary">图片 ID {String(image.id)} · 上传人 {image.uploaderName}</Typography.Text>
-                  {!canRemove && image.exported && <Tag>已导出</Tag>}
-                  <Typography.Text type="secondary">批次 {String(image.batchId)} · 比例 {image.aspectRatio}</Typography.Text>
-                  <Typography.Text type="secondary">入库时间 {image.approvedAt || '-'}</Typography.Text>
-                  <Flex justify="space-between" align="center">
-                    <Button
-                      type="link"
-                      icon={<InfoCircleOutlined />}
-                      onClick={async () => {
-                        const response = await getApprovedImage(image.id);
-                        setDetailImage(response.data);
-                      }}
-                    >
-                      查看详情
-                    </Button>
-                    {canRemove && <Upload accept="image/jpeg,image/png,image/webp" maxCount={1} multiple={false} showUploadList={false}
-                      beforeUpload={async file => {
-                        if (!isSupportedImageFile(file.name)) { message.warning('请选择 JPG、PNG 或 WebP 图片'); return Upload.LIST_IGNORE; }
-                        setReplacingImageId(image.id);
-                        try {
-                          const storageMode = (await getImageStorageMode()).data;
-                          let batchId: ImageId;
-                          if (storageMode.directUpload) {
-                            const prepared = (await prepareImageReplacement(image.id, file)).data;
-                            const target = prepared.upload.files[0];
-                            try {
-                              await postImageToOss(prepared.upload, target, file, () => undefined);
-                            } catch (error) {
-                              await completeImageUploads(prepared.batchId, [], [target.imageId]).catch(() => undefined);
-                              throw error;
-                            }
-                            await completeImageUploads(prepared.batchId, [target.imageId]);
-                            await startImageBatch(prepared.batchId);
-                            batchId = prepared.batchId;
-                          } else {
-                            batchId = (await replaceApprovedImage(image.id, file)).data.id;
-                          }
-                          message.success(`替换任务已提交，批次 ${String(batchId)}。新图入库成功后会归档旧图。`);
-                        } finally { setReplacingImageId(undefined); }
-                        return false;
-                      }}><Button type="link" loading={String(replacingImageId) === String(image.id)} disabled={replacingImageId != null}>替换</Button></Upload>}
-                    {canRemove && (
-                      <Popconfirm
-                        title="确认从正式图库删除？文件将在7天后清理。"
-                        onConfirm={async () => {
-                          await deleteApprovedImage(image.id);
-                          message.success('已移出正式图库');
-                          await Promise.all([
-                            loadLibrary(libraryPage, libraryPageSize, keyword, libraryCategoryId, libraryBatchId, libraryAspectRatio),
-                            loadHealth(),
-                            loadAspectRatios()
-                          ]);
-                        }}
-                      >
-                        <Button danger type="link" icon={<DeleteOutlined />}>删除</Button>
-                      </Popconfirm>
-                    )}
-                  </Flex>
+                  <Checkbox
+                    disabled={storeRendering}
+                    checked={selectedLibraryIdSet.has(String(image.id))}
+                    onChange={event => {
+                      if (event.target.checked) {
+                        if (image.categoryId == null) { message.warning('图片缺少类目，无法套图'); return; }
+                        if (storeCategoryId != null && String(storeCategoryId) !== String(image.categoryId)) {
+                          message.warning('同一任务只能选择相同类目的图片'); return;
+                        }
+                        setStoreCategoryId(image.categoryId);
+                      }
+                      setSelectedLibraryIds(current => event.target.checked
+                        ? current.map(String).includes(String(image.id)) ? current : [...current, image.id]
+                        : current.filter(id => String(id) !== String(image.id)));
+                    }}
+                    style={{ position: 'absolute', top: 8, left: 8, zIndex: 1 }}
+                  />
+                  <AuthorizedImage url={image.thumbnailUrl} width={240} height={168} alt={image.displayName} preview={false} />
+                  <Tag className="image-library-card__category" color="blue">{image.categoryName}</Tag>
+                  <div className="image-library-card__meta">
+                    {infringementTag(image)}
+                    <span className={image.renderUseCount > 1 ? 'is-repeated' : ''} title="渲染次数">{image.renderUseCount ?? 0}</span>
+                  </div>
                 </div>
               </article>
             ))}
@@ -1308,6 +1444,7 @@ export default function ImageDedupPage() {
             pageSize={libraryPageSize}
             total={libraryTotal}
             showSizeChanger
+            pageSizeOptions={[50, 100]}
             className="image-library-pagination"
             onChange={(page, pageSize) => void loadLibrary(page, pageSize, keyword, libraryCategoryId, libraryBatchId, libraryAspectRatio)}
           />
@@ -1370,15 +1507,79 @@ export default function ImageDedupPage() {
         {pageKey === 'upload' && canUpload && uploadPanel}
         {pageKey === 'tasks' && canQuery && taskPanel}
         {pageKey === 'review' && canQuery && reviewPanel}
-        {pageKey === 'library' && libraryPanel}
+        {pageKey === 'library' && (
+          <div className="store-library-workflow">
+            <div style={{ minWidth: 0 }}>{libraryPanel}</div>
+            <ProCard className="store-task-panel" title={<div><strong>配置本次任务</strong><Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>套图结果可供多家店铺复用</Typography.Text></div>} extra={<Typography.Text type="secondary">01—04</Typography.Text>}>
+              <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                <div className="store-task-field"><Typography.Text strong>商品类目</Typography.Text>
+                  <Select aria-label="任务类目" placeholder="选择商品类目" value={storeCategoryId} disabled={storeRendering} options={categories.map(category => ({ value: category.id, label: category.name }))} onChange={value => { setStoreCategoryId(value); setStoreGroupId(undefined); setSelectedLibraryIds([]); setLibraryCategoryId(value); void loadLibrary(1, libraryPageSize, keyword, value, libraryBatchId, libraryAspectRatio); }} />
+                </div>
+                <div className="store-task-field"><Flex justify="space-between"><Typography.Text strong>套图模板组</Typography.Text><Button type="link" size="small" onClick={() => history.push('/store-management/template-group')}>浏览模板 ↗</Button></Flex>
+                  <Select aria-label="套图模板组" placeholder="选择套图模板组" value={storeGroupId} disabled={storeRendering || storeCategoryId == null} options={storeGroups.filter(group => String(group.categoryId) === String(storeCategoryId)).map(group => ({ value: group.id, label: group.name }))} onChange={setStoreGroupId} />
+                  {storeGroup && <div className="store-task-group-preview">
+                    <div className="store-task-group-images">{storeGroup.templates.slice(0, 3).map(template => <StoreImage key={String(template.id)} url={template.imageUrl} alt={template.name} style={{ width: 48, height: 60, objectFit: 'cover', borderRadius: 4 }} />)}</div>
+                    <div><Typography.Text strong>{storeGroup.name}</Typography.Text><br /><Typography.Text type="secondary">{storeGroup.templates.length} 个背景 · Canvas 套图引擎</Typography.Text></div>
+                  </div>}
+                </div>
+                <div><Checkbox checked={storeGenerateListing} disabled={storeRendering} onChange={event => setStoreGenerateListing(event.target.checked)}>同时生成上架表格</Checkbox><br />
+                  <Typography.Text type="secondary">关闭后仅渲染并保存成品，仍可在“渲染结果”按批次查看与下载。</Typography.Text>
+                </div>
+                {storeGenerateListing && <div className="store-task-field"><Typography.Text strong>目标店铺与上架表格</Typography.Text>
+                  {storeEligibleShops.length ? storeEligibleShops.map(shop => {
+                    const key = String(shop.id); const checked = storeShopIds.some(id => String(id) === key);
+                    const templates = storeListingTemplates[key] || [];
+                    return <div className="store-task-shop" key={key}>
+                      <Checkbox checked={checked} disabled={storeRendering} onChange={event => setStoreShopIds(current => event.target.checked ? [...current, shop.id] : current.filter(id => String(id) !== key))}>
+                        <strong>{shop.name}</strong> <Typography.Text type="secondary">{shopConfig(shop).sites?.[0] || ''}</Typography.Text>
+                      </Checkbox>
+                      {checked && <>
+                        <Select aria-label={`${shop.name}的上架表格`} placeholder="选择上架表格" value={storeListingByShop[key]} disabled={storeRendering} options={templates.map(template => ({ value: template.id, label: `${template.templateCode || template.originalFilename}${template.configJson ? '' : ' · 未保存生成配置'}`, disabled: !template.configJson }))} onChange={value => setStoreListingByShop(current => ({ ...current, [key]: value }))} />
+                        {!templates.length && <Typography.Text type="warning">暂无已保存的表格，请先到“上架表格配置”维护。</Typography.Text>}
+                        {templates.some(template => !template.configJson) && <Typography.Text type="warning">灰色表格尚未保存独立的生成配置。<Button type="link" size="small" onClick={() => history.push('/store-management/listing-config')}>前往配置</Button></Typography.Text>}
+                      </>}
+                    </div>;
+                  }) : <Typography.Text type="secondary">当前类目暂无关联店铺，请先到“店铺运营”新增店铺。</Typography.Text>}
+                </div>}
+                <div className="store-task-field"><Typography.Text strong>成品格式</Typography.Text>
+                  <Select aria-label="成品格式" value={storeFormat} disabled={storeRendering} options={[{ value: 'JPEG', label: 'JPG · 推荐，文件更小' }, { value: 'PNG', label: 'PNG · 无损' }]} onChange={setStoreFormat} />
+                </div>
+                {storeFormat === 'JPEG' && <div className="store-task-field"><Typography.Text strong>JPG 质量</Typography.Text>
+                  <Select aria-label="JPG 质量" value={storeQuality} disabled={storeRendering} options={[{ value: 82, label: '82% · 较小' }, { value: 90, label: '90% · 推荐' }, { value: 96, label: '96% · 更清晰' }]} onChange={setStoreQuality} />
+                </div>}
+                <div className="store-task-estimate"><div><Typography.Text type="secondary">已选原图</Typography.Text><strong>{selectedLibraryIds.length} 张</strong></div><span>×</span><div><Typography.Text type="secondary">背景模板</Typography.Text><strong>{storeGroup?.templates.length || 0} 个</strong></div><span>=</span><div><Typography.Text type="secondary">预计成品</Typography.Text><strong>{selectedLibraryIds.length * (storeGroup?.templates.length || 0)} 张</strong></div></div>
+                <Typography.Text type="secondary">{storeGenerateListing ? `${storeShopIds.length} 家店铺 · ${storeShopIds.length} 份表格 · 成品无需按店铺重复渲染` : '仅生成成品 · 不需要选择店铺或上架表格'}</Typography.Text>
+                {storeMissingKeywords && <Alert type="warning" showIcon message="选中的图片缺少侵权检测 AI 英文描述关键词，请查看检测结果" />}
+                {selectedRiskImages.length > 0 && <Alert type="warning" showIcon message="选中的图片包含非低风险图片，请重新选择后再渲染" />}
+                {storeBatch && <>
+                  <Typography.Text strong>批次 {String(storeBatch.id)} · {storeBatch.status === 'COMPLETED' ? '已完成' : storeBatch.status === 'PARTIAL_FAILURE' ? '部分失败' : storeBatch.status === 'FAILED' ? '失败' : '渲染中'}</Typography.Text>
+                  <Progress percent={storeBatch.totalCount ? Math.round((storeBatch.completedCount + storeBatch.skippedCount + storeBatch.failedCount) / storeBatch.totalCount * 100) : 0} status={storeRendering ? 'active' : storeBatch.failedCount ? 'exception' : 'success'} />
+                  <Typography.Text type="secondary">完成 {storeBatch.completedCount} · 跳过重复 {storeBatch.skippedCount} · 失败 {storeBatch.failedCount}</Typography.Text>
+                  {storeRendering ? <Alert type="warning" showIcon message="渲染中，请勿操作当前页面" description="任务由后台继续执行，刷新页面后仍可查看进度。" /> : <Button block onClick={() => history.push('/store-management/render-result')}>查看渲染结果</Button>}
+                  {storePollFailed && <Button block onClick={async () => { const response = await getRenderBatch(storeBatch.id); setStoreBatch(response.data); setStorePollFailed(false); }}>重新获取进度</Button>}
+                </>}
+                <Button type="primary" block loading={storeSubmitting} disabled={storeRendering || !selectedLibraryIds.length || !storeGroup?.templates.length || storeMissingListing || storeMissingKeywords} onClick={() => void startStoreRender()}>{storeGenerateListing ? '开始渲染并生成表格' : '开始渲染成品'} →</Button>
+                <Typography.Text type="secondary">任务由后台处理，离开页面后仍可在“渲染结果”查看进度与下载。</Typography.Text>
+              </Space>
+            </ProCard>
+          </div>
+        )}
       </div>
       <Drawer
-        title={batch ? `上传进度：批次 ${String(batch.id)}` : '上传进度'}
+        title={taskBatchId != null ? `上传进度：批次 ${String(taskBatchId)}` : '上传进度'}
         open={taskDrawerOpen}
         width={560}
-        onClose={() => setTaskDrawerOpen(false)}
+        onClose={() => {
+          requestGateRef.current.invalidate('task-drawer');
+          requestGateRef.current.invalidate('task-failures');
+          setTaskDrawerOpen(false);
+          setTaskBatchId(undefined);
+          setTaskBatch(undefined);
+          setTaskBatchLoading(false);
+          setTaskFailures(undefined);
+        }}
       >
-        {taskDetail}
+        {taskBatchLoading && !taskBatch ? <Progress percent={60} showInfo={false} /> : taskDetail}
       </Drawer>
       <Modal open={replacementLogsOpen} title="图片替换日志" width={1100} footer={null} onCancel={() => setReplacementLogsOpen(false)}>
         <Table<ImageReplacementLog> rowKey={row => String(row.id)} dataSource={replacementLogs} scroll={{ x: 1000 }} columns={[
@@ -1388,32 +1589,42 @@ export default function ImageDedupPage() {
         ]} />
       </Modal>
       <Modal
-        open={clearLibraryOpen}
-        title="清空图库"
-        okText="清空图库"
-        okButtonProps={{ danger: true }}
-        confirmLoading={clearingLibrary}
-        destroyOnHidden
-        closable={!clearingLibrary}
-        keyboard={!clearingLibrary}
-        onOk={() => void clearLibrary()}
-        onCancel={() => {
-          if (!clearingLibrary) {
-            setClearLibraryOpen(false);
-          }
-        }}
-      >
-        <Typography.Paragraph type="danger">
-          此操作会永久删除所有图片、批次、侵权扫描记录、关联文件和向量索引，图片类目及其他系统数据不会删除。
-        </Typography.Paragraph>
-      </Modal>
-      <Modal
         open={Boolean(detailImage)}
         title={detailImage?.displayName || '图片详情'}
         width={720}
-        footer={canRemove && detailImage?.infringementStatus === 'FAILED'
-          ? <Button loading={rescanningImage} onClick={() => void rescanImage()}>重新检测</Button>
-          : null}
+        footer={canRemove && detailImage ? <Space>
+          {detailImage.vectorIndexMissing && <Popconfirm title="将核对并修复正式图库向量索引，是否继续？" onConfirm={async () => { await repairVectorIndex(); setDetailImage((await getApprovedImage(detailImage.id)).data); }}>
+            <Button danger>修复向量索引</Button>
+          </Popconfirm>}
+          {detailImage.infringementStatus === 'FAILED' && <Button loading={rescanningImage} onClick={() => void rescanImage()}>重新检测</Button>}
+          <Upload accept="image/jpeg,image/png,image/webp" maxCount={1} multiple={false} showUploadList={false}
+            beforeUpload={async file => {
+              if (!isSupportedImageFile(file.name)) { message.warning('请选择 JPG、PNG 或 WebP 图片'); return Upload.LIST_IGNORE; }
+              setReplacingImageId(detailImage.id);
+              try {
+                const storageMode = (await getImageStorageMode()).data;
+                let batchId: ImageId;
+                if (storageMode.directUpload) {
+                  const prepared = (await prepareImageReplacement(detailImage.id, file)).data;
+                  const target = prepared.upload.files[0];
+                  try {
+                    await postImageToOss(prepared.upload, target, file, () => undefined);
+                  } catch (error) {
+                    await completeImageUploads(prepared.batchId, [], [target.imageId]).catch(() => undefined);
+                    throw error;
+                  }
+                  await completeImageUploads(prepared.batchId, [target.imageId]);
+                  await startImageBatch(prepared.batchId);
+                  batchId = prepared.batchId;
+                } else {
+                  batchId = (await replaceApprovedImage(detailImage.id, file)).data.id;
+                }
+                message.success(`替换任务已提交，批次 ${String(batchId)}。新图入库成功后会归档旧图。`);
+                setDetailImage(undefined);
+              } finally { setReplacingImageId(undefined); }
+              return false;
+            }}><Button loading={replacingImageId != null} disabled={replacingImageId != null}>替换图片</Button></Upload>
+        </Space> : null}
         onCancel={() => setDetailImage(undefined)}
       >
         {detailImage && (
@@ -1423,15 +1634,21 @@ export default function ImageDedupPage() {
             </div>
             <Descriptions column={2} bordered size="small">
               <Descriptions.Item label="图片ID">{String(detailImage.id)}</Descriptions.Item>
+              <Descriptions.Item label="批次">{String(detailImage.batchId)}</Descriptions.Item>
               <Descriptions.Item label="状态">{statusTag(detailImage.status)}</Descriptions.Item>
               <Descriptions.Item label="类目">{detailImage.categoryName}</Descriptions.Item>
               <Descriptions.Item label="原文件名">{detailImage.originalName}</Descriptions.Item>
               <Descriptions.Item label="格式">{detailImage.contentType}</Descriptions.Item>
               <Descriptions.Item label="文件大小">{(detailImage.fileSize / 1024).toFixed(1)} KB</Descriptions.Item>
               <Descriptions.Item label="上传人">{detailImage.uploaderName}</Descriptions.Item>
+              <Descriptions.Item label="图片比例">{detailImage.aspectRatio || '-'}</Descriptions.Item>
               <Descriptions.Item label="上传时间">{detailImage.createTime || '-'}</Descriptions.Item>
               <Descriptions.Item label="入库时间">{detailImage.approvedAt || '-'}</Descriptions.Item>
+              <Descriptions.Item label="使用次数">{detailImage.renderUseCount ?? 0}</Descriptions.Item>
               <Descriptions.Item label="侵权检测">{infringementTag(detailImage)}</Descriptions.Item>
+              {detailImage.vectorIndexMissing && <Descriptions.Item label="向量索引"><Tag color="error">异常</Tag></Descriptions.Item>}
+              {detailImage.exported && <Descriptions.Item label="导出状态">已导出</Descriptions.Item>}
+              <Descriptions.Item label="英文描述关键词" span={2}>{detailImage.infringementDescriptionKeywords || '-'}</Descriptions.Item>
               <Descriptions.Item label="TRO 案号">{detailImage.infringementCaseNumbers?.join(', ') || '-'}</Descriptions.Item>
               {(['subjects', 'scenes', 'themes', 'visualStyles', 'colors'] as const).map(field => (
                 <Descriptions.Item key={field} label={field} span={2}>{detailImage[field]?.join(', ') || '-'}</Descriptions.Item>

@@ -22,7 +22,7 @@
 ## 业务与实现约束
 
 - 图片上传后先进入暂存与 SSCD 检测；低于批次阈值的图片自动进入正式图库和 Qdrant，达到阈值的图片必须人工确认，完全相同文件禁止重复入库。
-- 相似度逻辑必须可解释，不得将模型失败当成“不重复”；每张高相似图片保留并展示它自己的 Top30 精排候选。
+- 相似度逻辑必须可解释，不得将模型失败当成“不重复”；每张高相似图片保留自己的 Top30 精排候选，人工审核仅展示达到批次阈值的前 6 张。
 - 新增或移动动态页面时，同步检查 `web/src/pages/dynamicPage.tsx` 的 `migratedPages` 映射。
 - 用户联系方式等账号规则需同时覆盖自助注册与管理员新增/修改路径，包括 DTO 校验、服务端唯一性检查和持久化。
 - 不要在前端硬编码 `localhost:8080`；容器环境通过 `/prod-api/` 由 Nginx 转发。
@@ -59,6 +59,20 @@ powershell -ExecutionPolicy Bypass -File .\stop-local.ps1
 ```
 
 `reset-local.ps1` 会删除本项目的 MySQL、Redis、Qdrant 和图片数据卷。只有用户明确要求清空数据时才能执行。
+
+## Agent skills
+
+### Issue tracker
+
+使用 GitHub Issues 管理规格和任务。见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+使用默认的五类任务标签。见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+使用单上下文领域文档。见 `docs/agents/domain.md`。
 
 ## 验证与交付
 

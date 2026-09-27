@@ -10,6 +10,7 @@ import org.apache.fesod.sheet.annotation.ExcelIgnoreUnannotated;
 import org.apache.fesod.sheet.annotation.ExcelProperty;
 import org.dromara.common.core.validate.AddGroup;
 import org.dromara.common.core.validate.EditGroup;
+import org.springframework.format.annotation.DateTimeFormat;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -22,6 +23,7 @@ public final class OrderDetailDtos {
 
     public record ParentOrderRequest(
         String parentOrderSn,
+        String parentOrderTimeStr,
         String sendWarehouseName,
         String fulfillmentMallId,
         Object estimatedAmount,
@@ -33,7 +35,7 @@ public final class OrderDetailDtos {
         public ParentOrderRequest(String parentOrderSn, String sendWarehouseName, String fulfillmentMallId,
                                   Object estimatedAmount, String shippingCompanyName,
                                   List<GoodsRequest> relatedGoodsInfoForAggregation) {
-            this(parentOrderSn, sendWarehouseName, fulfillmentMallId, estimatedAmount, shippingCompanyName,
+            this(parentOrderSn, null, sendWarehouseName, fulfillmentMallId, estimatedAmount, shippingCompanyName,
                 null, relatedGoodsInfoForAggregation, null);
         }
     }
@@ -62,8 +64,14 @@ public final class OrderDetailDtos {
         private String parentOrderSn;
         private String orderSn;
         private String fulfillmentMallId;
+        private String storeRemark;
+        private String customizedProducts;
         private String sendWarehouseName;
         private String shippingCompanyName;
+        @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+        private LocalDateTime beginParentOrderTime;
+        @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+        private LocalDateTime endParentOrderTime;
     }
 
     @Data
@@ -116,6 +124,7 @@ public final class OrderDetailDtos {
     public record DetailView(
         Long id,
         String parentOrderSn,
+        String parentOrderTimeStr,
         String fulfillmentMallId,
         String storeName,
         String storeRemark,

@@ -20,6 +20,7 @@ build/
 # ===== Env & secrets =====
 .env.local
 .env.prod
+.env
 deploy/local/.env.local
 deploy/prod/.env.prod
 .env.*.local
@@ -30,6 +31,13 @@ deploy/prod/.env.prod
 
 # ===== Temporary files =====
 /tmp/
+.cache/
+*.bak
+*.orig
+*.tmp
+*.dump
+*.sql.gz
+server/deploy/prod/releases/
 
 # ===== ML models (large binaries) =====
 models/*.pt

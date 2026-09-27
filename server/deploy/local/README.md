@@ -55,7 +55,18 @@ cd D:\AiWorkspaces\图片功能需求\image-admin\server\deploy\local
 powershell -ExecutionPolicy Bypass -File .\start-local.ps1
 ```
 
-脚本会自动完成：
+macOS/Linux 使用仓库内的 shell 脚本，避免直接 `source .env.local` 破坏带参数的 Java 配置：
+
+```bash
+cd /Users/wuzh/ai-work/image-admin/server/deploy/local
+./start-local.sh
+```
+
+本机 Maven 若使用其他 JDK，请从仓库根目录运行 `server/deploy/local/mvn-local.sh` 执行 Maven 命令；它使用与后端 Docker 构建相同的 Maven 3.9.11 和 JDK 21 镜像。
+
+该脚本会先顺序预拉取 Compose 和 Dockerfile 使用的基础镜像，再执行构建和启动，降低代理下 BuildKit 并发拉取超时的概率。
+
+PowerShell 脚本会自动完成以下检查与启动；macOS/Linux 脚本会复用模型校验、基础镜像预拉取、迁移和启动流程：
 
 1. 检查 Docker Desktop 和 Compose V2。
 2. 检查 Docker 内存和本机端口。
@@ -202,7 +213,7 @@ docker logs --tail 200 image-admin-backend
 
 ### Docker Hub 下载出现 `unexpected EOF`
 
-通常是临时网络中断。再次运行 `start-local.ps1` 会复用已下载层继续构建，不需要重置数据。
+通常是临时网络中断。Docker Desktop 的 Settings → Resources → Proxies 中，Docker Desktop proxy 选择 `System proxy`，Containers proxy 选择 `Same as host proxy`；不要把 `host.docker.internal` 直接填进 Docker Desktop proxy。然后再次运行 `start-local.ps1` 或 `start-local.sh`。脚本会复用已下载层，不需要重置数据。
 
 ### 页面能打开但接口报错
 

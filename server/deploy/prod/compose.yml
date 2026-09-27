@@ -1,6 +1,6 @@
 name: image-admin-prod
 
-# Reuse 1Panel MySQL/Redis and the existing Qdrant. No database services or data volumes are recreated.
+# 复用 1Panel 的 MySQL、Redis 和现有 Qdrant，不重建数据库服务或数据卷。
 services:
   backend:
     image: image-admin-backend:latest
@@ -40,6 +40,9 @@ services:
       MANAGEMENT_USERNAME: ${HEALTH_USER:?}
       MANAGEMENT_PASSWORD: ${HEALTH_PASSWORD:?}
       ORDER_DETAIL_API_KEY: ${ORDER_DETAIL_API_KEY:?}
+      TRO_API_KEY: ${TRO_API_KEY:?}
+      STORE_RENDER_WORKER_TOKEN: ${RENDER_WORKER_TOKEN:?}
+      STORE_LISTING_PUBLIC_BASE_URL: ${STORE_LISTING_PUBLIC_BASE_URL:-}
     volumes:
       - ${SSCD_MODEL_HOST_PATH:?}:/models/sscd_disc_mixup.torchscript.pt:ro
       - ./data:/app/config:ro
@@ -50,6 +53,26 @@ services:
       timeout: 5s
       start_period: 120s
       retries: 20
+    restart: unless-stopped
+
+  render-worker:
+    image: image-admin-render-worker:latest
+    environment:
+      TZ: Asia/Shanghai
+      JAVA_API_URL: http://backend:8080
+      RENDER_WORKER_TOKEN: ${RENDER_WORKER_TOKEN:?}
+      RENDER_WORKER_CONCURRENCY: ${RENDER_WORKER_CONCURRENCY:-5}
+      RENDER_WORKER_POLL_MS: ${RENDER_WORKER_POLL_MS:-2000}
+    networks: [image-admin-net]
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.kill(1, 0)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
     restart: unless-stopped
 
   frontend:

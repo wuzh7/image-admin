@@ -2,10 +2,12 @@ import type { BaseEntity, PageQuery } from '@/api/types';
 
 export interface OrderDetailQuery extends PageQuery {
   parentOrderSn?: string;
-  orderSn?: string;
+  beginParentOrderTime?: string;
+  endParentOrderTime?: string;
   fulfillmentMallId?: string;
   storeName?: string;
   storeRemark?: string;
+  customizedProducts?: string;
   sendWarehouseName?: string;
   shippingCompanyName?: string;
 }
@@ -13,6 +15,7 @@ export interface OrderDetailQuery extends PageQuery {
 export interface OrderDetailForm {
   id?: string | number;
   parentOrderSn: string;
+  parentOrderTimeStr?: string;
   fulfillmentMallId?: string;
   estimatedAmount?: number;
   shippingSettleAmount?: number;

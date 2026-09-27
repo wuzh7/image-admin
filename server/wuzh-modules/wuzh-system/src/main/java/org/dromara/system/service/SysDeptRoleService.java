@@ -41,6 +41,7 @@ public class SysDeptRoleService {
         if (deptId == null) throw new ServiceException("请选择所属部门");
         Set<Long> requested = requestedRoleIds == null ? Set.of() : new LinkedHashSet<>(requestedRoleIds);
         if (requested.isEmpty()) throw new ServiceException("请选择用户角色");
+        if (requested.contains(SystemConstants.SUPER_ADMIN_ROLE_ID)) throw new ServiceException("超级管理员不能属于部门");
         if (!new LinkedHashSet<>(roleIds(deptId)).containsAll(requested)) {
             throw new ServiceException("所选角色不属于该部门");
         }
@@ -48,6 +49,8 @@ public class SysDeptRoleService {
 
     @Transactional(rollbackFor = Exception.class)
     public void replace(Long deptId, Collection<Long> roleIds) {
+        if (roleIds != null && roleIds.contains(SystemConstants.SUPER_ADMIN_ROLE_ID))
+            throw new ServiceException("超级管理员不能属于部门");
         deptRoleMapper.lambda().eq(SysDeptRole::getDeptId, deptId).delete();
         if (CollUtil.isEmpty(roleIds)) return;
         List<SysDeptRole> relations = new LinkedHashSet<>(roleIds).stream().map(roleId -> {

@@ -5,6 +5,7 @@ import { Button, Col, Empty, Flex, Input, List, message, Popconfirm, Row, Space,
 import { useCallback, useEffect, useState } from 'react';
 import { getImageCategoryOptions, listApprovedImages, listImageBatches, listImageDuplicateTodos, completeImageDuplicateTodo, listImageReplacementLogs } from '@/api/image';
 import type { BatchSummary, ImageDuplicateTodo, ImageReplacementLog } from '@/api/image/types';
+import { listRenderLogs, type StoreRenderLog } from '@/api/store';
 import { listRecentOperationLogs, type OperationLog } from '@/api/operationLog';
 import { useUserStore } from '@/stores/userStore';
 import { hasPermi, hasRole } from '@/utils/permission';
@@ -20,13 +21,15 @@ interface WorkbenchData {
   reviewBatches: BatchSummary[];
   duplicateTodos: ImageDuplicateTodo[];
   replacementLogs: ImageReplacementLog[];
+  renderLogs: StoreRenderLog[];
 }
 
 const initialData: WorkbenchData = {
   recentOperations: [],
   reviewBatches: [],
   duplicateTodos: [],
-  replacementLogs: []
+  replacementLogs: [],
+  renderLogs: []
 };
 
 export default function Dashboard() {
@@ -54,14 +57,15 @@ export default function Dashboard() {
         return undefined;
       }
     };
-    const [approved, batches, reviews, categories, operations, todos, replacements] = await Promise.all([
+    const [approved, batches, reviews, categories, operations, todos, replacements, renderLogs] = await Promise.all([
       safe(canList ? listApprovedImages({ pageNum: 1, pageSize: 1, userName: selectedUserName || undefined }) : undefined),
       safe(canQuery ? listImageBatches({ pageNum: 1, pageSize: 6, userName: selectedUserName || undefined }) : undefined),
       safe(canQuery ? listImageBatches({ pageNum: 1, pageSize: 100, status: 'WAIT_REVIEW', userName: selectedUserName || undefined }) : undefined),
       safe(getImageCategoryOptions()),
       safe(isAdmin ? listRecentOperationLogs(selectedUserName || undefined) : undefined),
       safe(isAdmin ? listImageDuplicateTodos(selectedUserName || undefined) : undefined),
-      safe(isAdmin ? listImageReplacementLogs(selectedUserName || undefined) : undefined)
+      safe(isAdmin ? listImageReplacementLogs(selectedUserName || undefined) : undefined),
+      safe(isAdmin ? listRenderLogs({ userName: selectedUserName || undefined, pageNum: 1, pageSize: 20 }) : undefined)
     ]);
     setData({
       approvedTotal: approved?.data.total,
@@ -71,7 +75,8 @@ export default function Dashboard() {
       recentOperations: operations?.data.rows || [],
       reviewBatches: reviews?.data.rows || [],
       duplicateTodos: todos?.data || [],
-      replacementLogs: replacements?.data || []
+      replacementLogs: replacements?.data || [],
+      renderLogs: renderLogs?.data.records || []
     });
     if (failed) message.warning('部分工作台数据加载失败');
     setLoading(false);
@@ -83,6 +88,10 @@ export default function Dashboard() {
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? '早上好' : hour < 18 ? '下午好' : '晚上好';
+  const recentActivity = [
+    ...data.recentOperations.map(operation => ({ kind: 'operation' as const, at: operation.operTime, operation })),
+    ...data.renderLogs.map(render => ({ kind: 'render' as const, at: render.renderedAt, render })),
+  ].sort((a, b) => new Date(b.at?.replace(' ', 'T') || 0).getTime() - new Date(a.at?.replace(' ', 'T') || 0).getTime()).slice(0, 20);
 
   return (
     <PageContainer title="工作台" loading={loading}>
@@ -122,7 +131,6 @@ export default function Dashboard() {
               <ProCard><Statistic title="启用图片类目" value={data.categoryTotal ?? '-'} /></ProCard>
             </Col>
           </Row>
-
           <Row gutter={[16, 16]} align="stretch">
             <Col xs={24} xl={isAdmin ? 15 : 24}>
               <ProCard
@@ -164,19 +172,23 @@ export default function Dashboard() {
                 title="最近动态"
                 style={{ height: '100%' }}
               >
-                {data.recentOperations.length ? (
-                  <List<OperationLog>
-                    dataSource={data.recentOperations}
-                    renderItem={operation => {
-                      const activity = formatOperationActivity(operation);
+                {recentActivity.length ? (
+                  <List
+                    dataSource={recentActivity}
+                    pagination={{ pageSize: 10, hideOnSinglePage: true }}
+                    renderItem={entry => {
+                      const activity = entry.kind === 'operation' ? formatOperationActivity(entry.operation) : null;
+                      const repeated = entry.kind === 'render' && entry.render.renderUseCount > 1;
+                      const title = entry.kind === 'render' ? `${entry.render.userName}渲染了${entry.render.imageName || `图片 ${entry.render.imageId}`}` : activity!.title;
+                      const summary = entry.kind === 'render' ? `图片 ID ${entry.render.imageId} · 渲染 ${entry.render.renderUseCount} 次${repeated ? ' · 重复渲染' : ''}` : activity!.summary;
                       return (
                         <List.Item>
                           <div className="workbench-activity-item">
-                            <Typography.Text strong className={`workbench-activity-title${activity.failed ? ' is-failed' : ''}`}>
-                              {activity.title}
+                            <Typography.Text strong className={`workbench-activity-title${activity?.failed || repeated ? ' is-failed' : ''}`}>
+                              {title}
                             </Typography.Text>
-                            <Typography.Text className="workbench-activity-summary" title={operation.operTime}>
-                              {activity.summary} · {formatActivityTime(operation.operTime)}
+                            <Typography.Text className="workbench-activity-summary" title={entry.at}>
+                              {summary} · {formatActivityTime(entry.at)}
                             </Typography.Text>
                           </div>
                         </List.Item>

@@ -79,6 +79,7 @@ command -v flock >/dev/null
 docker info >/dev/null
 docker compose --env-file .env -f compose.yml config --images | grep -Fx 'image-admin-backend:latest' >/dev/null
 docker compose --env-file .env -f compose.yml config --images | grep -Fx 'image-admin-frontend:latest' >/dev/null
+docker compose --env-file .env -f compose.yml config --images | grep -Fx 'image-admin-render-worker:latest' >/dev/null
 printf 'ECS connection and latest image configuration: OK\n'
 '@
 Write-Host (Invoke-EcsCommand $preflight)
@@ -92,19 +93,25 @@ if ($SkipBuild) {
     if (Test-Path -LiteralPath $archive) { throw 'This version already has a package. Use -SkipBuild or a new version.' }
     docker version *> $null
     if ($LASTEXITCODE -ne 0) { throw 'Docker Desktop is not ready.' }
-    Write-Host '[2/5] Building frontend + backend images...'
-    Invoke-LoggedCommand -Command 'docker' -Label 'Build 1/2: backend (Docker cache + Maven cache)' `
+    Write-Host '[2/5] Building frontend, backend and render worker images...'
+    Invoke-LoggedCommand -Command 'docker' -Label 'Build 1/3: backend (Docker cache + Maven cache)' `
         -CommandArguments @('build', '--progress=plain', '-t', "image-admin-backend:$Version", `
+            '--platform', 'linux/amd64', `
             '-f', (Join-Path $PSScriptRoot 'Dockerfile.backend-runtime'), (Join-Path $repoRoot 'server'))
-    Invoke-LoggedCommand -Command 'docker' -Label 'Build 2/2: frontend (cached dependencies; no release-time lint)' `
+    Invoke-LoggedCommand -Command 'docker' -Label 'Build 2/3: frontend (cached dependencies; no release-time lint)' `
         -CommandArguments @('build', '--progress=plain', '-t', "image-admin-frontend:$Version", `
+            '--platform', 'linux/amd64', `
             '--build-context', "deploy=$PSScriptRoot", '-f', (Join-Path $PSScriptRoot 'Dockerfile.frontend-runtime'), `
             (Join-Path $repoRoot 'web'))
+    Invoke-LoggedCommand -Command 'docker' -Label 'Build 3/3: render worker' `
+        -CommandArguments @('build', '--progress=plain', '-t', "image-admin-render-worker:$Version", `
+            '--platform', 'linux/amd64', '-f', (Join-Path $repoRoot 'server/deploy/local/Dockerfile.render-worker'), `
+            (Join-Path $repoRoot 'server'))
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $archive) | Out-Null
     Write-Host '[3/5] Packaging images...'
     try {
         Invoke-LoggedCommand -Command 'docker' `
-            -CommandArguments @('save', '-o', $archive, "image-admin-backend:$Version", "image-admin-frontend:$Version") `
+            -CommandArguments @('save', '-o', $archive, "image-admin-backend:$Version", "image-admin-frontend:$Version", "image-admin-render-worker:$Version") `
             -Label 'Exporting release archive'
     } catch {
         throw "Release archive export failed. Do not reuse the incomplete package. $_"
@@ -140,23 +147,54 @@ echo '[ECS 1/4] Verifying uploaded archive...'
 printf '%s  %s\n' '__CHECKSUM__' '__ARCHIVE__' | sha256sum -c -
 old_backend=$(docker inspect --format '{{.Image}}' "$(docker compose --env-file .env -f compose.yml ps -q backend)")
 old_frontend=$(docker inspect --format '{{.Image}}' "$(docker compose --env-file .env -f compose.yml ps -q frontend)")
+old_worker=$(docker compose --env-file .env -f compose.yml ps -q render-worker)
+if [ -n "$old_worker" ]; then old_worker=$(docker inspect --format '{{.Image}}' "$old_worker"); fi
 echo '[ECS 2/4] Loading Docker images...'
 docker load -i '__ARCHIVE__'
-docker image inspect 'image-admin-backend:__VERSION__' 'image-admin-frontend:__VERSION__' >/dev/null
+docker image inspect 'image-admin-backend:__VERSION__' 'image-admin-frontend:__VERSION__' 'image-admin-render-worker:__VERSION__' >/dev/null
+test "$(docker image inspect 'image-admin-backend:__VERSION__' --format '{{.Architecture}}')" = amd64
+test "$(docker image inspect 'image-admin-frontend:__VERSION__' --format '{{.Architecture}}')" = amd64
+test "$(docker image inspect 'image-admin-render-worker:__VERSION__' --format '{{.Architecture}}')" = amd64
 docker image tag 'image-admin-backend:__VERSION__' image-admin-backend:latest
 docker image tag 'image-admin-frontend:__VERSION__' image-admin-frontend:latest
+docker image tag 'image-admin-render-worker:__VERSION__' image-admin-render-worker:latest
 echo '[ECS 3/4] Updating containers and waiting for health checks (up to 300s)...'
-if ! docker compose --env-file .env -f compose.yml up -d --no-deps --force-recreate --wait --wait-timeout 300 backend frontend ||
+if ! docker compose --env-file .env -f compose.yml up -d --force-recreate --wait --wait-timeout 300 backend render-worker frontend ||
    ! curl -fsS --max-time 10 http://127.0.0.1:8088/health >/dev/null; then
     echo 'Deployment failed. Restoring previous images.' >&2
     docker image tag "$old_backend" image-admin-backend:latest
     docker image tag "$old_frontend" image-admin-frontend:latest
-    docker compose --env-file .env -f compose.yml up -d --no-deps --force-recreate --wait --wait-timeout 300 backend frontend
+    if [ -n "$old_worker" ]; then
+        docker image tag "$old_worker" image-admin-render-worker:latest
+        docker compose --env-file .env -f compose.yml up -d --force-recreate --wait --wait-timeout 300 backend render-worker frontend
+    else
+        docker compose --env-file .env -f compose.yml stop render-worker
+        docker compose --env-file .env -f compose.yml up -d --force-recreate --wait --wait-timeout 300 backend frontend
+    fi
     exit 10
 fi
 printf '%s\n' '__VERSION__' > current-version
+cleanup_release_images() {
+    docker image tag "$old_backend" image-admin-backend:rollback || return
+    docker image tag "$old_frontend" image-admin-frontend:rollback || return
+    if [ -n "$old_worker" ]; then docker image tag "$old_worker" image-admin-render-worker:rollback || return; fi
+    for repository in image-admin-backend image-admin-frontend image-admin-render-worker; do
+        images=$(docker image ls "$repository" --format '{{.Repository}}:{{.Tag}}') || return
+        while IFS= read -r image; do
+            case "$image" in
+                "$repository:latest"|"$repository:rollback"|"$repository:__VERSION__") ;;
+                *) docker image rm "$image" || return ;;
+            esac
+        done <<< "$images"
+    done
+}
+if cleanup_release_images; then
+    echo 'Old application release images cleaned; current and rollback images kept.'
+else
+    echo 'Warning: deployment succeeded, but old image cleanup failed.' >&2
+fi
 echo '[ECS 4/4] Checking final container status...'
-docker compose --env-file .env -f compose.yml ps backend frontend
+docker compose --env-file .env -f compose.yml ps backend render-worker frontend
 echo 'Production release succeeded: __VERSION__'
 '@
 $remoteScript = $remoteScript.Replace('__ROOT__', $remoteRoot).Replace('__VERSION__', $Version)

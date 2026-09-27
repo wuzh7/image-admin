@@ -13,7 +13,7 @@
 | MySQL容器 | 1Panel-mysql-DX2o |
 | Redis容器 | 1Panel-redis-Zc5j |
 | Qdrant容器 | image-admin-qdrant |
-| 正式域名 | 尚未提供 |
+| 正式域名 | `https://hytpod.com` |
 
 本次不会重复安装、删除或重建这些基础服务。当前服务器容量小于原计划：先升级容量或进行单检测工作线程的内存/耗时实测，不承诺现配置能承载10人同时批量检测。业务构建在开发机完成，不在这台小内存ECS上执行完整Maven/Node构建。
 
@@ -81,13 +81,13 @@ OSS控制台 → Bucket → 权限控制 → 跨域设置：
 
 | 设置 | 值 |
 | --- | --- |
-| 来源 | `https://你的正式后台域名`，含协议，不含页面路径 |
-| 方法 | PUT、GET、HEAD |
-| 允许请求头 | Content-Type、x-oss-forbid-overwrite |
+| 来源 | `https://hytpod.com` |
+| 方法 | GET、POST、PUT、DELETE、HEAD |
+| 允许请求头 | `*`（允许正式站点携带 OSS 所需请求头） |
 | 暴露响应头 | ETag、x-oss-request-id |
 | 预检缓存 | 600秒 |
 
-浏览器自动发送OPTIONS预检。不要把后台Token加入OSS请求。需要本地联调时可临时添加 `http://localhost:8088`，之后移除。正式域名未提供，当前没有猜测域名或配置来源通配符。
+浏览器自动发送OPTIONS预检。不要把后台Token加入OSS请求。需要本地联调时可临时添加 `http://localhost:8088`，之后移除；生产规则不要使用来源通配符。
 
 OSS模式不保存实体缩略图。短时签名中包含 `x-oss-process=image/auto-orient,1/resize,m_lfit,w_480,h_480/quality,q_82`。不能对已签名原图URL再追加参数。访问URL不入库，前端预览失败可重试。
 
@@ -166,8 +166,12 @@ ECS Java测试包临时保存在 `/tmp/image-admin-java-oss-20260906`，是一�
 
 `hytpod.com` 的 1Panel HTTP 反向代理已实际返回图片管理后台登录页。初始管理员密码已随机化，保存在发布目录的 `INITIAL_ADMIN_CREDENTIALS.txt`（权限600），不写入日志或仓库；首次登录后应立即修改。
 
-OSS 对 `Origin: http://hytpod.com` 的 PUT 预检当前返回403，因此员工登录、查询等功能可用，但浏览器直传图片在配置 CORS 前不可用。Bucket 控制台应新增仅允许 `http://hytpod.com` 的规则，允许方法 `PUT、GET、HEAD`，允许请求头 `Content-Type、x-oss-forbid-overwrite`，暴露头 `ETag、Content-Length`，预检缓存600秒。备案与HTTPS完成后，将 Origin 收紧为 `https://hytpod.com` 并移除HTTP规则。
+首次部署时，OSS 对 `Origin: http://hytpod.com` 的 PUT 预检返回403，浏览器直传图片尚不可用；该限制已在下方 2026-09-22 HTTPS 启用记录中完成处理。
 
-仍需验证：正式域名/CORS/私有ACL确认；完整Java业务接入生产数据；模型内存和批量并发；浏览器直传→去重→审核→图库→删除；生产备份恢复。上述小文件协议测试不等于这些已通过。
+仍需验证：私有ACL确认；完整Java业务接入生产数据；模型内存和批量并发；浏览器直传→去重→审核→图库→删除；生产备份恢复。上述小文件协议测试不等于这些已通过。
+
+### 2026-09-22 HTTPS 启用记录
+
+`hytpod.com` 已签发 Let's Encrypt 证书并启用 HTTPS，HTTP 自动跳转至 HTTPS；公网 `/prod-api/actuator/` 已禁止访问。Certbot 定时续期及续期后 OpenResty 平滑重载已配置并通过配置检查。OSS CORS 来源已收紧为 `https://hytpod.com`，允许站点使用 GET、POST、PUT、DELETE、HEAD 及所需请求头；正式来源预检返回 200，其他来源返回 403。
 
 验收入库必须检查任务完成、MySQL为APPROVED、OSS正式对象可读、Qdrant存在Point，再用新批次验证召回；不能只看接口“已提交”就认定成功。

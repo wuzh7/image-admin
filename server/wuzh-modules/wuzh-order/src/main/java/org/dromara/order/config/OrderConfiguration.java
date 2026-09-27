@@ -4,6 +4,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@EnableConfigurationProperties(OrderProperties.class)
+@EnableConfigurationProperties({OrderProperties.class, TroProperties.class})
 public class OrderConfiguration {
 }

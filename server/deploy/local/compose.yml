@@ -22,6 +22,8 @@ services:
       - ../../script/sql/wuzh_vue.sql:/docker-entrypoint-initdb.d/00-wuzh-vue.sql:ro
       - ../../script/sql/image.sql:/docker-entrypoint-initdb.d/04-image.sql:ro
       - ../../script/sql/order.sql:/docker-entrypoint-initdb.d/05-order.sql:ro
+      - ../../script/sql/store.sql:/docker-entrypoint-initdb.d/06-store.sql:ro
+      - ../../script/sql/tro.sql:/docker-entrypoint-initdb.d/07-tro.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -p$${MYSQL_ROOT_PASSWORD} --silent"]
       interval: 5s
@@ -108,13 +110,19 @@ services:
     volumes:
       - ../../script/sql/image.sql:/migrations/image.sql:ro
       - ../../script/sql/order.sql:/migrations/order.sql:ro
+      - ../../script/sql/store.sql:/migrations/store.sql:ro
+      - ../../script/sql/tro.sql:/migrations/tro.sql:ro
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
         mysql --default-character-set=utf8mb4 -h mysql -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
         "$${MYSQL_DATABASE}" < /migrations/image.sql &&
+        mysql --default-character-set=utf8mb4 -h mysql -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
+        "$${MYSQL_DATABASE}" < /migrations/order.sql &&
+        mysql --default-character-set=utf8mb4 -h mysql -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
+        "$${MYSQL_DATABASE}" < /migrations/store.sql &&
         exec mysql --default-character-set=utf8mb4 -h mysql -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
-        "$${MYSQL_DATABASE}" < /migrations/order.sql
+        "$${MYSQL_DATABASE}" < /migrations/tro.sql
     depends_on:
       mysql:
         condition: service_healthy
@@ -152,13 +160,15 @@ services:
       SSCD_MODEL_PATH: /models/sscd_disc_mixup.torchscript.pt
       IMAGE_STORAGE_ROOT: /data/images
       ORDER_DETAIL_API_KEY: ${ORDER_DETAIL_API_KEY}
+      TRO_API_KEY: ${TRO_API_KEY}
+      STORE_RENDER_WORKER_TOKEN: ${RENDER_WORKER_TOKEN:-local-render-worker-token}
+      STORE_LISTING_PUBLIC_BASE_URL: ${STORE_LISTING_PUBLIC_BASE_URL:-http://127.0.0.1:8088/prod-api/store/listing-exports/public-results?key=}
       JAVA_TOOL_OPTIONS: ${BACKEND_JAVA_OPTS}
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
       - ../../models/sscd_disc_mixup.torchscript.pt:/models/sscd_disc_mixup.torchscript.pt:ro
       - image-files:/data/images
-      - ../../../../hytttttttttPermissions.xlsx:/app/config/store-probe.xlsx:ro
     depends_on:
       mysql:
         condition: service_healthy
@@ -174,6 +184,29 @@ services:
       timeout: 5s
       retries: 30
       start_period: 60s
+    restart: unless-stopped
+
+  render-worker:
+    image: image-admin-render-worker:local
+    container_name: image-admin-render-worker
+    build:
+      context: ../..
+      dockerfile: deploy/local/Dockerfile.render-worker
+    environment:
+      TZ: Asia/Shanghai
+      JAVA_API_URL: http://backend:8080
+      RENDER_WORKER_TOKEN: ${RENDER_WORKER_TOKEN:-local-render-worker-token}
+      RENDER_WORKER_CONCURRENCY: ${RENDER_WORKER_CONCURRENCY:-5}
+      RENDER_WORKER_POLL_MS: ${RENDER_WORKER_POLL_MS:-2000}
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.kill(1, 0)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
     restart: unless-stopped
 
   frontend:

@@ -334,6 +334,9 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
         if (ObjectUtil.isNull(defaultRole)) {
             throw new ServiceException("默认注册角色未配置");
         }
+        if (SystemConstants.SUPER_ADMIN_ROLE_ID.equals(defaultRole.getRoleId())) {
+            throw new ServiceException("超级管理员角色不能用于注册");
+        }
         user.setCreateBy(0L);
         user.setUpdateBy(0L);
         SysUser sysUser = BeanUtil.copyProperties(user, SysUser.class);
@@ -491,6 +494,11 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
         }
 
         List<Long> roleList = new ArrayList<>(Arrays.asList(roleIds));
+
+        if (!SystemConstants.SUPER_ADMIN_USER_ID.equals(userId)
+            && roleList.contains(SystemConstants.SUPER_ADMIN_ROLE_ID)) {
+            throw new ServiceException("超级管理员角色只能由 admin 持有");
+        }
 
         // 非超级管理员，禁止包含超级管理员角色
         if (!LoginHelper.isAdmin()) {

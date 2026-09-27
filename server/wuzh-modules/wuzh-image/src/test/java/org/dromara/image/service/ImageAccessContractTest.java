@@ -16,4 +16,15 @@ class ImageAccessContractTest {
         assertEquals("/images/7/content?thumbnail=true", response.getBody().getData());
         assertEquals("no-store", response.getHeaders().getCacheControl());
     }
+
+    @Test void oversizedImageFallbackReturnsJpeg() {
+        var service = mock(ImageService.class);
+        byte[] jpeg = new byte[]{1, 2, 3};
+        when(service.preview(7L)).thenReturn(jpeg);
+        var response = new ImageController(service, mock(ImageUploadService.class),
+            mock(ImageDataLock.class), mock(ImageResetService.class), mock(ImageLibraryLock.class)).preview(7L);
+        assertArrayEquals(jpeg, response.getBody());
+        assertEquals("image/jpeg", response.getHeaders().getContentType().toString());
+        assertEquals("no-store", response.getHeaders().getCacheControl());
+    }
 }

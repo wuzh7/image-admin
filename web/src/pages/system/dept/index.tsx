@@ -48,7 +48,7 @@ export default function SystemDeptPage() {
     form.resetFields();
     form.setFieldsValue({
       ...defaultForm,
-      parentId: parent?.deptId || deptOptions[0]?.id || 0
+      parentId: parent?.deptId ?? (deptOptions.length ? undefined : 0)
     });
     setTitle('新增部门');
     setOpen(true);
@@ -92,7 +92,7 @@ export default function SystemDeptPage() {
 
   const parentOptions = disableCurrentDept(tree, editingDeptId);
   if (editingDeptId) {
-    parentOptions.unshift({ id: 0, label: '无上级（顶级公司）' });
+    parentOptions.unshift({ id: 0, label: '无上级（顶级部门）' });
   }
 
   return <PageContainer title="部门管理">
@@ -161,17 +161,17 @@ export default function SystemDeptPage() {
         <Radio.Group value={parentMode} onChange={event => {
           const mode = event.target.value as typeof parentMode;
           setParentMode(mode);
-          form.setFieldsValue({ parentId: mode === 'existing' ? tree[0]?.id : mode === 'none' ? 0 : undefined, parentName: undefined });
+          form.setFieldsValue({ parentId: mode === 'none' ? 0 : undefined, parentName: undefined });
         }}>
           <Radio value="existing">选择已有部门</Radio>
-          <Radio value="new-root">新建上级公司</Radio>
-          <Radio value="none">无上级（当前为公司）</Radio>
+          <Radio value="new-root">新建上级部门</Radio>
+          <Radio value="none">无上级（当前为顶级部门）</Radio>
         </Radio.Group>
       </Form.Item>}
       {(editingDeptId || parentMode === 'existing') && <ProFormTreeSelect name="parentId" label="上级部门" placeholder="请选择已有部门" rules={[{ required: true, message: '请选择上级部门' }]}
         fieldProps={{ treeData: parentOptions, fieldNames: { label: 'label', value: 'id', children: 'children' }, showSearch: true, treeDefaultExpandAll: true }} />}
-      {!editingDeptId && parentMode === 'new-root' && <ProFormText name="parentName" label="新上级公司名称" rules={[{ required: true, whitespace: true }, { max: 30 }]} />}
-      {!editingDeptId && parentMode === 'none' && <Typography.Text type="secondary">当前部门将成为顶级公司，不归属其他部门。</Typography.Text>}
+      {!editingDeptId && parentMode === 'new-root' && <ProFormText name="parentName" label="新上级部门名称" rules={[{ required: true, whitespace: true }, { max: 30 }]} />}
+      {!editingDeptId && parentMode === 'none' && <Typography.Text type="secondary">当前部门将成为顶级部门，不归属其他部门。</Typography.Text>}
       <ProFormText name="deptName" label="部门名称" rules={[{ required: true }, { max: 30 }]} />
       <ProFormSelect name="roleIds" label="部门角色" mode="multiple" options={roles.map(role => ({ label: role.roleName, value: role.roleId }))} placeholder="可选择多个不同角色" />
       <ProFormSelect name="status" label="状态" options={[{ label: '启用', value: '0' }, { label: '停用', value: '1' }]} rules={[{ required: true }]} />

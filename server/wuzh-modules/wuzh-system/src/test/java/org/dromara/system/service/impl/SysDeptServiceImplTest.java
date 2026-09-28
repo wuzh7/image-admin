@@ -21,14 +21,14 @@ import static org.mockito.Mockito.when;
 class SysDeptServiceImplTest {
 
     @Test
-    void rejectsAddingDepartmentWithoutParentChoiceOrNewCompanyName() {
+    void rejectsAddingDepartmentWithoutParentChoiceOrNewRootName() {
         SysDeptMapper mapper = mock(SysDeptMapper.class);
         SysDeptBo dept = new SysDeptBo();
         dept.setDeptName("测试部门");
 
         assertThatThrownBy(() -> service(mapper).insertDept(dept))
             .isInstanceOf(ServiceException.class)
-            .hasMessage("请选择上级部门或输入新上级公司名称");
+            .hasMessage("请选择上级部门或输入新上级部门名称");
         verify(mapper, never()).insert(org.mockito.ArgumentMatchers.any(SysDept.class));
     }
 

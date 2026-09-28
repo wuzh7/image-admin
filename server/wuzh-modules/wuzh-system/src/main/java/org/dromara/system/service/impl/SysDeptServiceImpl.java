@@ -321,13 +321,13 @@ public class SysDeptServiceImpl implements ISysDeptService, DeptService {
         if (bo.getParentId() == null) {
             String parentName = StringUtils.trim(bo.getParentName());
             if (StringUtils.isBlank(parentName)) {
-                throw new ServiceException("请选择上级部门或输入新上级公司名称");
+                throw new ServiceException("请选择上级部门或输入新上级部门名称");
             }
             SysDeptBo parentBo = new SysDeptBo();
             parentBo.setParentId(Constants.TOP_PARENT_ID);
             parentBo.setDeptName(parentName);
             if (!checkDeptNameUnique(parentBo)) {
-                throw new ServiceException("顶级公司已存在，请选择已有部门");
+                throw new ServiceException("顶级部门已存在，请选择已有部门");
             }
             parent = new SysDept();
             parent.setParentId(Constants.TOP_PARENT_ID);

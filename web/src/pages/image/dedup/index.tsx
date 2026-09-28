@@ -304,6 +304,7 @@ export default function ImageDedupPage() {
   const [threshold, setThreshold] = useState(0.6);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadBatchId, setUploadBatchId] = useState<ImageId>();
   const [uploadPreviewPage, setUploadPreviewPage] = useState(1);
   const [confirmingBatchId, setConfirmingBatchId] = useState<ImageId>();
   const [health, setHealth] = useState<HealthView>();
@@ -702,10 +703,10 @@ export default function ImageDedupPage() {
   }, [loadHealth, loadTaskBatch, loadTasks, pageKey, taskBatch, taskBatchId, taskDrawerOpen, taskPageSize]);
 
   useEffect(() => {
-    if (pageKey !== 'tasks' || !tasks.some(task => ['QUEUED', 'CHECKING', 'CONFIRMING'].includes(task.status))) return;
+    if (pageKey !== 'tasks' || !(uploading || tasks.some(task => ['UPLOADING', 'QUEUED', 'CHECKING', 'CONFIRMING'].includes(task.status)))) return;
     const timer = window.setInterval(() => void loadTasks(taskPage, taskPageSize), 2000);
     return () => window.clearInterval(timer);
-  }, [loadTasks, pageKey, taskPage, taskPageSize, tasks]);
+  }, [loadTasks, pageKey, taskPage, taskPageSize, tasks, uploading]);
 
   useEffect(() => {
     if (pageKey !== 'review') return;
@@ -736,7 +737,8 @@ export default function ImageDedupPage() {
       render: (_, row) => (
         <Progress
           size="small"
-          percent={row.totalCount ? Math.round((row.processedCount / row.totalCount) * 100) : 0}
+          percent={uploading && String(row.id) === String(uploadBatchId) ? uploadProgress
+            : row.totalCount ? Math.round((row.processedCount / row.totalCount) * 100) : 0}
           status={row.status === 'FAILED' ? 'exception' : row.status === 'COMPLETED' ? 'success' : 'active'}
         />
       )
@@ -792,6 +794,7 @@ export default function ImageDedupPage() {
         infringementMode
       });
       const batchId = created.data.id;
+      setUploadBatchId(batchId);
       if (canQuery) localStorage.setItem(currentBatchKey, String(batchId));
       const rawFiles = files
         .filter(file => selectedFileUidSet.has(file.uid))
@@ -897,6 +900,7 @@ export default function ImageDedupPage() {
     } finally {
       submittingRef.current = false;
       setUploading(false);
+      setUploadBatchId(undefined);
     }
   };
 

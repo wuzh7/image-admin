@@ -881,14 +881,14 @@ export class CalibrationManager {
     if (!p || this.selection) return '';
     return `<g class="cal-point-label" transform="translate(${p[0] * 1000} ${p[1] * 1000}) scale(${(1000 * VIEW_SPAN) / (box.width || 1000)} ${(1000 * VIEW_SPAN) / (box.height || 1000)})"><rect x="14" y="-13" width="165" height="26" rx="5"/><text x="22" y="4">X ${(p[0] * this.config.width).toFixed(1)} · Y ${(p[1] * this.config.height).toFixed(1)}</text></g>`;
   }
-  async decode(file) {
+  async decode(file, limitBytes = true) {
     if (
       !file ||
       !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) ||
       !file.size ||
-      file.size > 20 * 1024 * 1024
+      (limitBytes && file.size > 20 * 1024 * 1024)
     )
-      throw Error('请选择 20 MB 内 PNG/JPG/WebP');
+      throw Error(limitBytes ? '请选择 20 MB 内 PNG/JPG/WebP' : '请选择 PNG/JPG/WebP 图片');
     const url = URL.createObjectURL(file),
       image = new Image();
     try {
@@ -934,7 +934,7 @@ export class CalibrationManager {
         this.dirty = true;
       } else if (target.id === 'cal-design') {
         if (!target.files[0]) return true;
-        const image = await this.decode(target.files[0]);
+        const image = await this.decode(target.files[0], false);
         this.remember();
         this.design = image;
         this.previewPixels = null;

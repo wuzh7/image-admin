@@ -109,7 +109,7 @@ export default function TemplateGroupPage() {
         </Card>)}
       </div> : <Empty description="此类目暂无已发布背景" />}
     </Card>
-    <Card title={`Canvas 套图模板组 · ${visibleGroups.length} 组`}>
+    <Card title={`套图模板组 · ${visibleGroups.length} 组`}>
       <Typography.Paragraph type="secondary">每组选择 1–8 张同类目背景，第一张为主图；删除不会影响历史任务。</Typography.Paragraph>
       {visibleGroups.length ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 16 }}>
         {visibleGroups.map(group => <Card key={String(group.id)} size="small" title={group.name} extra={<Tag color={group.status === 'ACTIVE' ? 'success' : 'warning'}>{group.status === 'ACTIVE' ? '已启用' : '已停用'}</Tag>}>
@@ -129,7 +129,7 @@ export default function TemplateGroupPage() {
         </Card>)}
       </div> : <Empty description="此类目暂无模板组" />}
     </Card>
-    <Modal title={editor?.group ? '编辑 Canvas 模板组' : '新增 Canvas 模板组'} open={!!editor} width={760} okText="保存配置" okButtonProps={{ loading: saving }} cancelButtonProps={{ disabled: saving }} onOk={() => void save()} onCancel={() => { if (!saving) setEditor(undefined); }} destroyOnHidden>
+    <Modal title={editor?.group ? '编辑模板组' : '新增模板组'} open={!!editor} width={760} okText="保存配置" okButtonProps={{ loading: saving }} cancelButtonProps={{ disabled: saving }} onOk={() => void save()} onCancel={() => { if (!saving) setEditor(undefined); }} destroyOnHidden>
       {editor && <Space direction="vertical" style={{ width: '100%' }} size="middle">
         <label>模板组名称<Input maxLength={80} value={editor.name} onChange={event => setEditor({ ...editor, name: event.target.value })} placeholder="例如：地毯夏季上新组" /></label>
         <label>商品类目<Select style={{ width: '100%' }} value={editor.categoryId} options={categories.map(item => ({ value: item.id, label: item.name }))} onChange={value => setEditor({ ...editor, categoryId: value, scenes: [] })} /></label>

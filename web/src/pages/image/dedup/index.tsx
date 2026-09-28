@@ -80,7 +80,7 @@ const maxFilesPerBatch = 1000;
 const uploadPreviewPageSize = 100;
 const reviewCandidatePageSize = 6;
 const reviewPageSize = 5;
-const aspectRatioOrder = ['1:2', '9:16', '2:3', '3:4', '4:5', '1:1', '5:4', '4:3', '3:2', '16:9', '2:1', '其他'];
+const aspectRatioOrder = ['1:1', '1:2', '2:1', '3:4', '4:3', '2:3', '3:2'];
 const infringementModeText: Record<InfringementMode, string> = {
   RELAY: '中转站',
   OFFICIAL_HYBRID: '官方混合',
@@ -457,6 +457,7 @@ export default function ImageDedupPage() {
   }, []);
 
   const aspectRatioOptions = useMemo(() => Array.from(aspectRatios)
+    .filter(value => aspectRatioOrder.includes(value))
     .sort((left, right) => {
       const leftIndex = aspectRatioOrder.indexOf(left);
       const rightIndex = aspectRatioOrder.indexOf(right);
@@ -1527,7 +1528,7 @@ export default function ImageDedupPage() {
                   <Select aria-label="套图模板组" placeholder="选择套图模板组" value={storeGroupId} disabled={storeRendering || storeCategoryId == null} options={storeGroups.filter(group => String(group.categoryId) === String(storeCategoryId)).map(group => ({ value: group.id, label: group.name }))} onChange={setStoreGroupId} />
                   {storeGroup && <div className="store-task-group-preview">
                     <div className="store-task-group-images">{storeGroup.templates.slice(0, 3).map(template => <StoreImage key={String(template.id)} url={template.imageUrl} alt={template.name} style={{ width: 48, height: 60, objectFit: 'cover', borderRadius: 4 }} />)}</div>
-                    <div><Typography.Text strong>{storeGroup.name}</Typography.Text><br /><Typography.Text type="secondary">{storeGroup.templates.length} 个背景 · Canvas 套图引擎</Typography.Text></div>
+                    <div><Typography.Text strong>{storeGroup.name}</Typography.Text><br /><Typography.Text type="secondary">{storeGroup.templates.length} 个背景</Typography.Text></div>
                   </div>}
                 </div>
                 <div><Checkbox checked={storeGenerateListing} disabled={storeRendering} onChange={event => setStoreGenerateListing(event.target.checked)}>同时生成上架表格</Checkbox><br />

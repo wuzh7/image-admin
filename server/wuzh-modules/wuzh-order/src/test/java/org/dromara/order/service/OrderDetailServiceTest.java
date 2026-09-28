@@ -8,6 +8,7 @@ import org.dromara.order.domain.OrderDetail;
 import org.dromara.order.domain.OrderDetailDtos;
 import org.dromara.order.mapper.OrderDetailMapper;
 import org.dromara.common.core.exception.ServiceException;
+import org.apache.fesod.sheet.annotation.ExcelProperty;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,6 +23,7 @@ import org.springframework.format.support.DefaultFormattingConversionService;
 import org.springframework.web.bind.WebDataBinder;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
@@ -42,6 +44,34 @@ class OrderDetailServiceTest {
 
     @Mock
     private OrderDetailMapper orderDetailMapper;
+
+    @Test
+    void exportColumnsMatchVisibleOrderDetailColumns() {
+        assertThat(Arrays.stream(OrderDetailDtos.ExportRow.class.getDeclaredFields())
+            .map(field -> field.getAnnotation(ExcelProperty.class).value()[0]).toList())
+            .containsExactly("主订单号", "订单创建时间", "子订单号", "店铺ID", "店铺名称", "店铺备注",
+                "下单工厂", "物流商", "图片", "商品名称", "SKU", "数量", "订单运费预计冲回",
+                "子订单预计回款", "销售站点", "是否定制", "运费", "更新时间");
+    }
+
+    @Test
+    void exportIncludesStoreAndTimeValuesShownInList() {
+        OrderStoreCatalog storeCatalog = mock(OrderStoreCatalog.class);
+        when(storeCatalog.read()).thenReturn(Map.of("MALL-1", new OrderStoreCatalog.StoreInfo("一号店", "重点客户")));
+        OrderDetail detail = new OrderDetail();
+        detail.setFulfillmentMallId("MALL-1");
+        detail.setParentOrderTime(LocalDateTime.parse("2026-09-23T14:30:00"));
+        detail.setUpdateTime(LocalDateTime.parse("2026-09-24T10:20:00"));
+        when(orderDetailMapper.selectList(any())).thenReturn(List.of(detail));
+
+        OrderDetailDtos.ExportRow row = new OrderDetailService(orderDetailMapper, storeCatalog)
+            .queryExport(new OrderDetailDtos.Query()).getFirst();
+
+        assertThat(row.getParentOrderTimeStr()).isEqualTo("2026-09-23 14:30:00");
+        assertThat(row.getStoreName()).isEqualTo("一号店");
+        assertThat(row.getStoreRemark()).isEqualTo("重点客户");
+        assertThat(row.getUpdateTime()).isEqualTo("2026-09-24 10:20:00");
+    }
 
     @Test
     void filtersByCustomizedProductsAndStoreRemark() {

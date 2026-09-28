@@ -110,7 +110,9 @@ public class OrderDetailService {
     }
 
     public List<OrderDetailDtos.ExportRow> queryExport(OrderDetailDtos.Query query) {
-        return orderDetailMapper.selectList(scope(buildQuery(query, storeCatalog.read()))).stream().map(this::toExportRow).toList();
+        Map<String, OrderStoreCatalog.StoreInfo> stores = storeCatalog.read();
+        return orderDetailMapper.selectList(scope(buildQuery(query, stores))).stream()
+            .map(detail -> toExportRow(toView(detail, stores))).toList();
     }
 
     public OrderDetailDtos.DetailView queryById(long id) {
@@ -260,23 +262,26 @@ public class OrderDetailService {
         );
     }
 
-    private OrderDetailDtos.ExportRow toExportRow(OrderDetail detail) {
+    private OrderDetailDtos.ExportRow toExportRow(OrderDetailDtos.DetailView detail) {
         OrderDetailDtos.ExportRow row = new OrderDetailDtos.ExportRow();
-        row.setOrderNo(detail.getParentOrderSn());
-        row.setFulfillmentMallId(detail.getFulfillmentMallId());
-        row.setEstimatedAmount(detail.getEstimatedAmount());
-        row.setShippingSettleAmount(detail.getShippingSettleAmount());
-        row.setSalesSettleAmount(detail.getSalesSettleAmount());
-        row.setSiteName(detail.getSiteName());
-        row.setCustomizedProducts(detail.getCustomizedProducts());
-        row.setSendWarehouseName(detail.getSendWarehouseName());
-        row.setShippingCompanyName(detail.getShippingCompanyName());
-        row.setOrderSn(detail.getOrderSn());
-        row.setGoodsName(detail.getGoodsName());
-        row.setParentOrderSn(detail.getParentOrderSn());
-        row.setSkuQuantity(detail.getSkuQuantity());
-        row.setSpec(detail.getSpec());
-        row.setThumbUrl(detail.getThumbUrl());
+        row.setParentOrderSn(detail.parentOrderSn());
+        row.setParentOrderTimeStr(detail.parentOrderTimeStr());
+        row.setOrderSn(detail.orderSn());
+        row.setFulfillmentMallId(detail.fulfillmentMallId());
+        row.setStoreName(detail.storeName());
+        row.setStoreRemark(detail.storeRemark());
+        row.setSendWarehouseName(detail.sendWarehouseName());
+        row.setShippingCompanyName(detail.shippingCompanyName());
+        row.setThumbUrl(detail.thumbUrl());
+        row.setGoodsName(detail.goodsName());
+        row.setSpec(detail.spec());
+        row.setSkuQuantity(detail.skuQuantity());
+        row.setShippingSettleAmount(detail.shippingSettleAmount());
+        row.setSalesSettleAmount(detail.salesSettleAmount());
+        row.setSiteName(detail.siteName());
+        row.setCustomizedProducts(detail.customizedProducts());
+        row.setEstimatedAmount(detail.estimatedAmount());
+        row.setUpdateTime(detail.updateTime() == null ? null : PARENT_ORDER_TIME_FORMAT.format(detail.updateTime()));
         return row;
     }
 

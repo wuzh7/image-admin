@@ -6,6 +6,7 @@ import { getImageCategoryOptions } from '@/api/image';
 import type { ImageCategory, ImageId } from '@/api/image/types';
 import type { StoreTemplateGroup } from '@/api/store';
 import StoreImage from './StoreImage';
+import { userErrorMessage } from '@/api/request';
 
 export function StorePage({ title, children, extra }: { title: string; children: ReactNode; extra?: ReactNode }) {
   return <PageContainer title={title} extra={extra}>{children}</PageContainer>;
@@ -35,7 +36,7 @@ export function GroupCards({ groups, onDelete, onUse, onEdit }: { groups: StoreT
 }
 
 export function ApiError({ error }: { error?: unknown }) {
-  return error ? <Alert type="error" showIcon message={error instanceof Error ? error.message : '请求失败，请稍后重试'} /> : null;
+  return error ? <Alert type="error" showIcon message={userErrorMessage(error)} /> : null;
 }
 
 export function PageToolbar({ children }: { children: ReactNode }) {

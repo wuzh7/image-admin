@@ -65,10 +65,17 @@ CREATE TABLE IF NOT EXISTS store_render_batch (
  id BIGINT NOT NULL, owner_id BIGINT NOT NULL, category_id BIGINT NOT NULL, template_group_id BIGINT NOT NULL,
  shop_id BIGINT DEFAULT NULL, listing_template_id BIGINT DEFAULT NULL, status VARCHAR(24) NOT NULL,
  selected_count INT NOT NULL DEFAULT 0, completed_count INT NOT NULL DEFAULT 0, skipped_count INT NOT NULL DEFAULT 0, failed_count INT NOT NULL DEFAULT 0,
- listing_profile_json JSON DEFAULT NULL, idempotency_key VARCHAR(128) NOT NULL,
+ listing_profile_json JSON DEFAULT NULL, idempotency_key VARCHAR(128) NOT NULL, downloaded_at DATETIME DEFAULT NULL,
  create_dept BIGINT DEFAULT NULL, create_by BIGINT DEFAULT NULL, create_time DATETIME DEFAULT NULL,
  update_by BIGINT DEFAULT NULL, update_time DATETIME DEFAULT NULL, PRIMARY KEY(id), UNIQUE KEY uk_store_batch_idempotency(owner_id,idempotency_key), KEY idx_store_batch_owner(owner_id,status,update_time)
 ) ENGINE=InnoDB COMMENT='套图渲染批次';
+-- ZIP 完整返回浏览器后记录时间；仅已下载且全部渲染结果超过三天的批次可自动清理。
+SET @store_batch_add_downloaded_at = IF(
+ EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='store_render_batch' AND column_name='downloaded_at'),
+ 'SELECT 1', 'ALTER TABLE store_render_batch ADD COLUMN downloaded_at DATETIME DEFAULT NULL AFTER idempotency_key');
+PREPARE stmt FROM @store_batch_add_downloaded_at;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 CREATE TABLE IF NOT EXISTS store_render_item (
  id BIGINT NOT NULL, owner_id BIGINT NOT NULL, batch_id BIGINT NOT NULL, template_group_id BIGINT NOT NULL, template_id BIGINT NOT NULL, image_id BIGINT NOT NULL,
  render_config_hash CHAR(64) NOT NULL, calibration_config_json JSON DEFAULT NULL, mask_oss_key VARCHAR(500) DEFAULT NULL, template_config_json JSON DEFAULT NULL,

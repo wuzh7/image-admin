@@ -246,7 +246,7 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
             // 保存文件信息
             return buildResultEntity(originalfileName, suffix, instance.clientId(), result, ossExt);
         } catch (IOException e) {
-            throw new ServiceException(e.getMessage());
+            throw new ServiceException(e.getMessage(), 500);
         }
     }
 

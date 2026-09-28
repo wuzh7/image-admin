@@ -6,7 +6,7 @@ import zhCN from 'antd/locale/zh_CN';
 import { useCallback, useEffect, useState } from 'react';
 import type { VerifyCodeResult } from '@/api/types';
 import { getCodeImg, getInfo, login } from '@/api/login';
-import { isRelogin } from '@/api/request';
+import { isRelogin, userErrorMessage } from '@/api/request';
 import { useTagsViewStore } from '@/stores/tagsViewStore';
 import { getToken, removeToken, setToken } from '@/utils/auth';
 import { appEnv } from '@/utils/env';
@@ -170,7 +170,7 @@ export default function Login() {
                   if (captcha.captchaEnabled) {
                     loadCaptcha();
                   }
-                  message.error((error as Error).message || authText.loginFail);
+                  message.error(userErrorMessage(error, authText.loginFail));
                   return false;
                 }
               }}

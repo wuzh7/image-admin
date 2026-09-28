@@ -70,9 +70,9 @@ import { useUserStore } from '@/stores/userStore';
 import { hasPermi, hasRole } from '@/utils/permission';
 import { useTableExport } from '@/hooks/useTableExport';
 import AuthorizedImage from '@/components/common/AuthorizedImage';
-import { isHandledRequestError } from '@/api/request';
+import { isHandledRequestError, userErrorMessage } from '@/api/request';
 import { createLatestRequestGate } from './requestGate';
-import { createRenderBatch, getRenderBatch, listListingTemplates, listRenderBatches, listShops, listTemplateGroups, type StoreListingTemplate, type StoreRenderBatch, type StoreShop, type StoreTemplateGroup } from '@/api/store';
+import { createRenderBatch, getRenderBatch, listListingTemplates, listRenderBatches, listShops, listTemplateGroups, stopRenderBatch, type StoreListingTemplate, type StoreRenderBatch, type StoreShop, type StoreTemplateGroup } from '@/api/store';
 import StoreImage from '../../store/StoreImage';
 
 const currentBatchKey = 'image-dedup-current-batch';
@@ -834,7 +834,7 @@ export default function ImageDedupPage() {
               }
             }
             if (lastError) {
-              failedIndexes.set(index, lastError instanceof Error ? lastError.message : '上传失败，请检查网络后重试');
+              failedIndexes.set(index, userErrorMessage(lastError, '上传失败，请检查网络后重试'));
             }
           }
         };
@@ -863,7 +863,7 @@ export default function ImageDedupPage() {
             try {
               await uploadBatchFiles(batchId, [rawFiles[index]]);
             } catch (error) {
-              failedIndexes.set(index, error instanceof Error ? error.message : '上传失败，请重试');
+              failedIndexes.set(index, userErrorMessage(error, '上传失败，请重试'));
             } finally {
               completed += 1;
               setUploadProgress(Math.round((completed / rawFiles.length) * 100));
@@ -897,7 +897,7 @@ export default function ImageDedupPage() {
           : '上传完成，已进入后台检测');
       }
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '图片上传失败，请稍后重试');
+      if (!isHandledRequestError(error)) message.error(userErrorMessage(error));
     } finally {
       submittingRef.current = false;
       setUploading(false);
@@ -1137,7 +1137,7 @@ export default function ImageDedupPage() {
         <Tag color="purple">阈值 {(Number(taskBatch.similarityThreshold) * 100).toFixed(0)}%</Tag>
         {taskBatch.detectionCompletedAt && <Tag color="success">检测完成 {taskBatch.detectionCompletedAt}</Tag>}
       </Space>
-      {taskBatch.errorMessage && <Alert type="error" showIcon message={taskBatch.errorMessage} />}
+      {taskBatch.errorMessage && <Alert type="error" showIcon message="系统错误，请稍后重试" />}
       {taskBatch.failedCount > 0 && (
         <>
           <Alert
@@ -1162,7 +1162,7 @@ export default function ImageDedupPage() {
               },
               {
                 title: '失败原因', dataIndex: 'errorMessage',
-                render: reason => <Typography.Text type="danger">{reason || '未记录具体原因，请重试后查看'}</Typography.Text>
+                render: reason => <Typography.Text type="danger">{reason ? '系统错误，请稍后重试' : '未记录具体原因，请重试后查看'}</Typography.Text>
               }
             ]}
           />
@@ -1561,10 +1561,10 @@ export default function ImageDedupPage() {
                 {storeMissingKeywords && <Alert type="warning" showIcon message="选中的图片缺少侵权检测 AI 英文描述关键词，请查看检测结果" />}
                 {selectedRiskImages.length > 0 && <Alert type="warning" showIcon message="选中的图片包含非低风险图片，请重新选择后再渲染" />}
                 {storeBatch && <>
-                  <Typography.Text strong>批次 {String(storeBatch.id)} · {storeBatch.status === 'COMPLETED' ? '已完成' : storeBatch.status === 'PARTIAL_FAILURE' ? '部分失败' : storeBatch.status === 'FAILED' ? '失败' : '渲染中'}</Typography.Text>
+                  <Typography.Text strong>批次 {String(storeBatch.id)} · {storeBatch.status === 'COMPLETED' ? '已完成' : storeBatch.status === 'PARTIAL_FAILURE' ? '部分失败' : storeBatch.status === 'FAILED' ? '失败' : storeBatch.status === 'STOPPING' ? '停止中' : storeBatch.status === 'STOPPED' ? '已停止' : '渲染中'}</Typography.Text>
                   <Progress percent={storeBatch.totalCount ? Math.round((storeBatch.completedCount + storeBatch.skippedCount + storeBatch.failedCount) / storeBatch.totalCount * 100) : 0} status={storeRendering ? 'active' : storeBatch.failedCount ? 'exception' : 'success'} />
                   <Typography.Text type="secondary">完成 {storeBatch.completedCount} · 跳过重复 {storeBatch.skippedCount} · 失败 {storeBatch.failedCount}</Typography.Text>
-                  {storeRendering ? <Alert type="warning" showIcon message="渲染中，请勿操作当前页面" description="任务由后台继续执行，刷新页面后仍可查看进度。" /> : <Button block onClick={() => history.push('/store-management/render-result')}>查看渲染结果</Button>}
+                  {storeRendering ? <Button block danger onClick={() => Modal.confirm({ title: '停止当前渲染批次？', content: '正在渲染的图片完成后停止，其余图片不再开始。', onOk: async () => { const response = await stopRenderBatch(storeBatch.id); setStoreBatch(response.data); } })}>停止当前批次</Button> : <Button block onClick={() => history.push('/store-management/render-result')}>查看渲染结果</Button>}
                   {storePollFailed && <Button block onClick={async () => { const response = await getRenderBatch(storeBatch.id); setStoreBatch(response.data); setStorePollFailed(false); }}>重新获取进度</Button>}
                 </>}
                 <Button type="primary" block loading={storeSubmitting} disabled={storeRendering || !selectedLibraryIds.length || !storeGroup?.templates.length || storeMissingListing || storeMissingKeywords} onClick={() => void startStoreRender()}>{storeGenerateListing ? '开始渲染并生成表格' : '开始渲染成品'} →</Button>

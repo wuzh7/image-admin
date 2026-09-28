@@ -7,6 +7,7 @@ import {
 import { StorePage, useStoreCategories } from '../common';
 import { useUserStore } from '@/stores/userStore';
 import { hasPermi } from '@/utils/permission';
+import { userErrorMessage } from '@/api/request';
 
 const fields = [
   ['required', '平台强制词'], ['material', '产品材质词'], ['hot', '平台热词'],
@@ -97,7 +98,7 @@ export default function ListingConfigPage() {
       setProfile(nextProfile); setConfigOpen(false);
       message.success('当前表格的生成配置已保存');
     }
-    catch (error) { message.error(error instanceof Error ? error.message : '保存生成配置失败'); }
+    catch (error) { message.error(userErrorMessage(error)); }
     finally { setSavingProfile(false); }
   };
 

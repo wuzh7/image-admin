@@ -526,7 +526,7 @@ public class StoreWorkflowService {
     private StoreDtos.ListingTemplateView listingTemplateView(StoreListingTemplate t) { return new StoreDtos.ListingTemplateView(t.getId(),t.getShopId(),t.getCategoryId(),t.getName(),t.getOssKey(),t.getOriginalFilename(),t.getStatus(),t.getConfigJson(),t.getVersionNo(),t.getTemplateCode()); }
 
     public StoreDtos.PageView<StoreDtos.RenderBatchView> batches(String status, Long shopId, Long categoryId, int pageNum, int pageSize) {
-        var q = Wrappers.<StoreRenderBatch>lambdaQuery().eq(StoreRenderBatch::getOwnerId, owner());
+        var q = Wrappers.<StoreRenderBatch>lambdaQuery().eq(StoreRenderBatch::getOwnerId, owner()).ne(StoreRenderBatch::getStatus, "DELETED");
         if (status != null && !status.isBlank()) q.in(StoreRenderBatch::getStatus, Arrays.asList(status.split(",")));
         if (shopId != null) q.and(condition -> condition.eq(StoreRenderBatch::getShopId, shopId)
             .or().apply("id IN (SELECT batch_id FROM store_listing_export WHERE shop_id={0})", shopId));
@@ -535,18 +535,27 @@ public class StoreWorkflowService {
         return new StoreDtos.PageView<>(page.getRecords().stream().map(this::batchView).toList(), page.getTotal());
     }
     public StoreDtos.RenderBatchView batch(long id) { return batchView(requireBatch(id)); }
+    @Transactional public StoreDtos.RenderBatchView stopBatch(long id) {
+        StoreRenderBatch batch = requireBatch(id);
+        if (Set.of("CREATED", "RUNNING").contains(batch.getStatus())) {
+            batch.setStatus("STOPPING"); batchMapper.updateById(batch);
+            finishStoppingBatch(id);
+        }
+        return batchView(batchMapper.selectById(id));
+    }
     @Transactional public StoreDtos.RenderBatchView retryBatch(long id) {
         StoreRenderBatch batch = requireBatch(id);
+        if (Set.of("STOPPING", "STOPPED", "DELETED").contains(batch.getStatus())) throw new ServiceException("已停止或删除的批次不能重试");
         int retried = itemMapper.update(null, Wrappers.<StoreRenderItem>lambdaUpdate().eq(StoreRenderItem::getBatchId, id).eq(StoreRenderItem::getStatus, "FAILED")
             .set(StoreRenderItem::getStatus, "PENDING").set(StoreRenderItem::getErrorMessage, null).set(StoreRenderItem::getCompletedAt, null));
         if (retried == 0) return batchView(batch);
         batch.setFailedCount(0); batch.setStatus("RUNNING"); batchMapper.updateById(batch);
         return batchView(batch);
     }
-    public StoreDtos.PageView<StoreRenderItem> results(Long batchId, int pageNum, int pageSize) { var q=Wrappers.<StoreRenderItem>lambdaQuery().eq(StoreRenderItem::getOwnerId, owner()); if(batchId!=null) q.eq(StoreRenderItem::getBatchId,batchId); Page<StoreRenderItem> page=itemMapper.selectPage(new Page<>(Math.max(1,pageNum),Math.max(1,Math.min(100,pageSize))), q.orderByDesc(StoreRenderItem::getId)); page.getRecords().stream().filter(item -> item.getResultOssKey() != null).forEach(item -> item.setResultUrl(storeStorage.url(item.getResultOssKey(), "image/*"))); return new StoreDtos.PageView<>(page.getRecords(),page.getTotal()); }
+    public StoreDtos.PageView<StoreRenderItem> results(Long batchId, int pageNum, int pageSize) { var q=Wrappers.<StoreRenderItem>lambdaQuery().eq(StoreRenderItem::getOwnerId, owner()).ne(StoreRenderItem::getStatus, "RESULT_DELETED"); if(batchId!=null) q.eq(StoreRenderItem::getBatchId,batchId); Page<StoreRenderItem> page=itemMapper.selectPage(new Page<>(Math.max(1,pageNum),Math.max(1,Math.min(100,pageSize))), q.orderByDesc(StoreRenderItem::getId)); page.getRecords().stream().filter(item -> item.getResultOssKey() != null).forEach(item -> item.setResultUrl(storeStorage.url(item.getResultOssKey(), "image/*"))); return new StoreDtos.PageView<>(page.getRecords(),page.getTotal()); }
 
     public StoreDtos.PageView<StoreDtos.RenderGroupView> resultGroups(long batchId, int pageNum, int pageSize) {
-        requireBatch(batchId);
+        if ("DELETED".equals(requireBatch(batchId).getStatus())) throw new ServiceException("渲染结果已删除");
         int size = Math.max(1, Math.min(50, pageSize));
         long total = jdbcTemplate.queryForObject("SELECT COUNT(DISTINCT image_id) FROM store_render_item WHERE batch_id=?", Long.class, batchId);
         List<Long> imageIds = jdbcTemplate.queryForList("SELECT image_id FROM store_render_item WHERE batch_id=? GROUP BY image_id ORDER BY MIN(id) DESC LIMIT ? OFFSET ?",
@@ -569,7 +578,7 @@ public class StoreWorkflowService {
     public StoreDtos.PageView<StoreDtos.RenderLogView> renderLogs(String userName, int pageNum, int pageSize) {
         int page = Math.max(1, pageNum);
         int size = Math.max(1, Math.min(100, pageSize));
-        StringBuilder where = new StringBuilder(" FROM store_render_item i LEFT JOIN img_asset a ON a.id=i.image_id LEFT JOIN sys_user u ON u.user_id=i.owner_id WHERE i.status='SUCCEEDED'");
+        StringBuilder where = new StringBuilder(" FROM store_render_item i LEFT JOIN img_asset a ON a.id=i.image_id LEFT JOIN sys_user u ON u.user_id=i.owner_id WHERE i.status IN ('SUCCEEDED','RESULT_DELETED')");
         List<Object> args = new ArrayList<>();
         if (!LoginHelper.isAdmin()) { where.append(" AND i.owner_id=?"); args.add(owner()); }
         if (userName != null && !userName.isBlank()) { where.append(" AND u.user_name=?"); args.add(userName.trim()); }
@@ -583,7 +592,7 @@ public class StoreWorkflowService {
         return new StoreDtos.PageView<>(records, total == null ? 0 : total);
     }
     public List<StoreDtos.ArchiveFile> archiveFiles(long batchId, String nameMode) {
-        requireBatch(batchId);
+        if ("DELETED".equals(requireBatch(batchId).getStatus())) throw new ServiceException("渲染结果已删除");
         if (!Set.of("ORIGINAL_NAME", "ENGLISH_KEYWORDS").contains(nameMode)) throw new ServiceException("图片命名方式无效");
         List<StoreRenderItem> items = itemMapper.selectList(Wrappers.<StoreRenderItem>lambdaQuery().eq(StoreRenderItem::getBatchId, batchId).in(StoreRenderItem::getStatus, "SUCCEEDED", "SKIPPED"));
         if (items.isEmpty()) throw new ServiceException("该批次暂无可下载图片");
@@ -632,6 +641,65 @@ public class StoreWorkflowService {
     }
     public ImageStorage.LocalFile archiveFile(StoreDtos.ArchiveFile file) {
         return storeStorage.open(file.ossKey());
+    }
+
+    @Transactional public void confirmDownload(long batchId) {
+        StoreRenderBatch batch = requireBatch(batchId);
+        if (!Set.of("COMPLETED", "PARTIAL_FAILURE", "STOPPED").contains(batch.getStatus()) ||
+            itemMapper.selectCount(Wrappers.<StoreRenderItem>lambdaQuery().eq(StoreRenderItem::getBatchId, batchId)
+                .in(StoreRenderItem::getStatus, "SUCCEEDED", "SKIPPED").isNotNull(StoreRenderItem::getResultOssKey)) == 0)
+            throw new ServiceException("该批次暂无已完成的渲染图");
+        batch.setDownloadedAt(LocalDateTime.now());
+        batchMapper.updateById(batch);
+    }
+
+    @Transactional public void deleteResults(long batchId) {
+        StoreRenderBatch batch = requireBatch(batchId);
+        if (!Set.of("COMPLETED", "PARTIAL_FAILURE", "FAILED", "STOPPED").contains(batch.getStatus()))
+            throw new ServiceException("请等待当前批次结束后再删除结果");
+        markResultsDeleted(batch);
+    }
+
+    public List<Long> expiredDownloadedBatchIds() {
+        return jdbcTemplate.queryForList("SELECT b.id FROM store_render_batch b WHERE b.downloaded_at IS NOT NULL " +
+            "AND b.status IN ('COMPLETED','PARTIAL_FAILURE','STOPPED') " +
+            "AND NOT EXISTS (SELECT 1 FROM store_render_item i WHERE i.batch_id=b.id AND i.status='RUNNING' AND i.lease_until>=NOW()) " +
+            "AND NOT EXISTS (SELECT 1 FROM store_render_item i WHERE i.batch_id=b.id AND i.result_oss_key IS NOT NULL " +
+            "AND (CASE WHEN i.status='SKIPPED' THEN b.create_time ELSE i.completed_at END IS NULL OR " +
+            "CASE WHEN i.status='SKIPPED' THEN b.create_time ELSE i.completed_at END>?)) ORDER BY b.id LIMIT 100", Long.class, LocalDateTime.now().minusDays(3));
+    }
+
+    @Transactional public void deleteExpiredResults(long batchId) {
+        StoreRenderBatch batch = batchMapper.selectById(batchId);
+        if (batch == null || batch.getDownloadedAt() == null ||
+            !Set.of("COMPLETED", "PARTIAL_FAILURE", "STOPPED").contains(batch.getStatus())) return;
+        Long recent = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM store_render_item i JOIN store_render_batch b ON b.id=i.batch_id WHERE i.batch_id=? AND " +
+            "((i.status='RUNNING' AND i.lease_until>=NOW()) OR (i.result_oss_key IS NOT NULL AND " +
+            "(CASE WHEN i.status='SKIPPED' THEN b.create_time ELSE i.completed_at END IS NULL OR " +
+            "CASE WHEN i.status='SKIPPED' THEN b.create_time ELSE i.completed_at END>?)))",
+            Long.class, batchId, LocalDateTime.now().minusDays(3));
+        if (recent != null && recent == 0) markResultsDeleted(batch);
+    }
+
+    private void markResultsDeleted(StoreRenderBatch batch) {
+        itemMapper.update(null, Wrappers.<StoreRenderItem>lambdaUpdate().eq(StoreRenderItem::getBatchId, batch.getId())
+            .in(StoreRenderItem::getStatus, "SUCCEEDED", "SKIPPED")
+            .set(StoreRenderItem::getStatus, "RESULT_DELETED").set(StoreRenderItem::getResultUrl, null));
+        batch.setStatus("DELETED");
+        batchMapper.updateById(batch);
+    }
+
+    public void purgeDeletedResultFiles() {
+        List<String> keys = jdbcTemplate.queryForList("SELECT result_oss_key FROM store_render_item " +
+            "WHERE result_oss_key IS NOT NULL GROUP BY result_oss_key " +
+            "HAVING SUM(status IN ('SUCCEEDED','SKIPPED'))=0 AND SUM(status='RESULT_DELETED')>0 LIMIT 100", String.class);
+        for (String key : keys) {
+            if (itemMapper.selectCount(Wrappers.<StoreRenderItem>lambdaQuery().eq(StoreRenderItem::getResultOssKey, key)
+                .in(StoreRenderItem::getStatus, "SUCCEEDED", "SKIPPED")) > 0) continue;
+            storeStorage.delete(key);
+            itemMapper.update(null, Wrappers.<StoreRenderItem>lambdaUpdate().eq(StoreRenderItem::getResultOssKey, key)
+                .eq(StoreRenderItem::getStatus, "RESULT_DELETED").set(StoreRenderItem::getResultOssKey, null));
+        }
     }
 
     @Transactional
@@ -703,13 +771,25 @@ public class StoreWorkflowService {
         if (prior != null && prior == 0) imageMapper.update(null, Wrappers.<ImageAsset>lambdaUpdate()
             .eq(ImageAsset::getId, item.getImageId()).setSql("render_use_count = COALESCE(render_use_count, 0) + 1"));
         batchMapper.completeItem(item.getBatchId());
+        finishStoppingBatch(item.getBatchId());
     }
     public ImageStorage.LocalFile ownedFile(String key) {
         if (key == null || !key.matches("(store/(templates|results|listing)|render-public/results)/" + owner() + "/[0-9a-f-]+\\.(jpg|jpeg|png|webp|xlsx)")) throw new ServiceException("无权访问文件");
         return storeStorage.open(key);
     }
     @Transactional
-    public void fail(long itemId, StoreDtos.FailRequest request) { if (itemMapper.fail(itemId, request.workerId(), request.leaseToken(), request.errorMessage()) != 1) throw new ServiceException("渲染租约已失效"); batchMapper.failItem(itemMapper.selectById(itemId).getBatchId()); }
+    public void fail(long itemId, StoreDtos.FailRequest request) { if (itemMapper.fail(itemId, request.workerId(), request.leaseToken(), request.errorMessage()) != 1) throw new ServiceException("渲染租约已失效"); long batchId = itemMapper.selectById(itemId).getBatchId(); batchMapper.failItem(batchId); finishStoppingBatch(batchId); }
+
+    public List<Long> stoppingBatchIds() {
+        return jdbcTemplate.queryForList("SELECT id FROM store_render_batch WHERE status='STOPPING' ORDER BY id LIMIT 100", Long.class);
+    }
+
+    @Transactional public void finishStoppingBatch(long batchId) {
+        StoreRenderBatch batch = batchMapper.selectById(batchId);
+        if (batch == null || !"STOPPING".equals(batch.getStatus())) return;
+        itemMapper.cancelExpired(batchId);
+        batchMapper.stopIfIdle(batchId);
+    }
     private StoreDtos.TemplateGroupView groupView(StoreTemplateGroup g) { List<StoreDtos.TemplateView> ts=templateMapper.selectList(Wrappers.<StoreTemplate>lambdaQuery().eq(StoreTemplate::getGroupId,g.getId()).eq(StoreTemplate::getStatus,"ACTIVE")).stream().sorted(Comparator.comparingInt(this::templateOrder).thenComparing(StoreTemplate::getId)).map(t->new StoreDtos.TemplateView(t.getId(),t.getName(),t.getOssKey(),storeStorage.url(t.getOssKey(),"image/*"),t.getTemplateConfigJson(),t.getWidth(),t.getHeight())).toList(); return new StoreDtos.TemplateGroupView(g.getId(),g.getName(),g.getCategoryId(),g.getCalibrationConfigJson(),g.getMaskOssKey(),g.getStatus(),ts); }
     private StoreDtos.RenderBatchView batchView(StoreRenderBatch b) { return new StoreDtos.RenderBatchView(b.getId(),b.getStatus(),b.getCategoryId(),b.getTemplateGroupId(),b.getShopId(),b.getListingTemplateId(),b.getSelectedCount(),b.getCompletedCount(),b.getFailedCount(),b.getSkippedCount()); }
     private StoreTemplateGroup requireGroup(long id){ StoreTemplateGroup g=groupMapper.selectById(id); if(g==null||"DELETED".equals(g.getStatus())) throw new ServiceException("模板组不存在"); checkOwner(g.getOwnerId()); return g; }

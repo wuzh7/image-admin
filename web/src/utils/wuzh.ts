@@ -143,8 +143,8 @@ export async function blobValidate(data: Blob) {
 export async function parseBlobErrorMessage(data: Blob) {
   try {
     const text = await data.text();
-    const payload = JSON.parse(text) as { msg?: string; message?: string };
-    return payload.msg || payload.message || '下载文件失败';
+    const payload = JSON.parse(text) as { code?: number; msg?: string };
+    return [400, 601].includes(payload.code || 0) ? payload.msg || '下载文件失败' : '系统错误，请稍后重试';
   } catch {
     return '下载文件失败';
   }

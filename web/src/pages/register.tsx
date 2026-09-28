@@ -7,6 +7,7 @@ import zhCN from 'antd/locale/zh_CN';
 import { useCallback, useEffect, useState } from 'react';
 import type { RegisterParams, VerifyCodeResult } from '@/api/types';
 import { getCodeImg, register } from '@/api/login';
+import { userErrorMessage } from '@/api/request';
 import { useLoading } from '@/hooks/useLoading';
 import { appEnv } from '@/utils/env';
 
@@ -80,7 +81,7 @@ export default function Register() {
         if (captcha.captchaEnabled) {
           loadCaptcha();
         }
-        message.error((error as Error).message || text.fail);
+        message.error(userErrorMessage(error, text.fail));
       }
     });
   };

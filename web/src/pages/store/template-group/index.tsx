@@ -6,6 +6,7 @@ import { ApiError, CategorySelect, PageToolbar, StorePage, useStoreCategories } 
 import StoreImage from '../StoreImage';
 import { useUserStore } from '@/stores/userStore';
 import { hasPermi } from '@/utils/permission';
+import { userErrorMessage } from '@/api/request';
 
 type Scene = { id?: StoreId; name: string; categoryId: StoreId; ossKey: string; imageUrl?: string; width: number; height: number; config: string; maskOssKey?: string; templateConfigJson?: string };
 type Editor = { group?: StoreTemplateGroup; name: string; categoryId?: StoreId; scenes: Scene[] };
@@ -70,22 +71,22 @@ export default function TemplateGroupPage() {
           templateConfigJson: scene.id == null ? (scene.templateConfigJson || '{}') : JSON.stringify({ calibrationId: scene.id }) })) };
       if (editor.group) await updateTemplateGroup(editor.group.id, payload); else await createTemplateGroup(payload);
       setEditor(undefined); message.success('模板组已保存'); await load();
-    } catch (failure) { message.error(failure instanceof Error ? failure.message : '保存失败'); }
+    } catch (failure) { message.error(userErrorMessage(failure)); }
     finally { setSaving(false); }
   };
   const remove = async (group: StoreTemplateGroup) => {
     try {
       await deleteTemplateGroup(group.id);
       message.success('已删除，历史任务保留'); await load();
-    } catch (failure) { message.error(failure instanceof Error ? failure.message : '操作失败'); }
+    } catch (failure) { message.error(userErrorMessage(failure)); }
   };
   const removeBackground = async (item: StoreCalibration) => {
     try { await deleteCalibration(item.id); message.success('背景已删除，模板组已同步'); await load(); }
-    catch (failure) { message.error(failure instanceof Error ? failure.message : '删除失败'); }
+    catch (failure) { message.error(userErrorMessage(failure)); }
   };
   const enable = async (group: StoreTemplateGroup) => {
     try { await setTemplateGroupStatus(group.id, 'ACTIVE'); message.success('已启用'); await load(); }
-    catch (failure) { message.error(failure instanceof Error ? failure.message : '操作失败'); }
+    catch (failure) { message.error(userErrorMessage(failure)); }
   };
   const move = (index: number, direction: number) => setEditor(current => {
     if (!current) return current;

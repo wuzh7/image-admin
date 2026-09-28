@@ -1,4 +1,5 @@
 import { message } from 'antd';
+import { userErrorMessage } from '@/api/request';
 
 export interface UploadValidationOptions {
   fileTypes?: string[];
@@ -18,9 +19,7 @@ export function buildAccept(fileTypes?: string[]) {
 }
 
 export function getUploadErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === 'string' && error) return error;
-  return fallback;
+  return userErrorMessage(error, fallback);
 }
 
 export function formatUploadResponseMessage(messageText?: string) {

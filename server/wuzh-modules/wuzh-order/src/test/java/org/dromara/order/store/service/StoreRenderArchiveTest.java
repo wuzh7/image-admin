@@ -13,6 +13,7 @@ import org.dromara.order.store.domain.StoreRenderBatch;
 import org.dromara.order.store.domain.StoreRenderItem;
 import org.dromara.order.store.mapper.StoreRenderBatchMapper;
 import org.dromara.order.store.mapper.StoreRenderItemMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -26,7 +27,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @Tag("local")
@@ -45,6 +46,7 @@ class StoreRenderArchiveTest {
     @Mock InfringementService infringementService;
     @Mock ImageStorage imageStorage;
     @Mock StoreObjectStorage storeStorage;
+    @Mock JdbcTemplate jdbcTemplate;
     @InjectMocks StoreWorkflowService service;
 
     @Test void includesOnlyNumberedRenderedFiles() {
@@ -68,5 +70,41 @@ class StoreRenderArchiveTest {
             assertEquals(List.of("Blue Cat(1).png", "Blue Cat(2).png"),
                 service.archiveFiles(1L, "ENGLISH_KEYWORDS").stream().map(file -> file.filename()).toList());
         }
+    }
+
+    @Test void stoppingBatchPreservesRunningWorkAndClosesNewClaims() {
+        StoreRenderBatch batch = new StoreRenderBatch(); batch.setId(1L); batch.setOwnerId(42L); batch.setStatus("RUNNING");
+        when(batchMapper.selectById(1L)).thenReturn(batch);
+        try (MockedStatic<LoginHelper> login = mockStatic(LoginHelper.class)) {
+            login.when(LoginHelper::getUserIdStr).thenReturn("42");
+            assertEquals("STOPPING", service.stopBatch(1L).status());
+        }
+        verify(batchMapper).stopIfIdle(1L);
+        verify(itemMapper, never()).update(any(), any());
+    }
+
+    @Test void recordsDownloadAndDeletesOnlyResultReferences() {
+        StoreRenderBatch batch = new StoreRenderBatch(); batch.setId(1L); batch.setOwnerId(42L); batch.setStatus("COMPLETED");
+        when(batchMapper.selectById(1L)).thenReturn(batch);
+        when(itemMapper.selectCount(any())).thenReturn(1L);
+        try (MockedStatic<LoginHelper> login = mockStatic(LoginHelper.class)) {
+            login.when(LoginHelper::getUserIdStr).thenReturn("42");
+            service.confirmDownload(1L);
+            assertNotNull(batch.getDownloadedAt());
+            service.deleteResults(1L);
+            assertEquals("DELETED", batch.getStatus());
+        }
+        verify(itemMapper).update(isNull(), any());
+        verify(storeStorage, never()).delete(any());
+    }
+
+    @Test void sharedResultFileIsNotRemovedWhileAnotherBatchUsesIt() {
+        when(jdbcTemplate.queryForList(anyString(), eq(String.class))).thenReturn(List.of("store/results/42/00000000-0000-0000-0000-000000000001.png"));
+        when(itemMapper.selectCount(any())).thenReturn(1L);
+        service.purgeDeletedResultFiles();
+        verify(storeStorage, never()).delete(any());
+        when(itemMapper.selectCount(any())).thenReturn(0L);
+        service.purgeDeletedResultFiles();
+        verify(storeStorage).delete("store/results/42/00000000-0000-0000-0000-000000000001.png");
     }
 }

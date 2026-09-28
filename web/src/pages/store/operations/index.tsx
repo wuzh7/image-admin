@@ -5,6 +5,7 @@ import { listStoreOperators, listStoreReferences, type StoreOperator, type Store
 import { useUserStore } from '@/stores/userStore';
 import { hasPermi } from '@/utils/permission';
 import { StorePage, useStoreCategories } from '../common';
+import { userErrorMessage } from '@/api/request';
 
 type ShopMeta = { operator?: string; sites?: string[]; market?: string; notes?: string };
 
@@ -55,7 +56,7 @@ export default function StoreOperationsPage() {
           const saved = (await createShop(values)).data;
           setShops(current => [...current, saved]); setShopId(saved.id); setCreateOpen(false); form.resetFields();
           message.success('店铺已保存，可在上架表格配置中选择');
-        } catch (error) { message.error(error instanceof Error ? error.message : '新增店铺失败'); }
+        } catch (error) { message.error(userErrorMessage(error)); }
         finally { setSaving(false); }
       }}>
         <Row gutter={16}><Col span={12}><Form.Item name="name" label="店铺名称" rules={[{ required: true, whitespace: true }, { max: 80 }]}><Input maxLength={80} /></Form.Item></Col>

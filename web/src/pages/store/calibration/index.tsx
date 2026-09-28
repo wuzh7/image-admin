@@ -8,6 +8,7 @@ import {
 import { StorePage } from '../common';
 import { useUserStore } from '@/stores/userStore';
 import { hasPermi } from '@/utils/permission';
+import { userErrorMessage } from '@/api/request';
 // @ts-ignore The demo editor is shared JavaScript and has no TypeScript declarations.
 import { CalibrationManager } from './editor/manager.mjs';
 import './editor/styles.css';
@@ -66,12 +67,12 @@ export default function CalibrationPage() {
       const button = (event.target as Element).closest<HTMLElement>('[data-action]');
       if (!button || button.hasAttribute('disabled')) return;
       if (button.dataset.action === 'cal:publish' && (editor?.id ? !canEdit : !canAdd)) return;
-      void editor?.handle(button.dataset.action, button.dataset.id).catch((error: Error) => message.error(error.message));
+      void editor?.handle(button.dataset.action, button.dataset.id).catch((error: Error) => message.error(userErrorMessage(error)));
     };
     const change = (event: Event) => {
       const target = event.target as HTMLInputElement;
       if (target.dataset.calParam || !target.id?.startsWith('cal-')) return;
-      void editor?.change(target).catch((error: Error) => message.error(error.message));
+      void editor?.change(target).catch((error: Error) => message.error(userErrorMessage(error)));
     };
     root.addEventListener('click', click);
     root.addEventListener('change', change);
@@ -104,7 +105,7 @@ export default function CalibrationPage() {
         if (record.maskOssKey && mask) fileCache.set(record.maskOssKey, mask);
       } else editor.reset();
       render();
-    }).catch(error => { if (mounted) message.error(error instanceof Error ? error.message : '校准编辑器加载失败'); });
+    }).catch(error => { if (mounted) message.error(userErrorMessage(error)); });
     return () => {
       mounted = false; cancelAnimationFrame(frame);
       root.removeEventListener('click', click); root.removeEventListener('change', change);

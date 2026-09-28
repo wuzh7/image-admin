@@ -11,6 +11,7 @@ import { tansParams } from '@/utils/wuzh';
 const SUCCESS = 200;
 const WARN = 601;
 const SERVER_ERROR = 500;
+const SYSTEM_ERROR = '系统错误，请稍后重试';
 const encryptHeader = 'encrypt-key';
 const repeatSubmitStorageKey = 'sessionObj';
 const repeatSubmitInterval = 500;
@@ -36,6 +37,10 @@ function createHandledError(message: string) {
 
 export function isHandledRequestError(error: unknown) {
   return Boolean((error as { isHandled?: boolean } | undefined)?.isHandled);
+}
+
+export function userErrorMessage(error: unknown, fallback = SYSTEM_ERROR) {
+  return isHandledRequestError(error) && error instanceof Error ? error.message : fallback;
 }
 
 export function globalHeaders() {
@@ -156,10 +161,17 @@ service.interceptors.request.use(config => {
 
 function normalizeErrorMessage(message?: string) {
   if (!message) return undefined;
-  if (message === 'Network Error') return '后端接口连接异常';
-  if (message.includes('timeout')) return '系统接口请求超时';
-  if (message.includes('Request failed with status code')) return `系统接口${message.slice(-3)}异常`;
-  return message;
+  if (message === 'Network Error') return '网络连接失败，请稍后重试';
+  if (message.includes('timeout')) return '请求超时，请稍后重试';
+  if (message === '数据正在处理，请勿重复提交') return message;
+  return SYSTEM_ERROR;
+}
+
+function visibleError(code: number, message?: string) {
+  if (code === WARN || code === 400) return message || '请求参数格式错误';
+  if (code === 403) return '没有访问权限，请联系管理员授权';
+  if (code === 404) return '请求地址不存在';
+  return SYSTEM_ERROR;
 }
 
 async function parseResponseErrorData(data: unknown): Promise<string | undefined> {
@@ -184,11 +196,12 @@ async function parseResponseErrorData(data: unknown): Promise<string | undefined
 
 async function getErrorMessage(error: AxiosError) {
   const responseMessage = await parseResponseErrorData(error.response?.data);
-  return responseMessage || normalizeErrorMessage(error.message) || '系统未知错误';
+  const code = (error.response?.data as { code?: number } | undefined)?.code || error.response?.status;
+  return code ? visibleError(code, responseMessage) : normalizeErrorMessage(error.message) || SYSTEM_ERROR;
 }
 
 service.interceptors.response.use(
-  response => {
+  async response => {
     const keyStr = response.headers[encryptHeader];
     if (appEnv.encryptEnabled && keyStr) {
       const base64Str = decrypt(keyStr);
@@ -199,6 +212,14 @@ service.interceptors.response.use(
     }
 
     if (response.request.responseType === 'blob' || response.request.responseType === 'arraybuffer') {
+      if (response.data instanceof Blob && /json|text/.test(response.data.type)) {
+        const raw = JSON.parse(await response.data.text()) as { code?: number; msg?: string };
+        if (raw.code && raw.code !== SUCCESS) {
+          const safe = visibleError(raw.code, raw.msg);
+          showRequestError(safe);
+          return Promise.reject(createHandledError(safe));
+        }
+      }
       return response.data;
     }
 
@@ -211,8 +232,9 @@ service.interceptors.response.use(
     }
 
     if (code === SERVER_ERROR || code === WARN || code !== SUCCESS) {
-      showRequestError(msg);
-      return Promise.reject(createHandledError(msg));
+      const safe = visibleError(code, msg);
+      showRequestError(safe);
+      return Promise.reject(createHandledError(safe));
     }
 
     return response.data;
@@ -225,7 +247,7 @@ service.interceptors.response.use(
 
     const msg = axios.isAxiosError(error)
       ? await getErrorMessage(error)
-      : normalizeErrorMessage((error as Error | undefined)?.message) || '系统未知错误';
+      : normalizeErrorMessage((error as Error | undefined)?.message) || SYSTEM_ERROR;
     showRequestError(msg);
     return Promise.reject(createHandledError(msg));
   }

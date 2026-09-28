@@ -108,7 +108,7 @@ class TroCaseServiceTest {
         String sql = new XMLLanguageDriver().createSqlSource(new Configuration(), script, Map.class)
             .getBoundSql(Map.of("plaintiffValues", List.of("acme"), "caseNoFormats", List.of("26-cv-1"))).getSql();
 
-        assertThat(sql).contains("OR LOWER(plaintiff) IN", "JSON_TABLE(COALESCE(plaintiff_names", "LOWER(names.name) IN", "OR case_no_format IN");
+        assertThat(sql).contains("LOCATE(LOWER(REPLACE", "JSON_TABLE(COALESCE(plaintiff_names", "REGEXP_REPLACE(names.name", "OR case_no_format IN");
     }
 
     @Test

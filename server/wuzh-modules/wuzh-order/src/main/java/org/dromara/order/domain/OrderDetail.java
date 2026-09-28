@@ -18,6 +18,7 @@ public class OrderDetail extends BaseEntity {
 
     @TableId
     private Long id;
+    private Long ownerId;
     private String parentOrderSn;
     private LocalDateTime parentOrderTime;
     private String fulfillmentMallId;

@@ -21,6 +21,7 @@ import org.dromara.system.domain.vo.SysMenuVo;
 import org.dromara.system.mapper.SysMenuMapper;
 import org.dromara.system.mapper.SysRoleMapper;
 import org.dromara.system.mapper.SysRoleMenuMapper;
+import org.dromara.system.service.SysDeptPermissionService;
 import org.dromara.system.service.ISysMenuService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +41,7 @@ public class SysMenuServiceImpl implements ISysMenuService {
     private final SysMenuMapper menuMapper;
     private final SysRoleMapper roleMapper;
     private final SysRoleMenuMapper roleMenuMapper;
+    private final SysDeptPermissionService deptPermissionService;
 
     /**
      * 根据用户查询系统菜单列表
@@ -84,7 +86,13 @@ public class SysMenuServiceImpl implements ISysMenuService {
      */
     @Override
     public Set<String> selectMenuPermsByUserId(Long userId) {
-        return menuMapper.selectMenuPermsByUserId(userId);
+        Set<Long> allowedIds = deptPermissionService.menuIdsByUser(userId);
+        if (allowedIds.isEmpty()) return Set.of();
+        Set<String> perms = new HashSet<>();
+        menuMapper.selectPermittedMenusByUserId(userId).stream()
+            .filter(menu -> allowedIds.contains(menu.getMenuId()) && StringUtils.isNotBlank(menu.getPerms()))
+            .forEach(menu -> perms.add(menu.getPerms()));
+        return perms;
     }
 
     /**
@@ -122,6 +130,8 @@ public class SysMenuServiceImpl implements ISysMenuService {
             menus = menuMapper.selectMenuTreeAll();
         } else {
             menus = menuMapper.selectMenuTreeByUserId(userId);
+            Set<Long> allowedIds = deptPermissionService.menuIdsByUser(userId);
+            menus.removeIf(menu -> !allowedIds.contains(menu.getMenuId()));
         }
         if (CollUtil.isEmpty(menus)) {
             return CollUtil.newArrayList();

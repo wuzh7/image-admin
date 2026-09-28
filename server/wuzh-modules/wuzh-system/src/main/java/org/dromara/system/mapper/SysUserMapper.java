@@ -11,9 +11,7 @@ import org.dromara.common.mybatis.annotation.DataPermission;
 import org.dromara.common.mybatis.core.mapper.BaseMapperPlus;
 import org.dromara.common.mybatis.core.query.QueryBuilder;
 import org.dromara.system.domain.SysDept;
-import org.dromara.system.domain.SysRole;
 import org.dromara.system.domain.SysUser;
-import org.dromara.system.domain.SysUserRole;
 import org.dromara.system.domain.bo.SysUserBo;
 import org.dromara.system.domain.vo.SysUserExportVo;
 import org.dromara.system.domain.vo.SysUserVo;
@@ -85,43 +83,6 @@ public interface SysUserMapper extends BaseMapperPlus<SysUser, SysUserVo>, MPJBa
     }
 
     /**
-     * 根据条件分页查询已配用户角色列表
-     *
-     * @param page 分页信息
-     * @param user 查询条件
-     * @return 用户信息集合信息
-     */
-    @DataPermission({
-        @DataColumn(key = "deptName", value = "d.dept_id"),
-        @DataColumn(key = "userName", value = "u.create_by")
-    })
-    default Page<SysUserVo> selectAllocatedList(Page<SysUserVo> page, SysUserBo user) {
-        MPJLambdaWrapper<SysUser> wrapper = this.buildUserRoleJoinWrapper(user)
-            .eq(user.getRoleId() != null, "r", SysRole::getRoleId, user.getRoleId())
-            .orderByAsc("u", SysUser::getUserId);
-        return this.selectJoinPage(page, SysUserVo.class, wrapper);
-    }
-
-    /**
-     * 根据条件分页查询未分配用户角色列表
-     *
-     * @param page    分页信息
-     * @param user    查询条件
-     * @param userIds 未分配用户角色的用户ID列表
-     * @return 用户信息集合信息
-     */
-    @DataPermission({
-        @DataColumn(key = "deptName", value = "d.dept_id"),
-        @DataColumn(key = "userName", value = "u.create_by")
-    })
-    default Page<SysUserVo> selectUnallocatedList(Page<SysUserVo> page, SysUserBo user, List<Long> userIds) {
-        MPJLambdaWrapper<SysUser> wrapper = this.buildUserRoleJoinWrapper(user)
-            .notIn(userIds != null && !userIds.isEmpty(), "u", SysUser::getUserId, userIds)
-            .orderByAsc("u", SysUser::getUserId);
-        return this.selectJoinPage(page, SysUserVo.class, wrapper);
-    }
-
-    /**
      * 根据用户ID统计用户数量
      *
      * @param userId 用户ID
@@ -161,24 +122,5 @@ public interface SysUserMapper extends BaseMapperPlus<SysUser, SysUserVo>, MPJBa
         @DataColumn(key = "userName", value = "create_by")
     })
     int updateById(@Param(Constants.ENTITY) SysUser user);
-
-    /**
-     * 构建用户与角色关联查询条件
-     *
-     * @param user 查询条件
-     * @return 用户角色关联查询包装器
-     */
-    default MPJLambdaWrapper<SysUser> buildUserRoleJoinWrapper(SysUserBo user) {
-        return QueryBuilder.lambdaJoin("u", SysUser.class)
-            .distinct()
-            .selectAll(SysUser.class)
-            .leftJoin(SysDept.class, "d", SysDept::getDeptId, SysUser::getDeptId)
-            .leftJoin(SysUserRole.class, "sur", SysUserRole::getUserId, SysUser::getUserId)
-            .leftJoin(SysRole.class, "r", SysRole::getRoleId, SysUserRole::getRoleId)
-            .likeIfText("u", SysUser::getUserName, user.getUserName())
-            .eqIfText("u", SysUser::getStatus, user.getStatus())
-            .likeIfText("u", SysUser::getPhoneNumber, user.getPhoneNumber())
-            .build();
-    }
 
 }

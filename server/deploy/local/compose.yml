@@ -112,6 +112,8 @@ services:
       - ../../script/sql/order.sql:/migrations/order.sql:ro
       - ../../script/sql/store.sql:/migrations/store.sql:ro
       - ../../script/sql/tro.sql:/migrations/tro.sql:ro
+      # 历史用户、订单归属及部门权限的一次性升级，脚本内用版本标记避免重复授权。
+      - ../../script/sql/migrations/20260928_access_control.sql:/migrations/access_control.sql:ro
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
@@ -121,8 +123,10 @@ services:
         "$${MYSQL_DATABASE}" < /migrations/order.sql &&
         mysql --default-character-set=utf8mb4 -h mysql -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
         "$${MYSQL_DATABASE}" < /migrations/store.sql &&
+        mysql --default-character-set=utf8mb4 -h mysql -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
+        "$${MYSQL_DATABASE}" < /migrations/tro.sql &&
         exec mysql --default-character-set=utf8mb4 -h mysql -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
-        "$${MYSQL_DATABASE}" < /migrations/tro.sql
+        "$${MYSQL_DATABASE}" < /migrations/access_control.sql
     depends_on:
       mysql:
         condition: service_healthy

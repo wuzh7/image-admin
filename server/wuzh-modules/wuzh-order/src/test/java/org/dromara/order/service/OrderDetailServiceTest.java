@@ -109,7 +109,7 @@ class OrderDetailServiceTest {
         OrderDetail detail = new OrderDetail();
         detail.setId(1L);
         detail.setParentOrderTime(LocalDateTime.parse("2026-09-23T14:30:00"));
-        when(orderDetailMapper.selectById(1L)).thenReturn(detail);
+        when(orderDetailMapper.selectOne(any())).thenReturn(detail);
 
         OrderDetailDtos.DetailView view = new OrderDetailService(orderDetailMapper, storeCatalog).queryById(1L);
 
@@ -172,6 +172,7 @@ class OrderDetailServiceTest {
     void importsNewAndExistingOrderDetailsIdempotently() {
         OrderDetail existing = new OrderDetail();
         existing.setId(10L);
+        existing.setOwnerId(123L);
         existing.setOrderSn("CHILD-2");
         when(orderDetailMapper.selectList(any())).thenReturn(List.of(existing));
         when(orderDetailMapper.insert(any(OrderDetail.class))).thenReturn(1);
@@ -195,11 +196,31 @@ class OrderDetailServiceTest {
         ArgumentCaptor<OrderDetail> inserted = ArgumentCaptor.forClass(OrderDetail.class);
         verify(orderDetailMapper).insert(inserted.capture());
         assertThat(inserted.getValue().getOrderSn()).isEqualTo("CHILD-1");
+        assertThat(inserted.getValue().getOwnerId()).isEqualTo(org.dromara.common.core.constant.SystemConstants.SUPER_ADMIN_USER_ID);
 
         ArgumentCaptor<OrderDetail> updated = ArgumentCaptor.forClass(OrderDetail.class);
         verify(orderDetailMapper).updateById(updated.capture());
         assertThat(updated.getValue().getId()).isEqualTo(10L);
         assertThat(updated.getValue().getGoodsName()).isEqualTo("Updated goods");
+        assertThat(updated.getValue().getOwnerId()).isEqualTo(123L);
+    }
+
+    @Test
+    void editingDetailPreservesAssignedOwner() {
+        OrderDetail existing = new OrderDetail();
+        existing.setOwnerId(123L);
+        when(orderDetailMapper.selectOne(any())).thenReturn(existing);
+        when(orderDetailMapper.update(any(OrderDetail.class), any())).thenReturn(1);
+        OrderDetailDtos.SaveRequest request = new OrderDetailDtos.SaveRequest();
+        request.setId(10L);
+        request.setParentOrderSn("PARENT-1");
+        request.setOrderSn("CHILD-1");
+
+        new OrderDetailService(orderDetailMapper).update(request);
+
+        ArgumentCaptor<OrderDetail> updated = ArgumentCaptor.forClass(OrderDetail.class);
+        verify(orderDetailMapper).update(updated.capture(), any());
+        assertThat(updated.getValue().getOwnerId()).isEqualTo(123L);
     }
 
     @Test

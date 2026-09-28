@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { createTemplateGroup, deleteCalibration, deleteTemplateGroup, listCalibrations, listTemplateGroups, setTemplateGroupStatus, updateTemplateGroup, type SaveTemplateGroup, type StoreCalibration, type StoreId, type StoreTemplateGroup } from '@/api/store';
 import { ApiError, CategorySelect, PageToolbar, StorePage, useStoreCategories } from '../common';
 import StoreImage from '../StoreImage';
+import { useUserStore } from '@/stores/userStore';
+import { hasPermi } from '@/utils/permission';
 
 type Scene = { id?: StoreId; name: string; categoryId: StoreId; ossKey: string; imageUrl?: string; width: number; height: number; config: string; maskOssKey?: string; templateConfigJson?: string };
 type Editor = { group?: StoreTemplateGroup; name: string; categoryId?: StoreId; scenes: Scene[] };
@@ -14,6 +16,12 @@ const fromCalibration = (item: StoreCalibration): Scene => {
 };
 
 export default function TemplateGroupPage() {
+  const userInfo = useUserStore(state => state.userInfo);
+  const canAdd = hasPermi(userInfo, ['store:template-group:add']);
+  const canEdit = hasPermi(userInfo, ['store:template-group:edit']);
+  const canRemove = hasPermi(userInfo, ['store:template-group:remove']);
+  const canEditCalibration = hasPermi(userInfo, ['store:calibration:edit']);
+  const canRemoveCalibration = hasPermi(userInfo, ['store:calibration:remove']);
   const categories = useStoreCategories();
   const [groups, setGroups] = useState<StoreTemplateGroup[]>([]);
   const [backgrounds, setBackgrounds] = useState<StoreCalibration[]>([]);
@@ -86,7 +94,7 @@ export default function TemplateGroupPage() {
   });
   return <StorePage title="模板组">
     <PageToolbar><CategorySelect categories={categories} value={categoryId} onChange={setCategoryId} />
-      <Button type="primary" onClick={() => setEditor({ name: '', categoryId: categoryId || categories[0]?.id, scenes: [] })}>新增模板组</Button></PageToolbar>
+      {canAdd && <Button type="primary" onClick={() => setEditor({ name: '', categoryId: categoryId || categories[0]?.id, scenes: [] })}>新增模板组</Button>}</PageToolbar>
     <ApiError error={error} />
     <Card title={`已发布背景 · ${visibleBackgrounds.length} 张`} style={{ marginBottom: 16 }}>
       <Typography.Paragraph type="secondary">验收发布后的背景可组成模板组；已有组可通过编辑添加背景。</Typography.Paragraph>
@@ -95,8 +103,8 @@ export default function TemplateGroupPage() {
           <Typography.Text strong>{item.name}</Typography.Text><br />
           <Typography.Text type="secondary">{categories.find(c => same(c.id, item.categoryId))?.name || '商品类目'} · 已加入 {groups.filter(g => g.status !== 'DELETED' && g.templates.some(t => t.ossKey === item.backgroundOssKey)).length} 个组</Typography.Text><br />
           <Space size="small" style={{ marginTop: 8 }}>
-            <Button size="small" onClick={() => history.push(`/store-management/calibration?calibrationId=${item.id}`)}>编辑</Button>
-            <Popconfirm title="删除这张背景？" description="会同步从模板组移除，历史渲染结果保留。" onConfirm={() => void removeBackground(item)}><Button size="small" danger>删除</Button></Popconfirm>
+            {canEditCalibration && <Button size="small" onClick={() => history.push(`/store-management/calibration?calibrationId=${item.id}`)}>编辑</Button>}
+            {canRemoveCalibration && <Popconfirm title="删除这张背景？" description="会同步从模板组移除，历史渲染结果保留。" onConfirm={() => void removeBackground(item)}><Button size="small" danger>删除</Button></Popconfirm>}
           </Space>
         </Card>)}
       </div> : <Empty description="此类目暂无已发布背景" />}
@@ -109,14 +117,14 @@ export default function TemplateGroupPage() {
           <div style={{ display: 'flex', gap: 8, overflowX: 'auto', margin: '12px 0' }}>{group.templates.map((template, index) => {
             const published = backgrounds.find(item => item.backgroundOssKey === template.ossKey);
             return <div key={String(template.id)} style={{ flex: '0 0 88px' }}><StoreImage url={template.imageUrl} alt={template.name} style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 4 }} /><Typography.Text type="secondary" style={{ fontSize: 11 }}>{index === 0 ? '主图' : `附图${index}`}</Typography.Text>
-              {published && <div><Button type="link" size="small" style={{ padding: 0 }} onClick={() => history.push(`/store-management/calibration?calibrationId=${published.id}`)}>编辑</Button><Popconfirm title="删除这张背景？" description="会同步从所有模板组移除，历史渲染结果保留。" onConfirm={() => void removeBackground(published)}><Button type="link" size="small" danger style={{ padding: 0 }}>删除</Button></Popconfirm></div>}
+              {published && <div>{canEditCalibration && <Button type="link" size="small" style={{ padding: 0 }} onClick={() => history.push(`/store-management/calibration?calibrationId=${published.id}`)}>编辑</Button>}{canRemoveCalibration && <Popconfirm title="删除这张背景？" description="会同步从所有模板组移除，历史渲染结果保留。" onConfirm={() => void removeBackground(published)}><Button type="link" size="small" danger style={{ padding: 0 }}>删除</Button></Popconfirm>}</div>}
             </div>;
           })}</div>
           <Space wrap>
             {group.status === 'ACTIVE' && <Button type="link" onClick={() => history.push(`/image/library?storeGroupId=${group.id}&storeCategoryId=${group.categoryId}`)}>使用此组</Button>}
-            <Button onClick={() => editGroup(group)}>编辑</Button>
-            {group.status === 'INACTIVE' && <Button onClick={() => void enable(group)}>启用</Button>}
-            <Popconfirm title="删除模板组？" description="删除后无法在此页面恢复；历史任务与背景文件保留。" onConfirm={() => void remove(group)}><Button danger>删除</Button></Popconfirm>
+            {canEdit && <Button onClick={() => editGroup(group)}>编辑</Button>}
+            {canEdit && group.status === 'INACTIVE' && <Button onClick={() => void enable(group)}>启用</Button>}
+            {canRemove && <Popconfirm title="删除模板组？" description="删除后无法在此页面恢复；历史任务与背景文件保留。" onConfirm={() => void remove(group)}><Button danger>删除</Button></Popconfirm>}
           </Space>
         </Card>)}
       </div> : <Empty description="此类目暂无模板组" />}

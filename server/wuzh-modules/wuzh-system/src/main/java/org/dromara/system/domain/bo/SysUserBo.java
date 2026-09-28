@@ -111,11 +111,6 @@ public class SysUserBo implements Serializable {
     private Long[] postIds;
 
     /**
-     * 数据权限 当前角色ID
-     */
-    private Long roleId;
-
-    /**
      * 用户ID
      */
     private String userIds;

@@ -2,6 +2,7 @@ package org.dromara.system.service.impl;
 
 import org.dromara.common.core.constant.SystemConstants;
 import org.dromara.common.core.exception.ServiceException;
+import org.dromara.common.satoken.utils.LoginHelper;
 import org.dromara.system.domain.SysRole;
 import org.dromara.system.domain.SysUser;
 import org.dromara.system.domain.SysUserRole;
@@ -15,6 +16,7 @@ import org.dromara.system.mapper.SysUserRoleMapper;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.MockedStatic;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -72,6 +74,20 @@ class SysUserServiceImplTest {
 
         assertThrows(ServiceException.class, () -> service.registerUser(new SysUserBo()));
         verify(userMapper, never()).insert(any(SysUser.class));
+    }
+
+    @Test
+    void departmentManagerCannotManageAnotherDepartmentUser() {
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        SysUser target = new SysUser();
+        target.setDeptId(200L);
+        when(userMapper.selectById(9L)).thenReturn(target);
+        try (MockedStatic<LoginHelper> login = org.mockito.Mockito.mockStatic(LoginHelper.class)) {
+            login.when(LoginHelper::isAdmin).thenReturn(false);
+            login.when(LoginHelper::getDeptId).thenReturn(100L);
+            assertThrows(ServiceException.class, () -> service(userMapper, mock(SysRoleMapper.class),
+                mock(SysUserRoleMapper.class)).checkUserDataScope(9L));
+        }
     }
 
     private SysUserServiceImpl service(SysUserMapper userMapper, SysRoleMapper roleMapper,

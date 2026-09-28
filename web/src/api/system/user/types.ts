@@ -48,7 +48,6 @@ export interface UserQuery extends PageQuery {
   nickName?: string;
   phoneNumber?: string;
   status?: string;
-  roleId?: string | number;
   userIds?: string | number;
 }
 

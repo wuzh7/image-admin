@@ -2,6 +2,7 @@ import request from '@/api/request';
 import type { R } from '@/api/types';
 import type { RoleVO } from '@/api/system/role/types';
 import type { DeptForm, DeptTreeOption, DeptVO } from './types';
+import type { MenuTreeOption } from '@/api/system/menu/types';
 
 export function listDept(params?: { deptName?: string; status?: string }) {
   return request<R<DeptVO[]>>({ url: '/system/dept/list', method: 'get', params });
@@ -17,6 +18,18 @@ export function getDept(deptId: string | number) {
 
 export function getDeptRoles(deptId: string | number) {
   return request<R<RoleVO[]>>({ url: `/system/dept/${deptId}/roles`, method: 'get' });
+}
+
+export function deptPermissionTree() {
+  return request<R<MenuTreeOption[]>>({ url: '/system/dept/permissionTree', method: 'get' });
+}
+
+export function getDeptPermissions(deptId: string | number) {
+  return request<R<Array<string | number>>>({ url: `/system/dept/${deptId}/permissions`, method: 'get' });
+}
+
+export function updateDeptPermissions(deptId: string | number, menuIds: Array<string | number>) {
+  return request<R>({ url: `/system/dept/${deptId}/permissions`, method: 'put', data: menuIds });
 }
 
 export function addDept(data: DeptForm) {

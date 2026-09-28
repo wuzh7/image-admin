@@ -3,7 +3,6 @@ import {
   EditOutlined,
   PlusOutlined,
   SafetyCertificateOutlined,
-  TeamOutlined
 } from '@ant-design/icons';
 import {
   ModalForm,
@@ -15,7 +14,6 @@ import {
   type ActionType,
   type ProColumns
 } from '@ant-design/pro-components';
-import { history } from '@umijs/max';
 import { useBoolean } from 'ahooks';
 import { Button, Form, message, Popconfirm, Switch } from 'antd';
 import { useRef, useState } from 'react';
@@ -63,6 +61,7 @@ export default function SystemRolePage() {
   const canAdd = hasPermi(userInfo, ['system:role:add']);
   const canEdit = hasPermi(userInfo, ['system:role:edit']);
   const canRemove = hasPermi(userInfo, ['system:role:remove']);
+  const canPermission = hasPermi(userInfo, ['system:role:permission']);
 
   const openAdd = () => {
     form.resetFields();
@@ -181,18 +180,12 @@ export default function SystemRolePage() {
                 confirm: `是否确认删除角色“${row.roleName}”？`,
                 onClick: () => handleDelete(row)
               },
-              canEdit && {
+              canPermission && {
                 key: 'permission',
                 label: '分配权限',
                 icon: <SafetyCertificateOutlined />,
                 onClick: () => openPermission(row)
               },
-              canEdit && {
-                key: 'users',
-                label: '分配用户',
-                icon: <TeamOutlined />,
-                onClick: () => history.push(`/system/role-auth/user/${row.roleId}`)
-              }
             ]}
           />
         );

@@ -3,11 +3,15 @@ package org.dromara.order.service;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.dromara.common.core.domain.PageResult;
+import org.dromara.common.core.constant.SystemConstants;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.mybatis.core.page.PageQuery;
+import org.dromara.common.satoken.utils.LoginHelper;
 import org.dromara.order.domain.OrderDetail;
 import org.dromara.order.domain.OrderDetailDtos;
 import org.dromara.order.mapper.OrderDetailMapper;
+import org.dromara.system.api.UserService;
+import org.dromara.system.api.domain.UserDTO;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,15 +39,21 @@ public class OrderDetailService {
 
     private final OrderDetailMapper orderDetailMapper;
     private final OrderStoreCatalog storeCatalog;
+    private final UserService userService;
 
     @Autowired
-    public OrderDetailService(OrderDetailMapper orderDetailMapper, OrderStoreCatalog storeCatalog) {
+    public OrderDetailService(OrderDetailMapper orderDetailMapper, OrderStoreCatalog storeCatalog, UserService userService) {
         this.orderDetailMapper = orderDetailMapper;
         this.storeCatalog = storeCatalog;
+        this.userService = userService;
     }
 
     OrderDetailService(OrderDetailMapper orderDetailMapper) {
-        this(orderDetailMapper, new OrderStoreCatalog(Map.of()));
+        this(orderDetailMapper, new OrderStoreCatalog(Map.of()), null);
+    }
+
+    OrderDetailService(OrderDetailMapper orderDetailMapper, OrderStoreCatalog storeCatalog) {
+        this(orderDetailMapper, storeCatalog, null);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -67,8 +77,8 @@ public class OrderDetailService {
             }
         }
 
-        Map<String, OrderDetail> existing = orderDetailMapper.selectList(
-                new QueryWrapper<OrderDetail>().in("order_sn", incoming.keySet()))
+        Map<String, OrderDetail> existing = orderDetailMapper.selectList(new QueryWrapper<OrderDetail>()
+                .in("order_sn", incoming.keySet()))
             .stream()
             .collect(Collectors.toMap(OrderDetail::getOrderSn, Function.identity()));
 
@@ -83,6 +93,7 @@ public class OrderDetailService {
                 created++;
             } else {
                 detail.setId(stored.getId());
+                detail.setOwnerId(stored.getOwnerId() == null ? SystemConstants.SUPER_ADMIN_USER_ID : stored.getOwnerId());
                 if (orderDetailMapper.updateById(detail) != 1) {
                     throw new ServiceException("订单明细修改失败");
                 }
@@ -94,16 +105,16 @@ public class OrderDetailService {
 
     public PageResult<OrderDetailDtos.DetailView> queryPage(OrderDetailDtos.Query query, PageQuery pageQuery) {
         Map<String, OrderStoreCatalog.StoreInfo> stores = storeCatalog.read();
-        Page<OrderDetail> page = orderDetailMapper.selectPage(pageQuery.build(), buildQuery(query, stores));
+        Page<OrderDetail> page = orderDetailMapper.selectPage(pageQuery.build(), scope(buildQuery(query, stores)));
         return PageResult.build(page.getRecords().stream().map(detail -> toView(detail, stores)).toList(), page.getTotal());
     }
 
     public List<OrderDetailDtos.ExportRow> queryExport(OrderDetailDtos.Query query) {
-        return orderDetailMapper.selectList(buildQuery(query, storeCatalog.read())).stream().map(this::toExportRow).toList();
+        return orderDetailMapper.selectList(scope(buildQuery(query, storeCatalog.read()))).stream().map(this::toExportRow).toList();
     }
 
     public OrderDetailDtos.DetailView queryById(long id) {
-        OrderDetail detail = orderDetailMapper.selectById(id);
+        OrderDetail detail = orderDetailMapper.selectOne(scope().eq("id", id));
         if (detail == null) {
             throw new ServiceException("订单明细不存在");
         }
@@ -121,20 +132,35 @@ public class OrderDetailService {
 
     @Transactional(rollbackFor = Exception.class)
     public void update(OrderDetailDtos.SaveRequest request) {
-        if (orderDetailMapper.selectById(request.getId()) == null) {
+        OrderDetail existing = orderDetailMapper.selectOne(scope().eq("id", request.getId()));
+        if (existing == null) {
             throw new ServiceException("订单明细不存在");
         }
         ensureOrderSnAvailable(request.getOrderSn(), request.getId());
         OrderDetail detail = fromSaveRequest(request);
         detail.setId(request.getId());
-        if (orderDetailMapper.updateById(detail) != 1) {
+        detail.setOwnerId(existing.getOwnerId());
+        if (orderDetailMapper.update(detail, scope().eq("id", request.getId())) != 1) {
             throw new ServiceException("修改订单明细失败");
         }
     }
 
     @Transactional(rollbackFor = Exception.class)
+    public void assignOwner(long id, long userId) {
+        UserDTO user = userService.selectById(userId);
+        if (user == null || !SystemConstants.NORMAL.equals(user.getStatus())) {
+            throw new ServiceException("目标用户不存在或已停用");
+        }
+        OrderDetail detail = new OrderDetail();
+        detail.setOwnerId(userId);
+        if (orderDetailMapper.update(detail, new QueryWrapper<OrderDetail>().eq("id", id)) != 1) {
+            throw new ServiceException("订单明细不存在");
+        }
+    }
+
+    @Transactional(rollbackFor = Exception.class)
     public void delete(List<Long> ids) {
-        if (orderDetailMapper.deleteByIds(ids) != ids.size()) {
+        if (orderDetailMapper.delete(scope().in("id", ids)) != ids.size()) {
             throw new ServiceException("删除订单明细失败");
         }
     }
@@ -176,6 +202,7 @@ public class OrderDetailService {
     private OrderDetail fromSaveRequest(OrderDetailDtos.SaveRequest request) {
         validateAdminRequest(request);
         OrderDetail detail = new OrderDetail();
+        detail.setOwnerId(currentOwnerId());
         detail.setParentOrderSn(request.getParentOrderSn().trim());
         detail.setFulfillmentMallId(trimToNull(request.getFulfillmentMallId()));
         detail.setEstimatedAmount(request.getEstimatedAmount() == null ? null
@@ -221,7 +248,7 @@ public class OrderDetailService {
         OrderStoreCatalog.StoreInfo store = detail.getFulfillmentMallId() == null
             ? null : stores.get(detail.getFulfillmentMallId());
         return new OrderDetailDtos.DetailView(
-            detail.getId(), detail.getParentOrderSn(),
+            detail.getId(), detail.getOwnerId(), detail.getParentOrderSn(),
             detail.getParentOrderTime() == null ? null : PARENT_ORDER_TIME_FORMAT.format(detail.getParentOrderTime()),
             detail.getFulfillmentMallId(),
             store == null ? null : store.name(), store == null ? null : store.remarks(),
@@ -325,6 +352,7 @@ public class OrderDetailService {
 
     private OrderDetail toEntity(OrderDetailDtos.ParentOrderRequest request, OrderDetailDtos.GoodsRequest goods) {
         OrderDetail detail = new OrderDetail();
+        detail.setOwnerId(SystemConstants.SUPER_ADMIN_USER_ID);
         detail.setParentOrderSn(request.parentOrderSn());
         detail.setParentOrderTime(parseParentOrderTime(request.parentOrderTimeStr(), "parentOrderTimeStr"));
         detail.setFulfillmentMallId(request.fulfillmentMallId());
@@ -341,6 +369,28 @@ public class OrderDetailService {
         detail.setSpec(goods.spec());
         detail.setThumbUrl(goods.thumbUrl());
         return detail;
+    }
+
+    private QueryWrapper<OrderDetail> scope() {
+        return scope(new QueryWrapper<>());
+    }
+
+    private QueryWrapper<OrderDetail> scope(QueryWrapper<OrderDetail> query) {
+        Long ownerId = currentOwnerId();
+        if (ownerId == null) {
+            query.eq("owner_id", -1L);
+        } else if (!LoginHelper.isAdmin()) {
+            query.eq("owner_id", ownerId);
+        }
+        return query;
+    }
+
+    private Long currentOwnerId() {
+        try {
+            return LoginHelper.getUserId();
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     private LocalDateTime parseParentOrderTime(String value, String path) {

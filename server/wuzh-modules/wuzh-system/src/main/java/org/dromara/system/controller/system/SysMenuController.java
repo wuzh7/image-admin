@@ -8,15 +8,19 @@ import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.constant.SystemConstants;
 import org.dromara.common.core.domain.R;
 import org.dromara.common.core.utils.StringUtils;
+import org.dromara.common.core.utils.SpringUtils;
 import org.dromara.common.log.annotation.Log;
 import org.dromara.common.log.enums.BusinessType;
 import org.dromara.common.redis.annotation.RepeatSubmit;
 import org.dromara.common.satoken.utils.LoginHelper;
 import org.dromara.common.web.core.BaseController;
 import org.dromara.system.domain.SysMenu;
+import org.dromara.system.domain.SysRoleMenu;
 import org.dromara.system.domain.bo.SysMenuBo;
 import org.dromara.system.domain.vo.RouterVo;
 import org.dromara.system.domain.vo.SysMenuVo;
+import org.dromara.system.event.OnlineUserCleanEvent;
+import org.dromara.system.mapper.SysRoleMenuMapper;
 import org.dromara.system.service.ISysMenuService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -35,6 +39,7 @@ import java.util.List;
 public class SysMenuController extends BaseController {
 
     private final ISysMenuService menuService;
+    private final SysRoleMenuMapper roleMenuMapper;
 
     /**
      * 获取路由信息
@@ -50,7 +55,7 @@ public class SysMenuController extends BaseController {
     }
 
     private void hideAdminMenus(List<SysMenu> menus) {
-        menus.removeIf(menu -> "system".equals(menu.getPath()) || "image/category/index".equals(menu.getComponent()));
+        menus.removeIf(menu -> "image/category/index".equals(menu.getComponent()));
         for (SysMenu menu : menus) {
             if (menu.getChildren() != null) hideAdminMenus(menu.getChildren());
         }
@@ -159,7 +164,11 @@ public class SysMenuController extends BaseController {
         } else if (!menuService.checkRouteConfigUnique(menu)) {
             return R.fail("修改菜单'" + menu.getMenuName() + "'失败，路由名称或地址已存在");
         }
-        return toAjax(menuService.updateMenu(menu));
+        int rows = menuService.updateMenu(menu);
+        if (rows > 0) roleMenuMapper.lambda().eq(SysRoleMenu::getMenuId, menu.getMenuId()).list()
+            .stream().map(SysRoleMenu::getRoleId).distinct()
+            .forEach(roleId -> SpringUtils.context().publishEvent(OnlineUserCleanEvent.byRole(roleId)));
+        return toAjax(rows);
     }
 
     /**

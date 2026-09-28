@@ -2,6 +2,8 @@ import { Button, Card, Col, Empty, Form, Input, message, Modal, Row, Select, Tab
 import { useEffect, useState } from 'react';
 import { createShop, listShops, type CreateStoreShop, type StoreId, type StoreShop } from '@/api/store';
 import { listStoreOperators, listStoreReferences, type StoreOperator, type StoreReference } from '@/api/store/reference';
+import { useUserStore } from '@/stores/userStore';
+import { hasPermi } from '@/utils/permission';
 import { StorePage, useStoreCategories } from '../common';
 
 type ShopMeta = { operator?: string; sites?: string[]; market?: string; notes?: string };
@@ -12,6 +14,7 @@ function shopMeta(shop?: StoreShop): ShopMeta {
 }
 
 export default function StoreOperationsPage() {
+  const canAdd = hasPermi(useUserStore(state => state.userInfo), ['store:shop:add']);
   const categories = useStoreCategories();
   const [operators, setOperators] = useState<StoreOperator[]>([]);
   const [platforms, setPlatforms] = useState<StoreReference[]>([]);
@@ -35,7 +38,7 @@ export default function StoreOperationsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <div><Typography.Title level={3} style={{ margin: 0 }}>{shop?.name || '请选择店铺'}</Typography.Title>
           {shop && <Typography.Text type="secondary">{shop.platform || '—'} · {meta.sites?.join('、') || meta.market || '站点待设置'} · 负责人 {meta.operator || '—'}</Typography.Text>}</div>
-        <Button type="primary" onClick={() => setCreateOpen(true)}>新增店铺</Button>
+        {canAdd && <Button type="primary" onClick={() => setCreateOpen(true)}>新增店铺</Button>}
       </div>
       <Select aria-label="切换店铺" allowClear placeholder="选择店铺" value={shopId} onChange={setShopId} style={{ minWidth: 260, marginTop: 20 }} options={shops.map(item => ({ value: item.id, label: `${item.name} · ${item.shopCode || item.id}` }))} />
     </Card>

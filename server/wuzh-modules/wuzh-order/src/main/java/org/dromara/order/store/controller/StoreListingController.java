@@ -1,5 +1,6 @@
 package org.dromara.order.store.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.domain.R;
@@ -22,6 +23,7 @@ public class StoreListingController {
     private final StoreListingService service;
 
     @GetMapping
+    @SaCheckPermission("store:listing-export:list")
     public R<List<StoreListingService.ExportView>> list(@RequestParam(required = false) Long batchId,
                                                          @RequestParam(required = false) Long shopId,
                                                          @RequestParam(required = false) Long categoryId) {
@@ -29,16 +31,19 @@ public class StoreListingController {
     }
 
     @PostMapping
+    @SaCheckPermission("store:listing-export:add")
     public R<StoreListingService.ExportView> create(@Valid @RequestBody StoreListingService.GenerateRequest request) {
         return R.ok(service.create(request));
     }
 
     @PostMapping("/{id}/retry")
+    @SaCheckPermission("store:listing-export:retry")
     public R<StoreListingService.ExportView> retry(@PathVariable long id) {
         return R.ok(service.retry(id));
     }
 
     @GetMapping("/{id}/download")
+    @SaCheckPermission("store:listing-export:download")
     public ResponseEntity<StreamingResponseBody> download(@PathVariable long id) {
         ImageStorage.LocalFile file = service.download(id);
         return ResponseEntity.ok()

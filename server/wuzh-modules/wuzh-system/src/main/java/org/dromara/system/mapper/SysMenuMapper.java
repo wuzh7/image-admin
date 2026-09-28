@@ -30,18 +30,18 @@ public interface SysMenuMapper extends BaseMapperPlus<SysMenu, SysMenuVo>, MPJBa
      * @param userId 用户ID
      * @return 权限列表
      */
-    default Set<String> selectMenuPermsByUserId(Long userId) {
-        List<SysMenu> list = this.selectJoinList(SysMenu.class, QueryBuilder.lambdaJoin("m", SysMenu.class)
+    default List<SysMenu> selectPermittedMenusByUserId(Long userId) {
+        return this.selectJoinList(SysMenu.class, QueryBuilder.lambdaJoin("m", SysMenu.class)
             .distinct()
-            .select(SysMenu::getPerms)
+            .select(SysMenu::getMenuId, SysMenu::getPerms)
             .leftJoin(SysRoleMenu.class, "srm", SysRoleMenu::getMenuId, SysMenu::getMenuId)
             .leftJoin(SysUserRole.class, "sur", SysUserRole::getRoleId, SysRoleMenu::getRoleId)
             .leftJoin(SysRole.class, "sr", SysRole::getRoleId, SysRoleMenu::getRoleId)
             .eq("sur", SysUserRole::getUserId, userId)
             .eq("sr", SysRole::getStatus, SystemConstants.NORMAL)
+            .eq("m", SysMenu::getStatus, SystemConstants.NORMAL)
             .isNotNull("m", SysMenu::getPerms)
             .build());
-        return new HashSet<>(StreamUtils.filter(StreamUtils.toList(list, SysMenu::getPerms), StringUtils::isNotBlank));
     }
 
     /**

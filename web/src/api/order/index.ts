@@ -17,6 +17,10 @@ export function getOrderDetail(id: string | number) {
   });
 }
 
+export function assignOrderOwner(id: string | number, userId: string | number) {
+  return request<R>({ url: `/order/details/${id}/owner/${userId}`, method: 'put' });
+}
+
 export function addOrderDetail(data: OrderDetailForm) {
   return request<R>({
     url: '/order/details',

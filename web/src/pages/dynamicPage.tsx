@@ -15,7 +15,6 @@ import TroPage from '@/pages/tro';
 import SystemMenuPage from '@/pages/system/menu';
 import SystemDeptPage from '@/pages/system/dept';
 import SystemRolePage from '@/pages/system/role';
-import RoleAuthUserPage from '@/pages/system/role/authUser';
 import SystemUserPage from '@/pages/system/user';
 import UserAuthRolePage from '@/pages/system/user/authRole';
 import SystemStoreProbePage from '@/pages/system/store-probe';
@@ -39,7 +38,6 @@ const migratedPages: Record<string, React.ComponentType> = {
   'tro/index': TroPage,
   'system/menu/index': SystemMenuPage,
   'system/dept/index': SystemDeptPage,
-  'system/role/authUser': RoleAuthUserPage,
   'system/role/index': SystemRolePage,
   'system/user/authRole': UserAuthRolePage,
   'system/user/index': SystemUserPage,
@@ -47,7 +45,6 @@ const migratedPages: Record<string, React.ComponentType> = {
 };
 
 const migratedPathPrefixes: Array<[string, React.ComponentType]> = [
-  ['/system/role-auth/user/', RoleAuthUserPage],
   ['/system/user-auth/role/', UserAuthRolePage]
 ];
 
@@ -70,8 +67,7 @@ export default function DynamicPage() {
   const MigratedPage =
     migratedPages[componentKey] || migratedPathPrefixes.find(([prefix]) => location.pathname.startsWith(prefix))?.[1];
   const userInfo = useUserStore(state => state.userInfo);
-  if ((location.pathname.startsWith('/system/') || componentKey === 'image/category/index'
-    || componentKey === 'order/detail/index' || componentKey === 'tro/index')
+  if ((componentKey === 'image/category/index' || componentKey === 'tro/index')
     && !hasRole(userInfo, ['superadmin'])) return null;
   if (MigratedPage) {
     return <MigratedPage />;

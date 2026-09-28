@@ -170,13 +170,13 @@ create table sys_menu (
 ) engine=innodb comment = '菜单权限表';
 
 -- 初始化-菜单信息表数据
--- 仅保留用户、角色；图片去重菜单由 image.sql 初始化
+-- 系统用户、角色、部门及菜单管理；图片去重菜单由 image.sql 初始化
 -- ----------------------------
 insert into sys_menu values(1761400000000000001, '系统管理', 0, 1, 'system', null, '', 'N', 'Y', 'M', '0', '0', '', 'system', '', '', 1761000000000000103, 1761100000000000103, sysdate(), null, null, '系统管理目录');
 insert into sys_menu values(1761400000000000100, '用户管理', 1761400000000000001, 1, 'user', 'system/user/index', '', 'N', 'Y', 'C', '0', '0', 'system:user:list', 'user', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '用户管理菜单');
 insert into sys_menu values(1761400000000000101, '角色管理', 1761400000000000001, 2, 'role', 'system/role/index', '', 'N', 'Y', 'C', '0', '0', 'system:role:list', 'peoples', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '角色管理菜单');
+insert into sys_menu values(1761400000000000102, '菜单管理', 1761400000000000001, 4, 'menu', 'system/menu/index', '', 'N', 'Y', 'C', '0', '0', 'system:menu:list', 'tree-table', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '菜单与按钮权限维护');
 insert into sys_menu values(1761400000000000103, '部门管理', 1761400000000000001, 3, 'dept', 'system/dept/index', '', 'N', 'Y', 'C', '0', '0', 'system:dept:list', 'tree', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '部门管理菜单');
-insert into sys_menu values(1761400000000000130, '分配用户', 1761400000000000001, 2, 'role-auth/user/:roleId', 'system/role/authUser', '', 'N', 'N', 'C', '1', '0', 'system:role:edit', '#', '/system/role', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000000131, '分配角色', 1761400000000000001, 1, 'user-auth/role/:userId', 'system/user/authRole', '', 'N', 'N', 'C', '1', '0', 'system:user:edit', '#', '/system/user', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000001001, '用户查询', 1761400000000000100, 1, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:user:query', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000001002, '用户新增', 1761400000000000100, 2, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:user:add', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
@@ -187,10 +187,16 @@ insert into sys_menu values(1761400000000001008, '角色查询', 176140000000000
 insert into sys_menu values(1761400000000001009, '角色新增', 1761400000000000101, 2, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:role:add', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000001010, '角色修改', 1761400000000000101, 3, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:role:edit', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000001011, '角色删除', 1761400000000000101, 4, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:role:remove', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
+insert into sys_menu values(1761400000000001017, '分配角色权限', 1761400000000000101, 5, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:role:permission', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
+insert into sys_menu values(1761400000000001012, '菜单查询', 1761400000000000102, 1, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:menu:query', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
+insert into sys_menu values(1761400000000001013, '菜单新增', 1761400000000000102, 2, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:menu:add', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
+insert into sys_menu values(1761400000000001014, '菜单修改', 1761400000000000102, 3, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:menu:edit', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
+insert into sys_menu values(1761400000000001015, '菜单删除', 1761400000000000102, 4, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:menu:remove', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000001020, '部门查询', 1761400000000000103, 1, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:dept:query', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000001021, '部门新增', 1761400000000000103, 2, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:dept:add', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000001022, '部门修改', 1761400000000000103, 3, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:dept:edit', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 insert into sys_menu values(1761400000000001023, '部门删除', 1761400000000000103, 4, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:dept:remove', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
+insert into sys_menu values(1761400000000001024, '设置部门权限', 1761400000000000103, 5, '', '', '', 'N', 'Y', 'F', '0', '0', 'system:dept:permission', '#', '', '', 1761000000000000103, 1761100000000000001, sysdate(), null, null, '');
 
 -- 6、用户和角色关联表  用户N-1角色
 -- ----------------------------
@@ -233,9 +239,6 @@ create table sys_role_menu (
 -- ----------------------------
 insert into sys_role_menu values (1761300000000000003, 1761400000000000001);
 insert into sys_role_menu values (1761300000000000003, 1761400000000000100);
-insert into sys_role_menu values (1761300000000000003, 1761400000000000101);
-insert into sys_role_menu values (1761300000000000003, 1761400000000000102);
-insert into sys_role_menu values (1761300000000000003, 1761400000000000130);
 insert into sys_role_menu values (1761300000000000003, 1761400000000000131);
 insert into sys_role_menu values (1761300000000000003, 1761400000000001001);
 insert into sys_role_menu values (1761300000000000003, 1761400000000001002);
@@ -244,15 +247,20 @@ insert into sys_role_menu values (1761300000000000003, 1761400000000001004);
 insert into sys_role_menu values (1761300000000000003, 1761400000000001005);
 insert into sys_role_menu values (1761300000000000003, 1761400000000001006);
 insert into sys_role_menu values (1761300000000000003, 1761400000000001007);
-insert into sys_role_menu values (1761300000000000003, 1761400000000001008);
-insert into sys_role_menu values (1761300000000000003, 1761400000000001009);
-insert into sys_role_menu values (1761300000000000003, 1761400000000001010);
-insert into sys_role_menu values (1761300000000000003, 1761400000000001011);
-insert into sys_role_menu values (1761300000000000003, 1761400000000001012);
-insert into sys_role_menu values (1761300000000000003, 1761400000000001013);
-insert into sys_role_menu values (1761300000000000003, 1761400000000001014);
-insert into sys_role_menu values (1761300000000000003, 1761400000000001015);
-insert into sys_role_menu values (1761300000000000003, 1761400000000001016);
+
+-- 部门菜单/按钮权限上限；用户实际权限还需同时属于其角色。
+create table sys_dept_menu (
+    dept_id bigint(20) not null comment '部门ID',
+    menu_id bigint(20) not null comment '菜单或按钮ID',
+    primary key(dept_id, menu_id),
+    key idx_sys_dept_menu_mid (menu_id)
+) engine=innodb comment = '部门菜单按钮权限上限';
+
+insert into sys_dept_menu (dept_id, menu_id)
+select distinct dr.dept_id, rm.menu_id from sys_dept_role dr join sys_role_menu rm on rm.role_id=dr.role_id
+join sys_menu m on m.menu_id=rm.menu_id
+where m.perms not like 'system:role:%' and m.perms not like 'system:menu:%'
+  and m.perms not in ('system:dept:add','system:dept:edit','system:dept:remove','system:dept:permission','order:detail:assign','image:dedup:remove');
 
 -- 8、角色和部门关联表  角色1-N部门
 -- ----------------------------

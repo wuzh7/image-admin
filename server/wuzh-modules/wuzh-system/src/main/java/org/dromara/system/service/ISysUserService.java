@@ -35,24 +35,6 @@ public interface ISysUserService {
     List<SysUserExportVo> selectUserExportList(SysUserBo user);
 
     /**
-     * 根据条件分页查询已分配用户角色列表
-     *
-     * @param user      用户信息
-     * @param pageQuery 分页
-     * @return 已分配角色的用户分页信息
-     */
-    PageResult<SysUserVo> selectAllocatedList(SysUserBo user, PageQuery pageQuery);
-
-    /**
-     * 根据条件分页查询未分配用户角色列表
-     *
-     * @param user      用户信息
-     * @param pageQuery 分页
-     * @return 未分配角色的用户分页信息
-     */
-    PageResult<SysUserVo> selectUnallocatedList(SysUserBo user, PageQuery pageQuery);
-
-    /**
      * 通过用户名查询用户
      *
      * @param userName 用户名

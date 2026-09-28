@@ -123,6 +123,7 @@ public final class OrderDetailDtos {
 
     public record DetailView(
         Long id,
+        Long ownerId,
         String parentOrderSn,
         String parentOrderTimeStr,
         String fulfillmentMallId,

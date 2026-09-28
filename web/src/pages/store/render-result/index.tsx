@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from 'react';
 import { getRenderArchive, listRenderBatches, listRenderGroups, retryRenderBatch, type StoreId, type StoreRenderBatch, type StoreRenderGroup } from '@/api/store';
 import AuthorizedImage from '@/components/common/AuthorizedImage';
 import StoreImage from '../StoreImage';
+import { useUserStore } from '@/stores/userStore';
+import { hasPermi } from '@/utils/permission';
 
 function BatchItems({ batchId }: { batchId: StoreId }) {
   const [groups, setGroups] = useState<StoreRenderGroup[]>([]);
@@ -35,6 +37,9 @@ function BatchItems({ batchId }: { batchId: StoreId }) {
 }
 
 export default function RenderResultPage() {
+  const userInfo = useUserStore(state => state.userInfo);
+  const canRetry = hasPermi(userInfo, ['store:render:retry']);
+  const canDownload = hasPermi(userInfo, ['store:render:download']);
   const actionRef = useRef<ActionType>(null);
   const [nameMode, setNameMode] = useState<'ORIGINAL_NAME' | 'ENGLISH_KEYWORDS'>('ORIGINAL_NAME');
   const [downloading, setDownloading] = useState(false);
@@ -52,7 +57,7 @@ export default function RenderResultPage() {
     { title: '状态', dataIndex: 'status', render: value => <Tag>{String(value)}</Tag> },
     { title: '进度', render: (_, row) => <Progress percent={row.totalCount ? Math.round(((row.completedCount + row.skippedCount) / row.totalCount) * 100) : 0} size="small" /> },
     { title: '明细', render: (_, row) => String(row.completedCount + row.skippedCount) + '/' + String(row.totalCount) + '，失败 ' + String(row.failedCount) },
-    { title: '操作', render: (_, row) => <Space><Button icon={<ReloadOutlined />} onClick={() => actionRef.current?.reload()}>刷新</Button><Button disabled={!row.failedCount} onClick={async () => { await retryRenderBatch(row.id); message.success('失败明细已重新排队'); actionRef.current?.reload(); }}>重试失败</Button><Button icon={<DownloadOutlined />} loading={downloading} disabled={!['COMPLETED', 'PARTIAL_FAILURE'].includes(row.status) || !(row.completedCount + row.skippedCount)} onClick={() => void download(row)}>下载 ZIP</Button></Space> }
+    { title: '操作', render: (_, row) => <Space><Button icon={<ReloadOutlined />} onClick={() => actionRef.current?.reload()}>刷新</Button>{canRetry && <Button disabled={!row.failedCount} onClick={async () => { await retryRenderBatch(row.id); message.success('失败明细已重新排队'); actionRef.current?.reload(); }}>重试失败</Button>}{canDownload && <Button icon={<DownloadOutlined />} loading={downloading} disabled={!['COMPLETED', 'PARTIAL_FAILURE'].includes(row.status) || !(row.completedCount + row.skippedCount)} onClick={() => void download(row)}>下载 ZIP</Button>}</Space> }
   ];
   return <PageContainer title="渲染结果"><ProTable<StoreRenderBatch> actionRef={actionRef} rowKey={row => String(row.id)} columns={columns} request={async params => { const response = await listRenderBatches({ pageNum: params.current, pageSize: params.pageSize }); return { data: response.data?.records || [], total: response.data?.total || 0, success: true }; }} search={false} pagination={{ pageSize: 20 }} expandable={{ expandedRowRender: row => <BatchItems batchId={row.id} /> }} toolBarRender={() => [<Select key="nameMode" aria-label="图片命名方式" value={nameMode} onChange={setNameMode} style={{ width: 160 }} options={[{ label: '原文件名', value: 'ORIGINAL_NAME' }, { label: '英文关键词', value: 'ENGLISH_KEYWORDS' }]} />]} /></PageContainer>;
 }

@@ -76,7 +76,8 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
      */
     @Override
     public List<SysUserExportVo> selectUserExportList(SysUserBo user) {
-        List<Long> deptIds = ObjectUtil.isNotNull(user.getDeptId()) ? deptMapper.selectDeptAndChildById(user.getDeptId()) : null;
+        List<Long> deptIds = !LoginHelper.isAdmin() ? List.of(managedDeptId())
+            : ObjectUtil.isNotNull(user.getDeptId()) ? deptMapper.selectDeptAndChildById(user.getDeptId()) : null;
         return userMapper.selectUserExportList(user, deptIds);
     }
 
@@ -101,37 +102,13 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
                 List<Long> ids = deptMapper.selectDeptAndChildById(user.getDeptId());
                 w.in(SysUser::getDeptId, ids);
             })
+            .eqIfPresent(SysUser::getDeptId, LoginHelper.isAdmin() ? null : managedDeptId())
             .orderByAsc(SysUser::getUserId)
             .build();
         if (StringUtils.isNotBlank(user.getExcludeUserIds())) {
             wrapper.notIn(SysUser::getUserId, StringUtils.splitTo(user.getExcludeUserIds(), Convert::toLong));
         }
         return wrapper;
-    }
-
-    /**
-     * 根据条件分页查询已分配用户角色列表
-     *
-     * @param user 用户信息
-     * @return 用户信息集合信息
-     */
-    @Override
-    public PageResult<SysUserVo> selectAllocatedList(SysUserBo user, PageQuery pageQuery) {
-        Page<SysUserVo> page = userMapper.selectAllocatedList(pageQuery.build(), user);
-        return PageResult.build(page.getRecords(), page.getTotal());
-    }
-
-    /**
-     * 根据条件分页查询未分配用户角色列表
-     *
-     * @param user 用户信息
-     * @return 用户信息集合信息
-     */
-    @Override
-    public PageResult<SysUserVo> selectUnallocatedList(SysUserBo user, PageQuery pageQuery) {
-        List<Long> userIds = userRoleMapper.selectUserIdsByRoleId(user.getRoleId());
-        Page<SysUserVo> page = userMapper.selectUnallocatedList(pageQuery.build(), user, userIds);
-        return PageResult.build(page.getRecords(), page.getTotal());
     }
 
     /**
@@ -185,6 +162,7 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
             .select(SysUser::getUserId, SysUser::getUserName, SysUser::getNickName)
             .eq(SysUser::getStatus, SystemConstants.NORMAL)
             .eqIfPresent(SysUser::getDeptId, deptId)
+            .eqIfPresent(SysUser::getDeptId, LoginHelper.isAdmin() ? null : managedDeptId())
             .inIfNotEmpty(SysUser::getUserId, userIds)
             .build());
     }
@@ -296,9 +274,16 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
         if (LoginHelper.isAdmin()) {
             return;
         }
-        if (userMapper.countUserById(userId) == 0) {
+        SysUser target = userMapper.selectById(userId);
+        if (target == null || !ObjectUtil.equal(target.getDeptId(), managedDeptId())) {
             throw new ServiceException("没有权限访问用户数据！");
         }
+    }
+
+    private Long managedDeptId() {
+        Long deptId = LoginHelper.getDeptId();
+        if (deptId == null) throw new ServiceException("当前用户未归属部门");
+        return deptId;
     }
 
     /**
@@ -511,8 +496,8 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
         }
 
         // 校验是否有权限访问这些角色（含数据权限控制）
-        if (roleMapper.selectRoleCount(roleList) != roleList.size()) {
-            throw new ServiceException("没有权限访问角色的数据");
+        if (roleMapper.selectEnabledRoleCount(roleList) != roleList.size()) {
+            throw new ServiceException("角色不存在或已停用");
         }
 
         // 是否清除原有绑定

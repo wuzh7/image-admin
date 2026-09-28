@@ -1,14 +1,15 @@
-import { DownloadOutlined, EyeOutlined } from '@ant-design/icons';
-import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
-import { Button, Col, Form, Image, Input, InputNumber, Modal, Row, Typography } from 'antd';
+import { DownloadOutlined, EyeOutlined, UserSwitchOutlined } from '@ant-design/icons';
+import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
+import { Button, Col, Form, Image, Input, InputNumber, message, Modal, Row, Select, Typography } from 'antd';
 import dayjs from 'dayjs';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { OrderDetailForm, OrderDetailQuery, OrderDetailVO } from '@/api/order/types';
-import { getOrderDetail, listOrderDetails } from '@/api/order';
+import { assignOrderOwner, getOrderDetail, listOrderDetails } from '@/api/order';
+import { optionSelect } from '@/api/system/user';
 import RowActions from '@/components/common/RowActions';
 import { useTableExport } from '@/hooks/useTableExport';
 import { useUserStore } from '@/stores/userStore';
-import { hasRole } from '@/utils/permission';
+import { hasPermi, hasRole } from '@/utils/permission';
 import { formatDateTimeRange, toPageQuery, toTableData } from '@/utils/wuzh';
 
 const { Text } = Typography;
@@ -32,13 +33,30 @@ function formatAmount(value?: number) {
 }
 
 export default function OrderDetailPage() {
+  const actionRef = useRef<ActionType | undefined>(undefined);
   const [form] = Form.useForm<OrderDetailForm>();
   const [modalOpen, setModalOpen] = useState(false);
+  const [assignId, setAssignId] = useState<string | number>();
+  const [assignUserId, setAssignUserId] = useState<string | number>();
+  const [userOptions, setUserOptions] = useState<Array<{ label: string; value: string | number }>>([]);
   const userInfo = useUserStore(state => state.userInfo);
   const isAdmin = hasRole(userInfo, ['superadmin']);
   const { exportFile, updateExportParams } = useTableExport();
 
-  if (!isAdmin) return null;
+  const canQuery = hasPermi(userInfo, ['order:detail:query']);
+  const canExport = hasPermi(userInfo, ['order:detail:export']);
+  const canAssign = isAdmin && hasPermi(userInfo, ['order:detail:assign']);
+
+  if (!hasPermi(userInfo, ['order:detail:list'])) return null;
+
+  const openAssign = async (row: OrderDetailVO) => {
+    const result = await optionSelect([]);
+    setUserOptions((result.data || []).filter(user => user.userId != null).map(user => ({
+      label: `${user.nickName || user.userName} (${user.userName})`, value: user.userId!
+    })));
+    setAssignId(row.id);
+    setAssignUserId(row.ownerId);
+  };
 
   const openEdit = async (row: OrderDetailVO) => {
     if (row.id == null) return;
@@ -107,7 +125,8 @@ export default function OrderDetailPage() {
       render: (_, row) => (
         <RowActions
           actions={[
-            { key: 'view', label: '查看', icon: <EyeOutlined />, onClick: () => void openEdit(row) }
+            canQuery && { key: 'view', label: '查看', icon: <EyeOutlined />, onClick: () => void openEdit(row) },
+            canAssign && { key: 'assign', label: '分配用户', icon: <UserSwitchOutlined />, onClick: () => void openAssign(row) }
           ]}
         />
       )
@@ -118,6 +137,7 @@ export default function OrderDetailPage() {
     <PageContainer title="订单明细">
       <main>
         <ProTable<OrderDetailVO, OrderDetailQuery & { parentOrderTimeRange?: [string, string] }>
+          actionRef={actionRef}
           rowKey="id"
           columns={columns}
           scroll={{ x: 2430 }}
@@ -135,7 +155,7 @@ export default function OrderDetailPage() {
             return toTableData(response);
           }}
           toolbar={{ title: '订单明细列表' }}
-          toolBarRender={() => [
+          toolBarRender={() => canExport ? [
             <Button
               key="export"
               icon={<DownloadOutlined />}
@@ -145,9 +165,21 @@ export default function OrderDetailPage() {
             >
               导出
             </Button>
-          ]}
+          ] : []}
         />
       </main>
+
+      <Modal title="分配订单归属用户" open={assignId != null} okButtonProps={{ disabled: assignUserId == null }}
+        onCancel={() => setAssignId(undefined)} onOk={async () => {
+          if (assignId == null || assignUserId == null) return;
+          await assignOrderOwner(assignId, assignUserId);
+          message.success('分配成功');
+          setAssignId(undefined);
+          actionRef.current?.reload();
+        }}>
+        <Select showSearch optionFilterProp="label" style={{ width: '100%' }} options={userOptions}
+          value={assignUserId} onChange={setAssignUserId} placeholder="选择用户" />
+      </Modal>
 
       <Modal
         title="订单明细（只读）"

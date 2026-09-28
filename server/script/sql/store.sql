@@ -199,6 +199,8 @@ PREPARE store_export_drop_unique_stmt FROM @store_export_drop_unique;
 EXECUTE store_export_drop_unique_stmt;
 DEALLOCATE PREPARE store_export_drop_unique_stmt;
 
+-- 仅首次建店铺菜单时，沿用已有图片图库角色的默认店铺权限；以后保留人工授权结果。
+SET @seed_store_menu = NOT EXISTS(SELECT 1 FROM sys_menu WHERE menu_id=1990000000000000020);
 INSERT INTO sys_menu VALUES
 (1990000000000000020,'店铺管理',0,4,'store-management','#','','N','Y','M','0','0','','shop', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,'店铺套图管理'),
 (1990000000000000027,'店铺运营',1990000000000000020,1,'operations','store/operations/index','','N','Y','C','0','0','store:shop:list','shop', '', '',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
@@ -260,9 +262,20 @@ SELECT role_id,menu.menu_id FROM sys_role CROSS JOIN (
 ) menu WHERE role_key='superadmin';
 INSERT IGNORE INTO sys_role_menu(role_id,menu_id)
 SELECT access.role_id, menu.menu_id FROM sys_role_menu access CROSS JOIN (
- SELECT 1990000000000000020 menu_id UNION ALL SELECT 1990000000000000027 UNION ALL SELECT 1990000000000000021 UNION ALL SELECT 1990000000000000022 UNION ALL SELECT 1990000000000000026 UNION ALL SELECT 1990000000000000024 UNION ALL SELECT 1990000000000000025
-) menu WHERE access.menu_id=1980000000000000014;
-
+ SELECT 1990000000000000020 menu_id UNION ALL SELECT 1990000000000000027 UNION ALL SELECT 1990000000000000021
+ UNION ALL SELECT 1990000000000000022 UNION ALL SELECT 1990000000000000026 UNION ALL SELECT 1990000000000000024
+ UNION ALL SELECT 1990000000000000025
+) menu WHERE access.menu_id=1980000000000000014 AND @seed_store_menu=1;
+INSERT IGNORE INTO sys_role_menu(role_id,menu_id)
+SELECT access.role_id, button.menu_id FROM sys_role_menu access
+JOIN sys_menu button ON button.parent_id=access.menu_id AND button.menu_type='F'
+WHERE button.menu_id BETWEEN 1990000000000001201 AND 1990000000000001253 AND @seed_store_menu=1;
+INSERT IGNORE INTO sys_dept_menu(dept_id,menu_id)
+SELECT dr.dept_id,rm.menu_id FROM sys_dept_role dr JOIN sys_role_menu rm ON rm.role_id=dr.role_id
+JOIN sys_menu menu ON menu.menu_id=rm.menu_id
+WHERE (menu.menu_id BETWEEN 1990000000000000020 AND 1990000000000000027
+ OR menu.menu_id BETWEEN 1990000000000001201 AND 1990000000000001253)
+ AND @seed_store_menu=1;
 -- 独立演示工作台已由店铺管理流程取代。
 DELETE FROM sys_role_menu WHERE menu_id=1980000000000000017;
 DELETE FROM sys_menu WHERE menu_id=1980000000000000017;

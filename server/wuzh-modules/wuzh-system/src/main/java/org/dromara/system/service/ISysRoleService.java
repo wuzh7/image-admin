@@ -2,7 +2,6 @@ package org.dromara.system.service;
 
 import org.dromara.common.core.domain.PageResult;
 import org.dromara.common.mybatis.core.page.PageQuery;
-import org.dromara.system.domain.SysUserRole;
 import org.dromara.system.domain.bo.SysRoleBo;
 import org.dromara.system.domain.vo.SysRoleVo;
 
@@ -183,32 +182,6 @@ public interface ISysRoleService {
      * @return 影响行数
      */
     int deleteRoleByIds(Collection<Long> roleIds);
-
-    /**
-     * 取消授权用户角色
-     *
-     * @param userRole 用户和角色关联信息
-     * @return 影响行数
-     */
-    int deleteAuthUser(SysUserRole userRole);
-
-    /**
-     * 批量取消授权用户角色
-     *
-     * @param roleId  角色ID
-     * @param userIds 需要取消授权的用户数据ID
-     * @return 影响行数
-     */
-    int deleteAuthUsers(Long roleId, Collection<Long> userIds);
-
-    /**
-     * 批量选择授权用户角色
-     *
-     * @param roleId  角色ID
-     * @param userIds 需要删除的用户数据ID
-     * @return 影响行数
-     */
-    int insertAuthUsers(Long roleId, Collection<Long> userIds);
 
     /**
      * 根据角色ID清除该角色关联的所有在线用户的登录状态（踢出在线用户）

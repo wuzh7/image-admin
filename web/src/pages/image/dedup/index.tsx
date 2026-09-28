@@ -276,6 +276,7 @@ export default function ImageDedupPage() {
   const canQuery = hasPermi(userInfo, ['image:dedup:query']);
   const canConfirm = hasPermi(userInfo, ['image:dedup:confirm']);
   const canRetry = hasPermi(userInfo, ['image:dedup:retry']);
+  const canRender = hasPermi(userInfo, ['store:render:add']);
   const canRemove = hasRole(userInfo, ['superadmin']);
   const { exportFile } = useTableExport();
   const [files, setFiles] = useState<UploadFile[]>([]);
@@ -588,20 +589,22 @@ export default function ImageDedupPage() {
     if (pageKey === 'library') {
       void loadLibrary(1, libraryPageSize, '', storeCategoryId, undefined, undefined);
       void loadAspectRatios();
-      void listTemplateGroups().then(response => setStoreGroups((response.data || []).filter(group => group.status === 'ACTIVE')));
-      void listShops().then(response => setStoreShops(response.data || []));
+      if (canRender) {
+        void listTemplateGroups().then(response => setStoreGroups((response.data || []).filter(group => group.status === 'ACTIVE')));
+        void listShops().then(response => setStoreShops(response.data || []));
+      }
     }
     if (pageKey === 'tasks') void loadTasks(1, taskPageSize);
-  }, [canUpload, canRemove, libraryPageSize, loadAspectRatios, loadCategoryOptions, loadHealth, loadLibrary, loadTasks, pageKey, taskPageSize]);
+  }, [canUpload, canRemove, canRender, libraryPageSize, loadAspectRatios, loadCategoryOptions, loadHealth, loadLibrary, loadTasks, pageKey, taskPageSize]);
 
   useEffect(() => {
-    if (pageKey !== 'library' || !userInfo?.user.userId) return;
+    if (pageKey !== 'library' || !canRender || !userInfo?.user.userId) return;
     let cancelled = false;
     void listRenderBatches({ pageSize: 1 })
       .then(response => { if (!cancelled) { setStoreBatch(response.data?.records?.[0]); setStorePollFailed(false); } })
       .catch(() => { if (!cancelled) setStorePollFailed(true); });
     return () => { cancelled = true; };
-  }, [pageKey, userInfo?.user.userId]);
+  }, [pageKey, canRender, userInfo?.user.userId]);
 
   useEffect(() => {
     if (pageKey !== 'library' || !storeRendering || !storeBatch || storePollFailed) return;
@@ -629,7 +632,7 @@ export default function ImageDedupPage() {
   }, [keyword, libraryAspectRatio, libraryBatchId, libraryCategoryId, libraryPage, libraryPageSize, loadLibrary, pageKey, storeBatch?.id, storeRendering, storePollFailed]);
 
   useEffect(() => {
-    if (pageKey !== 'library' || storeCategoryId == null) { setStoreListingTemplates({}); return; }
+    if (pageKey !== 'library' || !canRender || storeCategoryId == null) { setStoreListingTemplates({}); return; }
     let cancelled = false;
     const available = storeShops.filter(shop => shopConfig(shop).categoryIds?.some(id => String(id) === String(storeCategoryId)));
     setStoreShopIds(current => current.filter(id => available.some(shop => String(shop.id) === String(id))));
@@ -638,7 +641,7 @@ export default function ImageDedupPage() {
       .then(entries => { if (!cancelled) setStoreListingTemplates(Object.fromEntries(entries)); })
       .catch(() => { if (!cancelled) message.error('加载店铺上架表格失败，请刷新页面重试'); });
     return () => { cancelled = true; };
-  }, [pageKey, storeCategoryId, storeShops]);
+  }, [pageKey, canRender, storeCategoryId, storeShops]);
 
   const startStoreRender = async () => {
     if (storeCategoryId == null || storeGroupId == null || !selectedLibraryIds.length) { message.warning('请选择类目、模板组和正式图库图片'); return; }
@@ -1511,7 +1514,7 @@ export default function ImageDedupPage() {
         {pageKey === 'library' && (
           <div className="store-library-workflow">
             <div style={{ minWidth: 0 }}>{libraryPanel}</div>
-            <ProCard className="store-task-panel" title={<div><strong>配置本次任务</strong><Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>套图结果可供多家店铺复用</Typography.Text></div>} extra={<Typography.Text type="secondary">01—04</Typography.Text>}>
+            {canRender && <ProCard className="store-task-panel" title={<div><strong>配置本次任务</strong><Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>套图结果可供多家店铺复用</Typography.Text></div>} extra={<Typography.Text type="secondary">01—04</Typography.Text>}>
               <Space direction="vertical" size={16} style={{ width: '100%' }}>
                 <div className="store-task-field"><Typography.Text strong>商品类目</Typography.Text>
                   <Select aria-label="任务类目" placeholder="选择商品类目" value={storeCategoryId} disabled={storeRendering} options={categories.map(category => ({ value: category.id, label: category.name }))} onChange={value => { setStoreCategoryId(value); setStoreGroupId(undefined); setSelectedLibraryIds([]); setLibraryCategoryId(value); void loadLibrary(1, libraryPageSize, keyword, value, libraryBatchId, libraryAspectRatio); }} />
@@ -1562,7 +1565,7 @@ export default function ImageDedupPage() {
                 <Button type="primary" block loading={storeSubmitting} disabled={storeRendering || !selectedLibraryIds.length || !storeGroup?.templates.length || storeMissingListing || storeMissingKeywords} onClick={() => void startStoreRender()}>{storeGenerateListing ? '开始渲染并生成表格' : '开始渲染成品'} →</Button>
                 <Typography.Text type="secondary">任务由后台处理，离开页面后仍可在“渲染结果”查看进度与下载。</Typography.Text>
               </Space>
-            </ProCard>
+            </ProCard>}
           </div>
         )}
       </div>

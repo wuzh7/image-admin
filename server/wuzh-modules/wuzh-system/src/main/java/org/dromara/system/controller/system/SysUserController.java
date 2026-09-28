@@ -9,8 +9,8 @@ import org.dromara.common.core.constant.CacheNames;
 import org.dromara.common.core.constant.SystemConstants;
 import org.dromara.common.core.domain.PageResult;
 import org.dromara.common.core.domain.R;
+import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.core.utils.SpringUtils;
-import org.dromara.common.core.utils.StreamUtils;
 import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.encrypt.annotation.ApiEncrypt;
 import org.dromara.common.log.annotation.Log;
@@ -109,10 +109,13 @@ public class SysUserController extends BaseController {
             userInfoVo.setUser(sysUser);
             userInfoVo.setRoleIds(roleService.selectRoleListByUserId(userId));
         }
-        SysRoleBo roleBo = new SysRoleBo();
-        roleBo.setStatus(SystemConstants.NORMAL);
-        List<SysRoleVo> roles = roleService.selectRoleList(roleBo);
-        userInfoVo.setRoles(LoginHelper.isAdmin() ? roles : StreamUtils.filter(roles, r -> !r.isSuperAdmin()));
+        if (LoginHelper.isAdmin()) {
+            SysRoleBo roleBo = new SysRoleBo();
+            roleBo.setStatus(SystemConstants.NORMAL);
+            userInfoVo.setRoles(roleService.selectRoleList(roleBo));
+        } else {
+            userInfoVo.setRoles(deptRoleService.roles(LoginHelper.getDeptId()));
+        }
         return R.ok(userInfoVo);
     }
 
@@ -127,6 +130,7 @@ public class SysUserController extends BaseController {
     @RepeatSubmit()
     @PostMapping
     public R<Void> add(@Validated @RequestBody SysUserBo user) {
+        checkManagedDept(user.getDeptId());
         deptService.checkDeptDataScope(user.getDeptId());
         deptRoleService.validate(user.getDeptId(), user.getRoleIds() == null ? List.of() : Arrays.asList(user.getRoleIds()));
         user.setUserName(user.getUserName().trim());
@@ -155,8 +159,15 @@ public class SysUserController extends BaseController {
     @RepeatSubmit()
     @PutMapping
     public R<Void> edit(@Validated @RequestBody SysUserBo user) {
+        if (user.getUserId() == null) return R.fail("用户不存在");
         userService.checkUserAllowed(user.getUserId());
         userService.checkUserDataScope(user.getUserId());
+        checkManagedDept(user.getDeptId());
+        if (user.getUserId().equals(LoginHelper.getUserId()) && user.getRoleIds() != null
+            && !new HashSet<>(Arrays.asList(user.getRoleIds())).equals(
+                new HashSet<>(roleService.selectRoleListByUserId(user.getUserId())))) {
+            return R.fail("不能修改自己的角色");
+        }
         deptService.checkDeptDataScope(user.getDeptId());
         deptRoleService.validate(user.getDeptId(), user.getRoleIds() == null
             ? roleService.selectRoleListByUserId(user.getUserId()) : Arrays.asList(user.getRoleIds()));
@@ -171,7 +182,9 @@ public class SysUserController extends BaseController {
         if (!userService.checkNickNameUnique(user)) {
             return R.fail("修改用户'" + user.getNickName() + "'失败，用户名称已存在");
         }
-        return toAjax(userService.updateUser(user));
+        int rows = userService.updateUser(user);
+        if (rows > 0) SpringUtils.context().publishEvent(OnlineUserCleanEvent.byUsers(List.of(user.getUserId())));
+        return toAjax(rows);
     }
 
     /**
@@ -240,7 +253,9 @@ public class SysUserController extends BaseController {
     public R<Void> changeStatus(@RequestBody SysUserBo user) {
         userService.checkUserAllowed(user.getUserId());
         userService.checkUserDataScope(user.getUserId());
-        return toAjax(userService.updateUserStatus(user.getUserId(), user.getStatus()));
+        int rows = userService.updateUserStatus(user.getUserId(), user.getStatus());
+        if (rows > 0) SpringUtils.context().publishEvent(OnlineUserCleanEvent.byUsers(List.of(user.getUserId())));
+        return toAjax(rows);
     }
 
     /**
@@ -254,6 +269,7 @@ public class SysUserController extends BaseController {
     @RepeatSubmit()
     @GetMapping("/unlock/{userId}")
     public R<Void> unlock(@PathVariable Long userId) {
+        userService.checkUserDataScope(userId);
         SysUserVo user = userService.selectUserById(userId);
         if (ObjectUtil.isNull(user)) {
             return R.fail("用户不存在");
@@ -297,11 +313,21 @@ public class SysUserController extends BaseController {
     @RepeatSubmit()
     @PutMapping("/authRole")
     public R<Void> insertAuthRole(Long userId, Long[] roleIds) {
+        if (userId == null) return R.fail("用户不存在");
+        if (userId.equals(LoginHelper.getUserId())) return R.fail("不能修改自己的角色");
+        userService.checkUserAllowed(userId);
         userService.checkUserDataScope(userId);
         SysUserVo user = userService.selectUserById(userId);
         deptRoleService.validate(user.getDeptId(), roleIds == null ? List.of() : Arrays.asList(roleIds));
         userService.insertUserAuth(userId, roleIds);
+        SpringUtils.context().publishEvent(OnlineUserCleanEvent.byUsers(List.of(userId)));
         return R.ok();
+    }
+
+    private void checkManagedDept(Long deptId) {
+        if (!LoginHelper.isAdmin() && !ObjectUtil.equal(deptId, LoginHelper.getDeptId())) {
+            throw new ServiceException("只能管理本部门用户");
+        }
     }
 
 }

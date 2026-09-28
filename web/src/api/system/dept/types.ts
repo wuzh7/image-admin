@@ -20,6 +20,7 @@ export interface DeptVO extends BaseEntity {
 export interface DeptForm {
   deptId?: string | number;
   parentId?: string | number;
+  parentName?: string;
   deptName?: string;
   status?: string;
   roleIds?: Array<string | number>;

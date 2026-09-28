@@ -9,6 +9,7 @@ import org.dromara.system.domain.SysRole;
 import org.dromara.system.domain.vo.SysRoleVo;
 import org.dromara.system.mapper.SysDeptRoleMapper;
 import org.dromara.system.mapper.SysRoleMapper;
+import org.dromara.system.mapper.SysUserRoleMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +23,7 @@ import java.util.Set;
 public class SysDeptRoleService {
     private final SysDeptRoleMapper deptRoleMapper;
     private final SysRoleMapper roleMapper;
+    private final SysUserRoleMapper userRoleMapper;
 
     public List<Long> roleIds(Long deptId) {
         return deptId == null ? List.of() : deptRoleMapper.selectRoleIds(deptId);
@@ -51,6 +53,10 @@ public class SysDeptRoleService {
     public void replace(Long deptId, Collection<Long> roleIds) {
         if (roleIds != null && roleIds.contains(SystemConstants.SUPER_ADMIN_ROLE_ID))
             throw new ServiceException("超级管理员不能属于部门");
+        if (!new LinkedHashSet<>(roleIds == null ? List.<Long>of() : roleIds)
+            .containsAll(userRoleMapper.selectAssignedRoleIdsByDeptId(deptId))) {
+            throw new ServiceException("请先调整部门用户的角色，再移除部门角色");
+        }
         deptRoleMapper.lambda().eq(SysDeptRole::getDeptId, deptId).delete();
         if (CollUtil.isEmpty(roleIds)) return;
         List<SysDeptRole> relations = new LinkedHashSet<>(roleIds).stream().map(roleId -> {

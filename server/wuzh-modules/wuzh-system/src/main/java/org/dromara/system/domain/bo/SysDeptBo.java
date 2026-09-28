@@ -36,6 +36,12 @@ public class SysDeptBo implements Serializable {
     private Long parentId;
 
     /**
+     * 上级部门名称；未选择已有部门时，新增时按此名称创建上级部门。
+     */
+    @Size(max = 30, message = "上级部门名称长度不能超过{max}个字符")
+    private String parentName;
+
+    /**
      * 部门名称
      */
     @NotBlank(message = "部门名称不能为空")

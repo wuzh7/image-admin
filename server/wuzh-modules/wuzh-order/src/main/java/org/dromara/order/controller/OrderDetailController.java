@@ -1,11 +1,11 @@
 package org.dromara.order.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaCheckRole;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
-import org.dromara.common.core.constant.SystemConstants;
 import org.dromara.common.core.domain.PageResult;
 import org.dromara.common.core.domain.R;
 import org.dromara.common.core.validate.AddGroup;
@@ -32,18 +32,19 @@ import java.util.List;
 @Validated
 @RestController
 @RequiredArgsConstructor
-@SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
 @RequestMapping("/order/details")
 public class OrderDetailController {
 
     private final OrderDetailService orderDetailService;
 
     @GetMapping("/list")
+    @SaCheckPermission("order:detail:list")
     public R<PageResult<OrderDetailDtos.DetailView>> list(OrderDetailDtos.Query query, PageQuery pageQuery) {
         return R.ok(orderDetailService.queryPage(query, pageQuery));
     }
 
     @GetMapping("/{id}")
+    @SaCheckPermission("order:detail:query")
     public R<OrderDetailDtos.DetailView> getInfo(
         @NotNull(message = "主键不能为空") @PathVariable Long id
     ) {
@@ -53,6 +54,7 @@ public class OrderDetailController {
     @Log(title = "订单明细新增", businessType = BusinessType.INSERT)
     @RepeatSubmit
     @PostMapping
+    @SaCheckPermission("order:detail:add")
     public R<Void> add(@Validated(AddGroup.class) @RequestBody OrderDetailDtos.SaveRequest request) {
         orderDetailService.create(request);
         return R.ok();
@@ -61,13 +63,24 @@ public class OrderDetailController {
     @Log(title = "订单明细修改", businessType = BusinessType.UPDATE)
     @RepeatSubmit
     @PutMapping
+    @SaCheckPermission("order:detail:edit")
     public R<Void> edit(@Validated(EditGroup.class) @RequestBody OrderDetailDtos.SaveRequest request) {
         orderDetailService.update(request);
         return R.ok();
     }
 
+    @Log(title = "订单明细分配用户", businessType = BusinessType.GRANT)
+    @PutMapping("/{id}/owner/{userId}")
+    @SaCheckRole("superadmin")
+    @SaCheckPermission("order:detail:assign")
+    public R<Void> assignOwner(@PathVariable Long id, @PathVariable Long userId) {
+        orderDetailService.assignOwner(id, userId);
+        return R.ok();
+    }
+
     @Log(title = "订单明细删除", businessType = BusinessType.DELETE)
     @DeleteMapping("/{ids}")
+    @SaCheckPermission("order:detail:remove")
     public R<Void> remove(
         @NotEmpty(message = "主键不能为空") @PathVariable Long[] ids
     ) {
@@ -77,6 +90,7 @@ public class OrderDetailController {
 
     @Log(title = "订单明细导出", businessType = BusinessType.EXPORT)
     @PostMapping("/export")
+    @SaCheckPermission("order:detail:export")
     public void export(OrderDetailDtos.Query query, HttpServletResponse response) {
         ExcelBuilder.of(orderDetailService.queryExport(query), OrderDetailDtos.ExportRow.class)
             .sheetName("订单明细")

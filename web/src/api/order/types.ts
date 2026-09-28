@@ -14,6 +14,7 @@ export interface OrderDetailQuery extends PageQuery {
 
 export interface OrderDetailForm {
   id?: string | number;
+  ownerId?: string | number;
   parentOrderSn: string;
   parentOrderTimeStr?: string;
   fulfillmentMallId?: string;

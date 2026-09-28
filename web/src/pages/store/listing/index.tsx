@@ -5,8 +5,11 @@ import {
   type StoreId, type StoreListingExport, type StoreRenderBatch, type StoreShop,
 } from '@/api/store';
 import { StorePage, useStoreCategories } from '../common';
+import { useUserStore } from '@/stores/userStore';
+import { hasPermi } from '@/utils/permission';
 
 export default function ListingPage() {
+  const canDownload = hasPermi(useUserStore(state => state.userInfo), ['store:listing-export:download']);
   const categories = useStoreCategories();
   const [shops, setShops] = useState<StoreShop[]>([]);
   const [shopId, setShopId] = useState<StoreId>();
@@ -54,7 +57,7 @@ export default function ListingPage() {
       {exports.length ? exports.map(row => <div key={String(row.id)} style={{ marginTop: 16 }}><Space wrap>
         <span>{row.filename}</span><span>{row.status}</span>
         {row.errorMessage && <Typography.Text type="danger">{row.errorMessage}</Typography.Text>}
-        {row.status === 'COMPLETED' && <Button onClick={() => void download(row)}>下载</Button>}
+        {canDownload && row.status === 'COMPLETED' && <Button onClick={() => void download(row)}>下载</Button>}
       </Space></div>) : <Empty description="暂无上架表格记录" />}
     </Card>
   </StorePage>;

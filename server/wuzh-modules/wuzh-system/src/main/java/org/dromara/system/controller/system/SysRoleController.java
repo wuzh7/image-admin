@@ -1,6 +1,7 @@
 package org.dromara.system.controller.system;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaCheckRole;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.domain.PageResult;
 import org.dromara.common.core.domain.R;
@@ -10,14 +11,10 @@ import org.dromara.common.log.enums.BusinessType;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.redis.annotation.RepeatSubmit;
 import org.dromara.common.web.core.BaseController;
-import org.dromara.system.domain.SysUserRole;
 import org.dromara.system.domain.bo.SysRoleBo;
-import org.dromara.system.domain.bo.SysUserBo;
 import org.dromara.system.domain.vo.SysRoleVo;
-import org.dromara.system.domain.vo.SysUserVo;
 import org.dromara.system.event.OnlineUserCleanEvent;
 import org.dromara.system.service.ISysRoleService;
-import org.dromara.system.service.ISysUserService;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -32,10 +29,10 @@ import java.util.List;
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/system/role")
+@SaCheckRole("superadmin")
 public class SysRoleController extends BaseController {
 
     private final ISysRoleService roleService;
-    private final ISysUserService userService;
 
     /**
      * 分页查询角色列表。
@@ -116,7 +113,7 @@ public class SysRoleController extends BaseController {
      * @param role 角色参数
      * @return 操作结果
      */
-    @SaCheckPermission("system:role:edit")
+    @SaCheckPermission("system:role:permission")
     @Log(title = "角色管理", businessType = BusinessType.UPDATE)
     @RepeatSubmit()
     @PutMapping("/permission")
@@ -173,77 +170,6 @@ public class SysRoleController extends BaseController {
     @GetMapping("/optionselect")
     public R<List<SysRoleVo>> optionselect(@RequestParam(required = false) Long[] roleIds) {
         return R.ok(roleService.selectRoleByIds(roleIds == null ? null : List.of(roleIds)));
-    }
-
-    /**
-     * 查询已分配用户角色列表。
-     *
-     * @param user      查询条件
-     * @param pageQuery 分页参数
-     * @return 用户分页结果
-     */
-    @SaCheckPermission("system:role:list")
-    @GetMapping("/authUser/allocatedList")
-    public R<PageResult<SysUserVo>> allocatedList(SysUserBo user, PageQuery pageQuery) {
-        return R.ok(userService.selectAllocatedList(user, pageQuery));
-    }
-
-    /**
-     * 查询未分配用户角色列表。
-     *
-     * @param user      查询条件
-     * @param pageQuery 分页参数
-     * @return 用户分页结果
-     */
-    @SaCheckPermission("system:role:list")
-    @GetMapping("/authUser/unallocatedList")
-    public R<PageResult<SysUserVo>> unallocatedList(SysUserBo user, PageQuery pageQuery) {
-        return R.ok(userService.selectUnallocatedList(user, pageQuery));
-    }
-
-    /**
-     * 取消授权用户。
-     *
-     * @param userRole 用户角色关系
-     * @return 操作结果
-     */
-    @SaCheckPermission("system:role:edit")
-    @Log(title = "角色管理", businessType = BusinessType.GRANT)
-    @RepeatSubmit()
-    @PutMapping("/authUser/cancel")
-    public R<Void> cancelAuthUser(@RequestBody SysUserRole userRole) {
-        return toAjax(roleService.deleteAuthUser(userRole));
-    }
-
-    /**
-     * 批量取消授权用户
-     *
-     * @param roleId  角色ID
-     * @param userIds 用户ID串
-     * @return 操作结果
-     */
-    @SaCheckPermission("system:role:edit")
-    @Log(title = "角色管理", businessType = BusinessType.GRANT)
-    @RepeatSubmit()
-    @PutMapping("/authUser/cancelAll")
-    public R<Void> cancelAuthUserAll(Long roleId, Long[] userIds) {
-        return toAjax(roleService.deleteAuthUsers(roleId, List.of(userIds)));
-    }
-
-    /**
-     * 批量选择用户授权
-     *
-     * @param roleId  角色ID
-     * @param userIds 用户ID串
-     * @return 操作结果
-     */
-    @SaCheckPermission("system:role:edit")
-    @Log(title = "角色管理", businessType = BusinessType.GRANT)
-    @RepeatSubmit()
-    @PutMapping("/authUser/selectAll")
-    public R<Void> selectAuthUserAll(Long roleId, Long[] userIds) {
-        roleService.checkRoleDataScope(roleId);
-        return toAjax(roleService.insertAuthUsers(roleId, List.of(userIds)));
     }
 
 }

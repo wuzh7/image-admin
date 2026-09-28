@@ -6,6 +6,8 @@ import {
   type StoreId,
 } from '@/api/store';
 import { StorePage } from '../common';
+import { useUserStore } from '@/stores/userStore';
+import { hasPermi } from '@/utils/permission';
 // @ts-ignore The demo editor is shared JavaScript and has no TypeScript declarations.
 import { CalibrationManager } from './editor/manager.mjs';
 import './editor/styles.css';
@@ -15,6 +17,9 @@ type EditorRecord = {
 };
 
 export default function CalibrationPage() {
+  const userInfo = useUserStore(state => state.userInfo);
+  const canAdd = hasPermi(userInfo, ['store:calibration:add']);
+  const canEdit = hasPermi(userInfo, ['store:calibration:edit']);
   const rootRef = useRef<HTMLDivElement>(null);
   const { token } = theme.useToken();
   const [modal, contextHolder] = Modal.useModal();
@@ -36,6 +41,7 @@ export default function CalibrationPage() {
     };
     const service = {
       async saveCalibration(input: { id?: string; name: string; category: string; config: unknown }, background: Blob, mask?: Blob) {
+        if (input.id ? !canEdit : !canAdd) throw new Error('没有保存背景模板的权限');
         const previous = currentRecord?.id === input.id ? currentRecord : undefined;
         const backgroundOssKey = await upload(background, previous?.backgroundKey,
           background instanceof File ? background.name : `background.${background.type.split('/')[1] || 'png'}`);
@@ -52,12 +58,14 @@ export default function CalibrationPage() {
       if (!mounted || !editor) return;
       if (editor.interaction) { frame = requestAnimationFrame(render); return; }
       editor.replaceView(root, editor.view());
+      if (editor.id ? !canEdit : !canAdd) root.querySelector('[data-action="cal:publish"]')?.remove();
       editor.attach(root);
     };
     const queueRender = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(render); };
     const click = (event: MouseEvent) => {
       const button = (event.target as Element).closest<HTMLElement>('[data-action]');
       if (!button || button.hasAttribute('disabled')) return;
+      if (button.dataset.action === 'cal:publish' && (editor?.id ? !canEdit : !canAdd)) return;
       void editor?.handle(button.dataset.action, button.dataset.id).catch((error: Error) => message.error(error.message));
     };
     const change = (event: Event) => {
@@ -103,7 +111,7 @@ export default function CalibrationPage() {
       editor?.stopPreview();
       editor?.keyDocument?.removeEventListener('keydown', editor.keyHandler);
     };
-  }, [modal]);
+  }, [modal, canAdd, canEdit]);
 
   return <StorePage title="背景模板校准">{contextHolder}<div className="store-calibration-editor" ref={rootRef} style={{ '--cal-primary': token.colorPrimary } as CSSProperties}>正在加载背景模板校准…</div></StorePage>;
 }

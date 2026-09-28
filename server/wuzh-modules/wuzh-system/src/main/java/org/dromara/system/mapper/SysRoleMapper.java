@@ -80,6 +80,11 @@ public interface SysRoleMapper extends BaseMapperPlus<SysRole, SysRoleVo>, MPJBa
         return this.lambda().in(SysRole::getRoleId, roleIds).count();
     }
 
+    default long selectEnabledRoleCount(Collection<Long> roleIds) {
+        return this.lambda().in(SysRole::getRoleId, roleIds)
+            .eq(SysRole::getStatus, SystemConstants.NORMAL).count();
+    }
+
     /**
      * 根据角色ID查询角色信息
      *

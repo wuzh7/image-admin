@@ -5,6 +5,8 @@ import {
   saveListingProfile, uploadListingTemplate, type StoreId, type StoreListingTemplate, type StoreShop,
 } from '@/api/store';
 import { StorePage, useStoreCategories } from '../common';
+import { useUserStore } from '@/stores/userStore';
+import { hasPermi } from '@/utils/permission';
 
 const fields = [
   ['required', '平台强制词'], ['material', '产品材质词'], ['hot', '平台热词'],
@@ -30,6 +32,10 @@ const defaultProfile = (): Profile => ({
 });
 
 export default function ListingConfigPage() {
+  const userInfo = useUserStore(state => state.userInfo);
+  const canAdd = hasPermi(userInfo, ['store:listing-template:add']) && hasPermi(userInfo, ['store:listing-template:upload']);
+  const canEdit = hasPermi(userInfo, ['store:listing-template:edit']);
+  const canRemove = hasPermi(userInfo, ['store:listing-template:remove']);
   const categories = useStoreCategories();
   const [shops, setShops] = useState<StoreShop[]>([]);
   const [shopId, setShopId] = useState<StoreId>();
@@ -105,15 +111,15 @@ export default function ListingConfigPage() {
           <Select placeholder="选择类目" value={categoryId} options={linkedCategories.map(item => ({ value: item.id, label: item.name }))} onChange={value => { setCategoryId(value); setTemplates([]); setSelectedTemplateId(undefined); setPendingFile(undefined); setConfigOpen(false); }} style={{ width: '100%' }} />
         </Space>
         <Space direction="vertical"><Typography.Text strong>3. 上架模板表格</Typography.Text>
-          <Upload beforeUpload={file => {
+          {canAdd && <Upload beforeUpload={file => {
             if (shopId == null || categoryId == null) { message.warning('请先选择店铺和类目'); return false; }
             setPendingFile(file); setSelectedTemplateId(undefined); setConfigOpen(false);
             return false;
-          }} showUploadList={false} accept=".xlsx"><Button disabled={shopId == null || categoryId == null}>上传表格</Button></Upload>
+          }} showUploadList={false} accept=".xlsx"><Button disabled={shopId == null || categoryId == null}>上传表格</Button></Upload>}
           {pendingFile && <Typography.Text type="secondary">待配置：{pendingFile.name}</Typography.Text>}
         </Space>
         <Space direction="vertical"><Typography.Text strong>4. 生成配置</Typography.Text>
-          <Button disabled={!pendingFile && !selectedTemplate} onClick={openConfig}>生成配置 / 标题词库</Button>
+          <Button disabled={(!pendingFile && !selectedTemplate) || (pendingFile ? !canAdd : !canEdit)} onClick={openConfig}>生成配置 / 标题词库</Button>
         </Space>
       </div>
     </Card>
@@ -122,10 +128,10 @@ export default function ListingConfigPage() {
       <Table rowKey="id" dataSource={templates} pagination={false} rowSelection={{ type: 'radio', selectedRowKeys: selectedTemplateId == null ? [] : [selectedTemplateId], onChange: keys => { setSelectedTemplateId(keys[0] as StoreId); setPendingFile(undefined); setConfigOpen(false); } }} columns={[
         { title: '唯一编号 / 原文件', key: 'file', render: (_, row) => <><strong>{row.templateCode}</strong>{!row.configJson && <Typography.Text type="warning"> · 未保存生成配置</Typography.Text>}<br /><Typography.Text type="secondary">{row.originalFilename}</Typography.Text></> },
         { title: '维护', key: 'actions', render: (_, row) => <Space>
-          <Popconfirm title="删除上架表格模板？" description="已生成的历史文件保留。" onConfirm={async () => {
+          {canRemove && <Popconfirm title="删除上架表格模板？" description="已生成的历史文件保留。" onConfirm={async () => {
           await deleteListingTemplate(row.id); setTemplates(current => current.filter(item => item.id !== row.id));
           if (String(selectedTemplateId) === String(row.id)) { setSelectedTemplateId(undefined); setConfigOpen(false); }
-        }}><Button size="small" danger>删除</Button></Popconfirm>
+        }}><Button size="small" danger>删除</Button></Popconfirm>}
         </Space> },
       ]} locale={{ emptyText: '暂无表格模板' }} />
     </Card>

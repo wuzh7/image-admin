@@ -30,6 +30,7 @@ import org.dromara.system.mapper.SysRoleMapper;
 import org.dromara.system.mapper.SysUserMapper;
 import org.dromara.system.service.ISysDeptService;
 import org.dromara.system.service.SysDeptRoleService;
+import org.dromara.system.service.SysDeptPermissionService;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
@@ -51,6 +52,7 @@ public class SysDeptServiceImpl implements ISysDeptService, DeptService {
     private final SysRoleMapper roleMapper;
     private final SysUserMapper userMapper;
     private final SysDeptRoleService deptRoleService;
+    private final SysDeptPermissionService deptPermissionService;
 
     /**
      * 分页查询部门管理数据
@@ -314,6 +316,10 @@ public class SysDeptServiceImpl implements ISysDeptService, DeptService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int insertDept(SysDeptBo bo) {
+        bo.setParentId(resolveParentId(bo));
+        if (!checkDeptNameUnique(bo)) {
+            throw new ServiceException("新增部门失败，部门名称已存在");
+        }
         SysDept info = deptMapper.selectById(bo.getParentId());
         // 如果父节点不存在或不为正常状态,则不允许新增子节点
         if (ObjectUtil.isNull(info)) {
@@ -327,7 +333,46 @@ public class SysDeptServiceImpl implements ISysDeptService, DeptService {
         dept.setAncestors(info.getAncestors() + StringUtils.SEPARATOR + dept.getParentId());
         int rows = deptMapper.insert(dept);
         deptRoleService.replace(dept.getDeptId(), bo.getRoleIds());
+        deptPermissionService.seedFromRoles(dept.getDeptId(), bo.getRoleIds());
         return rows;
+    }
+
+    /**
+     * 将手动输入的上级部门名称解析为已有部门；不存在时在默认根部门下创建。
+     */
+    private Long resolveParentId(SysDeptBo bo) {
+        if (bo.getParentId() != null) {
+            return bo.getParentId();
+        }
+        String parentName = StringUtils.trim(bo.getParentName());
+        if (StringUtils.isBlank(parentName)) {
+            return SystemConstants.DEFAULT_DEPT_ID;
+        }
+        List<SysDept> parents = deptMapper.lambda()
+            .eq(SysDept::getDeptName, parentName)
+            .eq(SysDept::getStatus, SystemConstants.NORMAL)
+            .eq(SysDept::getDelFlag, SystemConstants.NORMAL)
+            .orderByAsc(SysDept::getDeptId)
+            .last("LIMIT 2")
+            .list();
+        if (parents.size() > 1) {
+            throw new ServiceException("存在同名上级部门，请从匹配结果中选择");
+        }
+        if (!parents.isEmpty()) {
+            return parents.get(0).getDeptId();
+        }
+        SysDept root = deptMapper.selectById(SystemConstants.DEFAULT_DEPT_ID);
+        if (root == null || !SystemConstants.NORMAL.equals(root.getStatus())) {
+            throw new ServiceException("默认根部门不存在或已停用");
+        }
+        SysDept created = new SysDept();
+        created.setParentId(root.getDeptId());
+        created.setDeptName(parentName);
+        created.setOrderNum(0);
+        created.setStatus(SystemConstants.NORMAL);
+        created.setAncestors(root.getAncestors() + StringUtils.SEPARATOR + root.getDeptId());
+        deptMapper.insert(created);
+        return created.getDeptId();
     }
 
     /**
@@ -428,6 +473,7 @@ public class SysDeptServiceImpl implements ISysDeptService, DeptService {
     @Transactional(rollbackFor = Exception.class)
     public int deleteDeptById(Long deptId) {
         deptRoleService.delete(deptId);
+        deptPermissionService.delete(deptId);
         return deptMapper.deleteById(deptId);
     }
 

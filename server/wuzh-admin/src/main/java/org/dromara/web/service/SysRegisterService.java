@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.constant.Constants;
 import org.dromara.common.core.constant.GlobalConstants;
+import org.dromara.common.core.constant.SystemConstants;
 import org.dromara.common.core.enums.UserType;
 import org.dromara.common.core.exception.user.CaptchaException;
 import org.dromara.common.core.exception.user.CaptchaExpireException;
@@ -60,6 +61,7 @@ public class SysRegisterService {
         sysUser.setNickName(username);
         sysUser.setPassword(BCrypt.hashpw(password));
         sysUser.setUserType(userType);
+        sysUser.setDeptId(SystemConstants.DEFAULT_DEPT_ID);
         sysUser.setPhoneNumber(phoneNumber);
         sysUser.setEmail(email);
 

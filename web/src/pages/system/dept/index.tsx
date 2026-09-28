@@ -40,7 +40,7 @@ export default function SystemDeptPage() {
   const loadOptions = async () => {
     const [treeResult, roleResult] = await Promise.all([deptTree(), listRole({ pageNum: 1, pageSize: 1000, status: '0' })]);
     setTree(treeResult.data || []);
-    setRoles(roleResult.data.rows || []);
+    setRoles((roleResult.data.rows || []).filter(role => role.roleKey !== 'superadmin'));
     return treeResult.data || [];
   };
 

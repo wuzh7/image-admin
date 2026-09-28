@@ -39,6 +39,7 @@ if (-not $build.Contains('--progress=plain')) { throw 'Plain Docker progress is 
 if ([regex]::Matches($build, "'--platform', 'linux/amd64'").Count -ne 3) { throw 'Production images must target linux/amd64.' }
 if ([regex]::Matches($build, "--format '{{.Architecture}}'").Count -ne 3) { throw 'Uploaded images must be checked for amd64 before activation.' }
 if ([regex]::Matches($build, 'image-admin-(backend|frontend|render-worker):rollback').Count -ne 3) { throw 'Exactly one rollback image per service must be kept.' }
+if (-not ($build.Contains('sys_dept_menu') -and $build.Contains('20260928_access_control.sql'))) { throw 'Department permission migration guard is missing.' }
 if ($build.Contains('docker image prune') -or $build.Contains('docker system prune')) { throw 'Release cleanup must stay scoped to old application images.' }
 $cmd = [IO.File]::ReadAllBytes((Join-Path $prodRoot 'publish-prod.cmd'))
 if ($cmd.Length -ge 3 -and $cmd[0] -eq 239 -and $cmd[1] -eq 187 -and $cmd[2] -eq 191) { throw 'CMD must not have a UTF-8 BOM.' }

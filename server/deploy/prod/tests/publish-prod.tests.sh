@@ -15,6 +15,7 @@ source_text=$(<"$publisher")
 [[ $(grep -o -- '--platform linux/amd64' <<< "$source_text" | wc -l | tr -d ' ') = 3 ]]
 [[ $(grep -o -- '--format.*Architecture' <<< "$source_text" | wc -l | tr -d ' ') = 3 ]]
 [[ $(grep -o 'image-admin-\(backend\|frontend\|render-worker\):rollback' <<< "$source_text" | wc -l | tr -d ' ') = 3 ]]
+[[ $source_text == *'sys_dept_menu'* && $source_text == *'20260928_access_control.sql'* ]]
 [[ $source_text != *'docker image prune'* && $source_text != *'docker system prune'* ]]
 
 echo 'PASS: macOS Bash syntax, argument validation, amd64 checks, and scoped image retention.'

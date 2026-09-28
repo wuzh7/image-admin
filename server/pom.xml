@@ -320,6 +320,15 @@
     </modules>
     <packaging>pom</packaging>
 
+    <dependencies>
+        <!-- 所有模块共享测试引擎，确保无测试用例的模块也能通过带分组的聚合测试。 -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
     <build>
         <plugins>
             <plugin>

@@ -51,7 +51,7 @@ public final class StoreDtos {
     public record Result(String ossKey, String sha256, Integer width, Integer height) {}
     public record FailRequest(@NotBlank String workerId, @NotBlank String leaseToken, @NotBlank String errorMessage) {}
     public record UploadView(String ossKey, String imageUrl, Integer width, Integer height) {}
-    public record ArchiveFile(String ossKey, String filename, boolean original) {}
+    public record ArchiveFile(String ossKey, String filename) {}
     public record PageView<T>(List<T> records, long total) {}
     public record ListingTemplateRequest(@NotNull Long shopId, @NotNull Long categoryId,
                                          @NotBlank String name, @NotBlank String ossKey, String originalFilename, String configJson) {}

@@ -47,7 +47,7 @@ class StoreRenderArchiveTest {
     @Mock StoreObjectStorage storeStorage;
     @InjectMocks StoreWorkflowService service;
 
-    @Test void includesOriginalAndNumbersRenderedFiles() {
+    @Test void includesOnlyNumberedRenderedFiles() {
         StoreRenderBatch batch = new StoreRenderBatch(); batch.setOwnerId(42L);
         when(batchMapper.selectById(1L)).thenReturn(batch);
         StoreRenderItem first = new StoreRenderItem(); first.setId(11L); first.setImageId(2L); first.setTemplateId(3L); first.setOutputFormat("png"); first.setResultOssKey("result-1");
@@ -58,17 +58,14 @@ class StoreRenderArchiveTest {
         try (MockedStatic<LoginHelper> login = mockStatic(LoginHelper.class)) {
             login.when(LoginHelper::getUserIdStr).thenReturn("42");
             var files = service.archiveFiles(1L, "ORIGINAL_NAME");
-            assertEquals(List.of("a.png", "a(1).png", "a(2).png"), files.stream().map(file -> file.filename()).toList());
-            assertEquals("original-a", files.get(0).ossKey());
-            assertEquals(List.of("result-1", "result-2"), files.subList(1, 3).stream().map(file -> file.ossKey()).toList());
-            assertTrue(files.get(0).original());
-            assertFalse(files.get(1).original());
-            service.archiveFile(files.get(0)); service.archiveFile(files.get(1));
-            verify(imageStorage).open("original-a"); verify(storeStorage).open("result-1");
+            assertEquals(List.of("a(1).png", "a(2).png"), files.stream().map(file -> file.filename()).toList());
+            assertEquals(List.of("result-1", "result-2"), files.stream().map(file -> file.ossKey()).toList());
+            service.archiveFile(files.get(0));
+            verify(imageStorage, never()).open(any()); verify(storeStorage).open("result-1");
             assertThrows(org.dromara.common.core.exception.ServiceException.class, () -> service.archiveFiles(1L, "ENGLISH_KEYWORDS"));
             InfringementScanItem scan = new InfringementScanItem(); scan.setId(5L); scan.setStatus("SUCCESS"); scan.setImageDescription("Blue Cat");
             when(infringementService.currentResults(any())).thenReturn(Map.of(5L, scan));
-            assertEquals(List.of("Blue Cat.png", "Blue Cat(1).png", "Blue Cat(2).png"),
+            assertEquals(List.of("Blue Cat(1).png", "Blue Cat(2).png"),
                 service.archiveFiles(1L, "ENGLISH_KEYWORDS").stream().map(file -> file.filename()).toList());
         }
     }

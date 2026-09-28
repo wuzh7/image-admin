@@ -70,8 +70,6 @@ public class StoreWorkflowService {
             throw new ServiceException("校准记录不存在");
         String previousKey = id == null ? null : calibration.getBackgroundOssKey();
         List<StoreTemplate> linked = previousKey == null ? List.of() : linkedTemplates(owner, previousKey);
-        if (!linked.isEmpty() && !Objects.equals(calibration.getCategoryId(), request.categoryId()))
-            throw new ServiceException("背景已加入模板组，不能修改类目");
         checkGroupsIdle(linked);
         if (request.name().trim().length() > 80 || categoryMapper.selectById(request.categoryId()) == null)
             throw new ServiceException("校准名称或类目无效");
@@ -88,6 +86,8 @@ public class StoreWorkflowService {
         if (!request.backgroundOssKey().matches(imagePattern) ||
             (request.maskOssKey() != null && !request.maskOssKey().matches("store/templates/" + owner + "/[0-9a-f-]+\\.png")))
             throw new ServiceException("校准图片无效");
+        if (!linked.isEmpty() && !Objects.equals(calibration.getCategoryId(), request.categoryId()))
+            moveLinkedCategories(owner, previousKey, id, request.categoryId());
         if (id == null) {
             calibration.setId(nextId()); calibration.setOwnerId(owner); calibration.setVersion(1);
         } else calibration.setVersion(calibration.getVersion() + 1);
@@ -131,6 +131,41 @@ public class StoreWorkflowService {
     private List<StoreTemplate> linkedTemplates(long ownerId, String key) {
         return templateMapper.selectList(Wrappers.<StoreTemplate>lambdaQuery().eq(StoreTemplate::getOwnerId, ownerId)
             .eq(StoreTemplate::getOssKey, key).eq(StoreTemplate::getStatus, "ACTIVE"));
+    }
+
+    private void moveLinkedCategories(long ownerId, String key, long calibrationId, long categoryId) {
+        List<StoreTemplate> templates = templateMapper.selectList(Wrappers.<StoreTemplate>lambdaQuery()
+            .eq(StoreTemplate::getOwnerId, ownerId).eq(StoreTemplate::getStatus, "ACTIVE"));
+        Set<String> keys = new HashSet<>(Set.of(key));
+        Set<Long> groupIds = new HashSet<>();
+        boolean expanded;
+        do {
+            expanded = false;
+            for (StoreTemplate template : templates) {
+                if (keys.contains(template.getOssKey()) || groupIds.contains(template.getGroupId())) {
+                    expanded |= keys.add(template.getOssKey());
+                    expanded |= groupIds.add(template.getGroupId());
+                }
+            }
+        } while (expanded);
+        List<StoreTemplate> affected = templates.stream().filter(template -> groupIds.contains(template.getGroupId())).toList();
+        checkGroupsIdle(affected);
+        for (StoreCalibration other : calibrationMapper.selectList(Wrappers.<StoreCalibration>lambdaQuery()
+            .eq(StoreCalibration::getOwnerId, ownerId).eq(StoreCalibration::getStatus, "PUBLISHED"))) {
+            if (keys.contains(other.getBackgroundOssKey()) && !Objects.equals(other.getId(), calibrationId)) {
+                other.setCategoryId(categoryId);
+                calibrationMapper.updateById(other);
+            }
+        }
+        for (StoreTemplate template : affected) {
+            template.setCategoryId(categoryId);
+            templateMapper.updateById(template);
+        }
+        for (Long groupId : groupIds) {
+            StoreTemplateGroup group = groupMapper.selectById(groupId);
+            group.setCategoryId(categoryId);
+            groupMapper.updateById(group);
+        }
     }
 
     private void checkGroupsIdle(List<StoreTemplate> linked) {
@@ -570,21 +605,13 @@ public class StoreWorkflowService {
         List<StoreDtos.ArchiveFile> files = new ArrayList<>();
         for (var group : grouped.entrySet()) {
             ImageAsset image = images.get(group.getKey());
-            if (image == null || image.getStorageKey() == null) throw new ServiceException("原图不存在");
+            if (image == null) throw new ServiceException("原图不存在");
             String name = "ORIGINAL_NAME".equals(nameMode) ? image.getOriginalName()
                 : InfringementService.aiListingKeywords(scans.get(image.getInfringementScanItemId()));
             if (name == null || name.isBlank()) throw new ServiceException("原图 " + image.getId() + " 缺少可用的命名信息");
             String base = ("ORIGINAL_NAME".equals(nameMode) ? name.replaceFirst("\\.[^.]*$", "") : name)
                 .replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_").trim();
             if (base.isBlank() || base.equals(".") || base.equals("..")) throw new ServiceException("原图 " + image.getId() + " 的文件名无效");
-            String originalExtension = switch (Objects.toString(image.getContentType(), "")) {
-                case "image/png" -> ".png";
-                case "image/webp" -> ".webp";
-                case "image/jpeg" -> ".jpg";
-                default -> image.getOriginalName() == null ? ".jpg" : image.getOriginalName().replaceFirst("^.*(\\.[^.]+)$", "$1").toLowerCase(Locale.ROOT);
-            };
-            if (!Set.of(".jpg", ".jpeg", ".png", ".webp").contains(originalExtension)) originalExtension = ".jpg";
-            files.add(new StoreDtos.ArchiveFile(image.getStorageKey(), uniqueArchiveName(base, originalExtension, 0, used), true));
             group.getValue().sort(Comparator.comparingInt((StoreRenderItem item) -> {
                 Object order = templateConfig(item.getTemplateConfigJson()).get("sortOrder");
                 return order instanceof Number number ? number.intValue() : Integer.MAX_VALUE;
@@ -593,7 +620,7 @@ public class StoreWorkflowService {
             for (StoreRenderItem item : group.getValue()) {
                 if (item.getResultOssKey() == null) throw new ServiceException("渲染文件不存在");
                 String extension = "png".equalsIgnoreCase(item.getOutputFormat()) ? ".png" : ".jpg";
-                files.add(new StoreDtos.ArchiveFile(item.getResultOssKey(), uniqueArchiveName(base, extension, index++, used), false));
+                files.add(new StoreDtos.ArchiveFile(item.getResultOssKey(), uniqueArchiveName(base, extension, index++, used)));
             }
         }
         return files;
@@ -604,7 +631,7 @@ public class StoreWorkflowService {
         return name;
     }
     public ImageStorage.LocalFile archiveFile(StoreDtos.ArchiveFile file) {
-        return file.original() ? storage.open(file.ossKey()) : storeStorage.open(file.ossKey());
+        return storeStorage.open(file.ossKey());
     }
 
     @Transactional

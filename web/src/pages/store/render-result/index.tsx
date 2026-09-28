@@ -49,7 +49,7 @@ export default function RenderResultPage() {
       const url = URL.createObjectURL(await getRenderArchive(row.id, nameMode));
       const anchor = document.createElement('a'); anchor.href = url; anchor.download = `render-${row.id}.zip`; anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch { message.error('ZIP 下载失败，请检查原图与英文关键词'); }
+    } catch { message.error('ZIP 下载失败，请检查命名信息后重试'); }
     finally { setDownloading(false); }
   };
   const columns: ProColumns<StoreRenderBatch>[] = [
@@ -57,7 +57,7 @@ export default function RenderResultPage() {
     { title: '状态', dataIndex: 'status', render: value => <Tag>{String(value)}</Tag> },
     { title: '进度', render: (_, row) => <Progress percent={row.totalCount ? Math.round(((row.completedCount + row.skippedCount) / row.totalCount) * 100) : 0} size="small" /> },
     { title: '明细', render: (_, row) => String(row.completedCount + row.skippedCount) + '/' + String(row.totalCount) + '，失败 ' + String(row.failedCount) },
-    { title: '操作', render: (_, row) => <Space><Button icon={<ReloadOutlined />} onClick={() => actionRef.current?.reload()}>刷新</Button>{canRetry && <Button disabled={!row.failedCount} onClick={async () => { await retryRenderBatch(row.id); message.success('失败明细已重新排队'); actionRef.current?.reload(); }}>重试失败</Button>}{canDownload && <Button icon={<DownloadOutlined />} loading={downloading} disabled={!['COMPLETED', 'PARTIAL_FAILURE'].includes(row.status) || !(row.completedCount + row.skippedCount)} onClick={() => void download(row)}>下载 ZIP</Button>}</Space> }
+    { title: '操作', render: (_, row) => <Space><Button icon={<ReloadOutlined />} onClick={() => actionRef.current?.reload()}>刷新</Button>{canRetry && <Button disabled={!row.failedCount} onClick={async () => { await retryRenderBatch(row.id); message.success('失败明细已重新排队'); actionRef.current?.reload(); }}>重试失败</Button>}{canDownload && <Button icon={<DownloadOutlined />} loading={downloading} disabled={!['COMPLETED', 'PARTIAL_FAILURE'].includes(row.status) || !(row.completedCount + row.skippedCount)} onClick={() => Modal.confirm({ title: '确认下载渲染图？', content: `将按“${nameMode === 'ORIGINAL_NAME' ? '原文件名' : '英文关键词'}”命名 ZIP 内的图片。`, okText: '确认下载', cancelText: '返回选择', onOk: () => download(row) })}>下载 ZIP</Button>}</Space> }
   ];
   return <PageContainer title="渲染结果"><ProTable<StoreRenderBatch> actionRef={actionRef} rowKey={row => String(row.id)} columns={columns} request={async params => { const response = await listRenderBatches({ pageNum: params.current, pageSize: params.pageSize }); return { data: response.data?.records || [], total: response.data?.total || 0, success: true }; }} search={false} pagination={{ pageSize: 20 }} expandable={{ expandedRowRender: row => <BatchItems batchId={row.id} /> }} toolBarRender={() => [<Select key="nameMode" aria-label="图片命名方式" value={nameMode} onChange={setNameMode} style={{ width: 160 }} options={[{ label: '原文件名', value: 'ORIGINAL_NAME' }, { label: '英文关键词', value: 'ENGLISH_KEYWORDS' }]} />]} /></PageContainer>;
 }

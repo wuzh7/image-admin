@@ -123,6 +123,13 @@ ON DUPLICATE KEY UPDATE menu_name = VALUES(menu_name), parent_id = VALUES(parent
     path = VALUES(path), component = VALUES(component), menu_type = VALUES(menu_type), visible = VALUES(visible),
     perms = VALUES(perms), icon = VALUES(icon), remark = VALUES(remark);
 
+-- 订单明细仅允许超级管理员查看和操作，撤销历史分配给其他角色的菜单权限。
+DELETE role_menu FROM sys_role_menu role_menu
+INNER JOIN sys_role role ON role.role_id = role_menu.role_id
+WHERE role_menu.menu_id IN (1990000000000000010, 1990000000000000101, 1990000000000000102,
+    1990000000000000103, 1990000000000000104, 1990000000000000105, 1990000000000000106)
+  AND role.role_key <> 'superadmin';
+
 INSERT IGNORE INTO sys_role_menu (role_id, menu_id)
 SELECT role.role_id, menu.menu_id
 FROM sys_role role

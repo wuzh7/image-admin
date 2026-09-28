@@ -16,13 +16,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 class OrderDetailControllerSecurityTest {
 
     @Test
-    void checksEachActionAndRestrictsOwnerAssignmentToSuperAdministrator() {
+    void checksEachActionAndRestrictsAllOrderDetailsToSuperAdministrator() {
         Map<String, String> permissions = Map.of(
             "list", "order:detail:list", "getInfo", "order:detail:query",
             "add", "order:detail:add", "edit", "order:detail:edit",
             "assignOwner", "order:detail:assign", "remove", "order:detail:remove",
             "export", "order:detail:export");
-        assertThat(OrderDetailController.class.getAnnotation(SaCheckRole.class)).isNull();
+        assertThat(OrderDetailController.class.getAnnotation(SaCheckRole.class).value())
+            .containsExactly(SystemConstants.SUPER_ADMIN_ROLE_KEY);
         for (Method method : OrderDetailController.class.getDeclaredMethods()) {
             if (!Modifier.isPublic(method.getModifiers())) continue;
             assertThat(permissions).containsKey(method.getName());

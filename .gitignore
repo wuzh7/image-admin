@@ -38,6 +38,8 @@ deploy/prod/.env.prod
 *.dump
 *.sql.gz
 server/deploy/prod/releases/
+# 生产发布包仅保留在本地项目根目录，不提交到 GitHub。
+image-admin-*.tar
 
 # ===== ML models (large binaries) =====
 models/*.pt

@@ -1,6 +1,6 @@
 import { DeleteOutlined, EditOutlined, PlusOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
-import { ModalForm, PageContainer, ProFormSelect, ProFormText, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
-import { AutoComplete, Button, Form, message, Modal, Switch, Tree, Typography } from 'antd';
+import { ModalForm, PageContainer, ProFormSelect, ProFormText, ProFormTreeSelect, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
+import { Button, Form, message, Modal, Radio, Switch, Tree, Typography } from 'antd';
 import { useRef, useState } from 'react';
 import { addDept, deleteDept, deptPermissionTree, deptTree, getDept, getDeptPermissions, listDept, updateDept, updateDeptPermissions } from '@/api/system/dept';
 import type { MenuTreeOption } from '@/api/system/menu/types';
@@ -10,15 +10,9 @@ import type { RoleVO } from '@/api/system/role/types';
 import RowActions from '@/components/common/RowActions';
 import { useUserStore } from '@/stores/userStore';
 import { hasPermi, hasRole } from '@/utils/permission';
+import { buildDeptTree, disableCurrentDept, filterDeptTree } from './tree';
 
 const defaultForm: DeptForm = { status: '0', roleIds: [] };
-
-function flattenTree(nodes: DeptTreeOption[], path = ''): Array<{ label: string; value: string; deptId: string | number }> {
-  return nodes.flatMap(node => [
-    { label: `${path}${node.label}`, value: node.label, deptId: node.id },
-    ...flattenTree(node.children || [], `${path}${node.label} / `)
-  ]);
-}
 
 export default function SystemDeptPage() {
   const actionRef = useRef<ActionType | undefined>(undefined);
@@ -28,6 +22,10 @@ export default function SystemDeptPage() {
   const [title, setTitle] = useState('新增部门');
   const [tree, setTree] = useState<DeptTreeOption[]>([]);
   const [roles, setRoles] = useState<RoleVO[]>([]);
+  const [parentMode, setParentMode] = useState<'existing' | 'new-root' | 'none'>('existing');
+  const [expandedRowKeys, setExpandedRowKeys] = useState<string[]>([]);
+  const [expandableKeys, setExpandableKeys] = useState<string[]>([]);
+  const editingDeptId = Form.useWatch('deptId', form);
   const [permissionDept, setPermissionDept] = useState<DeptVO>();
   const [permissionTree, setPermissionTree] = useState<MenuTreeOption[]>([]);
   const [permissionIds, setPermissionIds] = useState<Array<string | number>>([]);
@@ -46,21 +44,21 @@ export default function SystemDeptPage() {
 
   const openAdd = async (parent?: DeptVO) => {
     const deptOptions = await loadOptions();
+    setParentMode(deptOptions.length ? 'existing' : 'none');
     form.resetFields();
     form.setFieldsValue({
       ...defaultForm,
-      parentId: parent?.deptId || deptOptions[0]?.id,
-      parentName: parent?.deptName || deptOptions[0]?.label || ''
+      parentId: parent?.deptId || deptOptions[0]?.id || 0
     });
     setTitle('新增部门');
     setOpen(true);
   };
 
   const openEdit = async (row: DeptVO) => {
-    const [deptOptions, result] = await Promise.all([loadOptions(), getDept(row.deptId)]);
+    const result = await getDept(row.deptId);
+    await loadOptions();
     form.resetFields();
-    form.setFieldsValue({ ...result.data, parentName: String(result.data.parentId) === '0' ? '顶级部门'
-      : flattenTree(deptOptions).find(option => String(option.deptId) === String(result.data.parentId))?.value });
+    form.setFieldsValue(result.data);
     setTitle('修改部门');
     setOpen(true);
   };
@@ -92,20 +90,37 @@ export default function SystemDeptPage() {
     }
   ];
 
-  const parentOptions = flattenTree(tree);
+  const parentOptions = disableCurrentDept(tree, editingDeptId);
+  if (editingDeptId) {
+    parentOptions.unshift({ id: 0, label: '无上级（顶级公司）' });
+  }
 
   return <PageContainer title="部门管理">
     <ProTable<DeptVO>
       actionRef={actionRef}
-      rowKey="deptId"
+      rowKey={row => String(row.deptId)}
       columns={columns}
       pagination={false}
-      expandable={{ defaultExpandAllRows: true }}
+      expandable={{ expandedRowKeys, onExpandedRowsChange: keys => setExpandedRowKeys(keys.map(String)) }}
       request={async params => {
-        const result = await listDept({ deptName: params.deptName as string | undefined, status: params.status as string | undefined });
-        return { data: result.data || [], success: true };
+        const result = await listDept();
+        const name = String(params.deptName || '').trim();
+        const status = params.status as string | undefined;
+        const rows = buildDeptTree(result.data || []);
+        const filtered = name || status ? filterDeptTree(rows, name, status) : rows;
+        const keys = (function collect(nodes: DeptVO[]): string[] {
+          return nodes.flatMap(node => node.children?.length ? [String(node.deptId), ...collect(node.children)] : []);
+        })(filtered);
+        setExpandableKeys(keys);
+        setExpandedRowKeys(keys);
+        return { data: filtered, success: true };
       }}
-      toolBarRender={() => canAdd ? [<Button key="add" type="primary" icon={<PlusOutlined />} onClick={() => void openAdd()}>新增</Button>] : []}
+      toolBarRender={() => [
+        <Button key="expand" disabled={!expandableKeys.length} onClick={() => setExpandedRowKeys(expandedRowKeys.length ? [] : expandableKeys)}>
+          {expandedRowKeys.length ? '收起全部' : '展开全部'}
+        </Button>,
+        canAdd && <Button key="add" type="primary" icon={<PlusOutlined />} onClick={() => void openAdd()}>新增</Button>
+      ]}
     />
     <ModalForm<DeptForm>
       title={title}
@@ -116,10 +131,25 @@ export default function SystemDeptPage() {
       onOpenChange={setOpen}
       onFinish={async values => {
         if (values.deptId && values.parentId == null) {
-          message.error('修改部门时请选择已有的上级部门');
+          message.error('请选择上级部门');
           return false;
         }
         const data = { ...values, orderNum: 0 };
+        if (!values.deptId) {
+          if (parentMode === 'existing' && (data.parentId == null || String(data.parentId) === '0')) {
+            message.error('请选择已有的上级部门');
+            return false;
+          }
+          if (parentMode === 'new-root') {
+            data.parentId = undefined;
+            data.parentName = values.parentName?.trim();
+          } else if (parentMode === 'none') {
+            data.parentId = 0;
+            data.parentName = undefined;
+          } else {
+            data.parentName = undefined;
+          }
+        }
         values.deptId ? await updateDept(data) : await addDept(data);
         message.success('操作成功');
         actionRef.current?.reload();
@@ -127,16 +157,21 @@ export default function SystemDeptPage() {
       }}
     >
       <ProFormText name="deptId" hidden />
-      <Form.Item name="parentName" label="上级部门" rules={[{ required: true, whitespace: true, message: '请输入上级部门' }]}>
-        <AutoComplete
-          options={parentOptions}
-          placeholder="可输入并匹配部门；无匹配时保存会新建"
-          onSelect={(_, option) => form.setFieldValue('parentId', option.deptId)}
-          onChange={(_, option) => form.setFieldValue('parentId', Array.isArray(option) ? undefined : option?.deptId)}
-          filterOption={(input, option) => (option?.label || '').toLowerCase().includes(input.toLowerCase())}
-        />
-      </Form.Item>
-      <ProFormText name="parentId" hidden />
+      {!editingDeptId && <Form.Item label="上级部门方式">
+        <Radio.Group value={parentMode} onChange={event => {
+          const mode = event.target.value as typeof parentMode;
+          setParentMode(mode);
+          form.setFieldsValue({ parentId: mode === 'existing' ? tree[0]?.id : mode === 'none' ? 0 : undefined, parentName: undefined });
+        }}>
+          <Radio value="existing">选择已有部门</Radio>
+          <Radio value="new-root">新建上级公司</Radio>
+          <Radio value="none">无上级（当前为公司）</Radio>
+        </Radio.Group>
+      </Form.Item>}
+      {(editingDeptId || parentMode === 'existing') && <ProFormTreeSelect name="parentId" label="上级部门" placeholder="请选择已有部门" rules={[{ required: true, message: '请选择上级部门' }]}
+        fieldProps={{ treeData: parentOptions, fieldNames: { label: 'label', value: 'id', children: 'children' }, showSearch: true, treeDefaultExpandAll: true }} />}
+      {!editingDeptId && parentMode === 'new-root' && <ProFormText name="parentName" label="新上级公司名称" rules={[{ required: true, whitespace: true }, { max: 30 }]} />}
+      {!editingDeptId && parentMode === 'none' && <Typography.Text type="secondary">当前部门将成为顶级公司，不归属其他部门。</Typography.Text>}
       <ProFormText name="deptName" label="部门名称" rules={[{ required: true }, { max: 30 }]} />
       <ProFormSelect name="roleIds" label="部门角色" mode="multiple" options={roles.map(role => ({ label: role.roleName, value: role.roleId }))} placeholder="可选择多个不同角色" />
       <ProFormSelect name="status" label="状态" options={[{ label: '启用', value: '0' }, { label: '停用', value: '1' }]} rules={[{ required: true }]} />

@@ -9,6 +9,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.constant.CacheNames;
+import org.dromara.common.core.constant.Constants;
 import org.dromara.common.core.constant.SystemConstants;
 import org.dromara.common.core.domain.PageResult;
 import org.dromara.common.core.exception.ServiceException;
@@ -316,63 +317,46 @@ public class SysDeptServiceImpl implements ISysDeptService, DeptService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int insertDept(SysDeptBo bo) {
-        bo.setParentId(resolveParentId(bo));
+        SysDept parent = null;
+        if (bo.getParentId() == null) {
+            String parentName = StringUtils.trim(bo.getParentName());
+            if (StringUtils.isBlank(parentName)) {
+                throw new ServiceException("请选择上级部门或输入新上级公司名称");
+            }
+            SysDeptBo parentBo = new SysDeptBo();
+            parentBo.setParentId(Constants.TOP_PARENT_ID);
+            parentBo.setDeptName(parentName);
+            if (!checkDeptNameUnique(parentBo)) {
+                throw new ServiceException("顶级公司已存在，请选择已有部门");
+            }
+            parent = new SysDept();
+            parent.setParentId(Constants.TOP_PARENT_ID);
+            parent.setDeptName(parentName);
+            parent.setOrderNum(0);
+            parent.setStatus(SystemConstants.NORMAL);
+            parent.setAncestors(SystemConstants.ROOT_DEPT_ANCESTORS);
+            deptMapper.insert(parent);
+            bo.setParentId(parent.getDeptId());
+        } else if (!Constants.TOP_PARENT_ID.equals(bo.getParentId())) {
+            parent = deptMapper.selectById(bo.getParentId());
+            if (parent == null) {
+                throw new ServiceException("父部门不存在");
+            }
+            if (!SystemConstants.NORMAL.equals(parent.getStatus())) {
+                throw new ServiceException("部门停用，不允许新增");
+            }
+        }
         if (!checkDeptNameUnique(bo)) {
             throw new ServiceException("新增部门失败，部门名称已存在");
         }
-        SysDept info = deptMapper.selectById(bo.getParentId());
-        // 如果父节点不存在或不为正常状态,则不允许新增子节点
-        if (ObjectUtil.isNull(info)) {
-            throw new ServiceException("父部门不存在");
-        }
-        if (!SystemConstants.NORMAL.equals(info.getStatus())) {
-            throw new ServiceException("部门停用，不允许新增");
-        }
         SysDept dept = MapstructUtils.convert(bo, SysDept.class);
         dept.setOrderNum(ObjectUtils.defaultIfNull(dept.getOrderNum(), 0));
-        dept.setAncestors(info.getAncestors() + StringUtils.SEPARATOR + dept.getParentId());
+        dept.setAncestors(parent == null ? SystemConstants.ROOT_DEPT_ANCESTORS
+            : parent.getAncestors() + StringUtils.SEPARATOR + dept.getParentId());
         int rows = deptMapper.insert(dept);
         deptRoleService.replace(dept.getDeptId(), bo.getRoleIds());
         deptPermissionService.seedFromRoles(dept.getDeptId(), bo.getRoleIds());
         return rows;
-    }
-
-    /**
-     * 将手动输入的上级部门名称解析为已有部门；不存在时在默认根部门下创建。
-     */
-    private Long resolveParentId(SysDeptBo bo) {
-        if (bo.getParentId() != null) {
-            return bo.getParentId();
-        }
-        String parentName = StringUtils.trim(bo.getParentName());
-        if (StringUtils.isBlank(parentName)) {
-            return SystemConstants.DEFAULT_DEPT_ID;
-        }
-        List<SysDept> parents = deptMapper.lambda()
-            .eq(SysDept::getDeptName, parentName)
-            .eq(SysDept::getStatus, SystemConstants.NORMAL)
-            .eq(SysDept::getDelFlag, SystemConstants.NORMAL)
-            .orderByAsc(SysDept::getDeptId)
-            .last("LIMIT 2")
-            .list();
-        if (parents.size() > 1) {
-            throw new ServiceException("存在同名上级部门，请从匹配结果中选择");
-        }
-        if (!parents.isEmpty()) {
-            return parents.get(0).getDeptId();
-        }
-        SysDept root = deptMapper.selectById(SystemConstants.DEFAULT_DEPT_ID);
-        if (root == null || !SystemConstants.NORMAL.equals(root.getStatus())) {
-            throw new ServiceException("默认根部门不存在或已停用");
-        }
-        SysDept created = new SysDept();
-        created.setParentId(root.getDeptId());
-        created.setDeptName(parentName);
-        created.setOrderNum(0);
-        created.setStatus(SystemConstants.NORMAL);
-        created.setAncestors(root.getAncestors() + StringUtils.SEPARATOR + root.getDeptId());
-        deptMapper.insert(created);
-        return created.getDeptId();
     }
 
     /**
@@ -388,25 +372,38 @@ public class SysDeptServiceImpl implements ISysDeptService, DeptService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int updateDept(SysDeptBo bo) {
-        SysDept dept = MapstructUtils.convert(bo, SysDept.class);
-        SysDept oldDept = deptMapper.selectById(dept.getDeptId());
+        SysDept oldDept = deptMapper.selectById(bo.getDeptId());
         if (ObjectUtil.isNull(oldDept)) {
             throw new ServiceException("部门不存在，无法修改");
         }
+        if (bo.getParentId() == null) {
+            throw new ServiceException("请选择已有的上级部门");
+        }
+        SysDept newParentDept = null;
+        if (!oldDept.getParentId().equals(bo.getParentId()) && !Constants.TOP_PARENT_ID.equals(bo.getParentId())) {
+            newParentDept = deptMapper.selectById(bo.getParentId());
+            if (newParentDept == null) {
+                throw new ServiceException("父部门不存在");
+            }
+            if (!SystemConstants.NORMAL.equals(newParentDept.getStatus())) {
+                throw new ServiceException("部门停用，不允许作为上级部门");
+            }
+        }
+        SysDept dept = MapstructUtils.convert(bo, SysDept.class);
         if (!oldDept.getParentId().equals(dept.getParentId())) {
-            // 如果是新父部门 则校验是否具有新父部门权限 避免越权
-            this.checkDeptDataScope(dept.getParentId());
-            SysDept newParentDept = deptMapper.selectById(dept.getParentId());
-            if (ObjectUtil.isNotNull(newParentDept)) {
+            if (newParentDept != null) {
+                // 如果是新父部门 则校验是否具有新父部门权限 避免越权
+                this.checkDeptDataScope(dept.getParentId());
                 if ((StringUtils.SEPARATOR + newParentDept.getAncestors() + StringUtils.SEPARATOR)
                     .contains(StringUtils.SEPARATOR + dept.getDeptId() + StringUtils.SEPARATOR)) {
                     throw new ServiceException("上级部门不能选择当前部门的下级");
                 }
-                String newAncestors = newParentDept.getAncestors() + StringUtils.SEPARATOR + newParentDept.getDeptId();
-                String oldAncestors = oldDept.getAncestors();
-                dept.setAncestors(newAncestors);
-                updateDeptChildren(dept.getDeptId(), newAncestors, oldAncestors);
             }
+            String newAncestors = newParentDept == null ? SystemConstants.ROOT_DEPT_ANCESTORS
+                : newParentDept.getAncestors() + StringUtils.SEPARATOR + newParentDept.getDeptId();
+            String oldAncestors = oldDept.getAncestors();
+            dept.setAncestors(newAncestors);
+            updateDeptChildren(dept.getDeptId(), newAncestors, oldAncestors);
         } else {
             dept.setAncestors(oldDept.getAncestors());
         }

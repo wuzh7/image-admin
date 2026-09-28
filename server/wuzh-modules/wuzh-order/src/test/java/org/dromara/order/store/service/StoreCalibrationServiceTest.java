@@ -129,6 +129,36 @@ class StoreCalibrationServiceTest {
     }
 
     @Test
+    void changingLinkedBackgroundCategoryUpdatesItsGroupAndOtherBackgrounds() {
+        try (MockedStatic<LoginHelper> login = mockStatic(LoginHelper.class)) {
+            login.when(LoginHelper::getUserIdStr).thenReturn("42");
+            when(categoryMapper.selectById(4L)).thenReturn(new ImageCategory());
+            when(storage.url(anyString(), anyString())).thenReturn("/background");
+            var first = new StoreCalibration(); first.setId(1L); first.setOwnerId(42L);
+            first.setCategoryId(3L); first.setStatus("PUBLISHED"); first.setVersion(1); first.setBackgroundOssKey(BACKGROUND);
+            var second = new StoreCalibration(); second.setId(2L); second.setOwnerId(42L);
+            second.setCategoryId(3L); second.setStatus("PUBLISHED");
+            second.setBackgroundOssKey("store/templates/42/00000000-0000-0000-0000-000000000003.png");
+            var a = new StoreTemplate(); a.setId(11L); a.setGroupId(9L); a.setOwnerId(42L);
+            a.setCategoryId(3L); a.setStatus("ACTIVE"); a.setOssKey(BACKGROUND); a.setTemplateConfigJson("{}");
+            var b = new StoreTemplate(); b.setId(12L); b.setGroupId(9L); b.setOwnerId(42L);
+            b.setCategoryId(3L); b.setStatus("ACTIVE"); b.setOssKey(second.getBackgroundOssKey()); b.setTemplateConfigJson("{}");
+            var group = new StoreTemplateGroup(); group.setId(9L); group.setCategoryId(3L);
+            when(calibrationMapper.selectById(1L)).thenReturn(first);
+            when(calibrationMapper.selectList(any())).thenReturn(java.util.List.of(first, second));
+            when(templateMapper.selectList(any())).thenReturn(java.util.List.of(a), java.util.List.of(a, b));
+            when(groupMapper.selectById(9L)).thenReturn(group);
+            service.saveCalibration(new StoreDtos.CalibrationRequest("新类目背景", 4L,
+                "{\"schemaVersion\":2,\"engine\":\"declarative-canvas-v1\",\"regions\":[{}],\"width\":100,\"height\":100}", BACKGROUND, null), 1L);
+            assertEquals(4L, first.getCategoryId());
+            assertEquals(4L, second.getCategoryId());
+            assertEquals(4L, a.getCategoryId());
+            assertEquals(4L, b.getCategoryId());
+            assertEquals(4L, group.getCategoryId());
+        }
+    }
+
+    @Test
     void restoresDeletedGroupAsInactiveOnly() {
         try (MockedStatic<LoginHelper> login = mockStatic(LoginHelper.class)) {
             login.when(LoginHelper::getUserIdStr).thenReturn("42");

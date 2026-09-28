@@ -62,3 +62,22 @@ test('empty workspace upload shortcut opens the assets panel', async () => {
   await editor.handle('cal:panel', 'assets');
   assert.equal(editor.inspectorTab, 'assets');
 });
+
+test('test design image accepts files larger than 20 MB', async () => {
+  const { CalibrationManager } = await import('../src/pages/store/calibration/editor/manager.mjs');
+  const editor = new CalibrationManager({}, { render() {}, flash() {} });
+  const previousImage = globalThis.Image;
+  const previousCreate = URL.createObjectURL;
+  const previousRevoke = URL.revokeObjectURL;
+  globalThis.Image = class { naturalWidth = 100; naturalHeight = 100; async decode() {} };
+  URL.createObjectURL = () => 'blob:test';
+  URL.revokeObjectURL = () => {};
+  try {
+    await editor.change({ id: 'cal-design', files: [{ type: 'image/png', size: 21 * 1024 * 1024 }] });
+    assert.ok(editor.design);
+  } finally {
+    globalThis.Image = previousImage;
+    URL.createObjectURL = previousCreate;
+    URL.revokeObjectURL = previousRevoke;
+  }
+});

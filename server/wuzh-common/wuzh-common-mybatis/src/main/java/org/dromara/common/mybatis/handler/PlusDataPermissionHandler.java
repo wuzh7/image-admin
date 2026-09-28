@@ -90,7 +90,7 @@ public class PlusDataPermissionHandler {
                 return parenthesis;
             }
         } catch (JSQLParserException e) {
-            throw new ServiceException("数据权限解析异常 => " + e.getMessage());
+            throw new ServiceException("数据权限解析异常 => " + e.getMessage(), 500);
         } finally {
             DataPermissionHelper.removePermission();
         }

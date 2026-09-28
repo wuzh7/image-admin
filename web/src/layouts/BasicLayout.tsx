@@ -8,7 +8,7 @@ import zhCN from 'antd/locale/zh_CN';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { RuntimeMenuItem } from '@/api/types';
 import { logout } from '@/api/login';
-import { isHandledRequestError } from '@/api/request';
+import { isHandledRequestError, userErrorMessage } from '@/api/request';
 import defaultAvatar from '@/assets/images/profile.jpg';
 import MenuSearch from '@/components/layout/MenuSearch';
 import Screenfull from '@/components/layout/Screenfull';
@@ -65,7 +65,7 @@ export default function BasicLayout() {
       })
       .catch(error => {
         if (!isHandledRequestError(error)) {
-          message.error(error.message || '加载用户信息失败');
+          message.error(userErrorMessage(error));
         }
         closePush();
         pushStartedRef.current = false;

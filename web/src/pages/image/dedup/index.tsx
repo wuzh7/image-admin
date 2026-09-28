@@ -70,9 +70,9 @@ import { useUserStore } from '@/stores/userStore';
 import { hasPermi, hasRole } from '@/utils/permission';
 import { useTableExport } from '@/hooks/useTableExport';
 import AuthorizedImage from '@/components/common/AuthorizedImage';
-import { isHandledRequestError } from '@/api/request';
+import { isHandledRequestError, userErrorMessage } from '@/api/request';
 import { createLatestRequestGate } from './requestGate';
-import { createRenderBatch, getRenderBatch, listListingTemplates, listRenderBatches, listShops, listTemplateGroups, type StoreListingTemplate, type StoreRenderBatch, type StoreShop, type StoreTemplateGroup } from '@/api/store';
+import { createRenderBatch, getRenderBatch, listListingTemplates, listRenderBatches, listShops, listTemplateGroups, stopRenderBatch, type StoreListingTemplate, type StoreRenderBatch, type StoreShop, type StoreTemplateGroup } from '@/api/store';
 import StoreImage from '../../store/StoreImage';
 
 const currentBatchKey = 'image-dedup-current-batch';
@@ -80,7 +80,7 @@ const maxFilesPerBatch = 1000;
 const uploadPreviewPageSize = 100;
 const reviewCandidatePageSize = 6;
 const reviewPageSize = 5;
-const aspectRatioOrder = ['1:2', '9:16', '2:3', '3:4', '4:5', '1:1', '5:4', '4:3', '3:2', '16:9', '2:1', '其他'];
+const aspectRatioOrder = ['1:1', '1:2', '2:1', '3:4', '4:3', '2:3', '3:2'];
 const infringementModeText: Record<InfringementMode, string> = {
   RELAY: '中转站',
   OFFICIAL_HYBRID: '官方混合',
@@ -304,6 +304,7 @@ export default function ImageDedupPage() {
   const [threshold, setThreshold] = useState(0.6);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadBatchId, setUploadBatchId] = useState<ImageId>();
   const [uploadPreviewPage, setUploadPreviewPage] = useState(1);
   const [confirmingBatchId, setConfirmingBatchId] = useState<ImageId>();
   const [health, setHealth] = useState<HealthView>();
@@ -456,6 +457,7 @@ export default function ImageDedupPage() {
   }, []);
 
   const aspectRatioOptions = useMemo(() => Array.from(aspectRatios)
+    .filter(value => aspectRatioOrder.includes(value))
     .sort((left, right) => {
       const leftIndex = aspectRatioOrder.indexOf(left);
       const rightIndex = aspectRatioOrder.indexOf(right);
@@ -702,10 +704,10 @@ export default function ImageDedupPage() {
   }, [loadHealth, loadTaskBatch, loadTasks, pageKey, taskBatch, taskBatchId, taskDrawerOpen, taskPageSize]);
 
   useEffect(() => {
-    if (pageKey !== 'tasks' || !tasks.some(task => ['QUEUED', 'CHECKING', 'CONFIRMING'].includes(task.status))) return;
+    if (pageKey !== 'tasks' || !(uploading || tasks.some(task => ['UPLOADING', 'QUEUED', 'CHECKING', 'CONFIRMING'].includes(task.status)))) return;
     const timer = window.setInterval(() => void loadTasks(taskPage, taskPageSize), 2000);
     return () => window.clearInterval(timer);
-  }, [loadTasks, pageKey, taskPage, taskPageSize, tasks]);
+  }, [loadTasks, pageKey, taskPage, taskPageSize, tasks, uploading]);
 
   useEffect(() => {
     if (pageKey !== 'review') return;
@@ -736,7 +738,8 @@ export default function ImageDedupPage() {
       render: (_, row) => (
         <Progress
           size="small"
-          percent={row.totalCount ? Math.round((row.processedCount / row.totalCount) * 100) : 0}
+          percent={uploading && String(row.id) === String(uploadBatchId) ? uploadProgress
+            : row.totalCount ? Math.round((row.processedCount / row.totalCount) * 100) : 0}
           status={row.status === 'FAILED' ? 'exception' : row.status === 'COMPLETED' ? 'success' : 'active'}
         />
       )
@@ -792,6 +795,7 @@ export default function ImageDedupPage() {
         infringementMode
       });
       const batchId = created.data.id;
+      setUploadBatchId(batchId);
       if (canQuery) localStorage.setItem(currentBatchKey, String(batchId));
       const rawFiles = files
         .filter(file => selectedFileUidSet.has(file.uid))
@@ -830,7 +834,7 @@ export default function ImageDedupPage() {
               }
             }
             if (lastError) {
-              failedIndexes.set(index, lastError instanceof Error ? lastError.message : '上传失败，请检查网络后重试');
+              failedIndexes.set(index, userErrorMessage(lastError, '上传失败，请检查网络后重试'));
             }
           }
         };
@@ -859,7 +863,7 @@ export default function ImageDedupPage() {
             try {
               await uploadBatchFiles(batchId, [rawFiles[index]]);
             } catch (error) {
-              failedIndexes.set(index, error instanceof Error ? error.message : '上传失败，请重试');
+              failedIndexes.set(index, userErrorMessage(error, '上传失败，请重试'));
             } finally {
               completed += 1;
               setUploadProgress(Math.round((completed / rawFiles.length) * 100));
@@ -893,10 +897,11 @@ export default function ImageDedupPage() {
           : '上传完成，已进入后台检测');
       }
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '图片上传失败，请稍后重试');
+      if (!isHandledRequestError(error)) message.error(userErrorMessage(error));
     } finally {
       submittingRef.current = false;
       setUploading(false);
+      setUploadBatchId(undefined);
     }
   };
 
@@ -1132,7 +1137,7 @@ export default function ImageDedupPage() {
         <Tag color="purple">阈值 {(Number(taskBatch.similarityThreshold) * 100).toFixed(0)}%</Tag>
         {taskBatch.detectionCompletedAt && <Tag color="success">检测完成 {taskBatch.detectionCompletedAt}</Tag>}
       </Space>
-      {taskBatch.errorMessage && <Alert type="error" showIcon message={taskBatch.errorMessage} />}
+      {taskBatch.errorMessage && <Alert type="error" showIcon message="系统错误，请稍后重试" />}
       {taskBatch.failedCount > 0 && (
         <>
           <Alert
@@ -1157,7 +1162,7 @@ export default function ImageDedupPage() {
               },
               {
                 title: '失败原因', dataIndex: 'errorMessage',
-                render: reason => <Typography.Text type="danger">{reason || '未记录具体原因，请重试后查看'}</Typography.Text>
+                render: reason => <Typography.Text type="danger">{reason ? '系统错误，请稍后重试' : '未记录具体原因，请重试后查看'}</Typography.Text>
               }
             ]}
           />
@@ -1523,7 +1528,7 @@ export default function ImageDedupPage() {
                   <Select aria-label="套图模板组" placeholder="选择套图模板组" value={storeGroupId} disabled={storeRendering || storeCategoryId == null} options={storeGroups.filter(group => String(group.categoryId) === String(storeCategoryId)).map(group => ({ value: group.id, label: group.name }))} onChange={setStoreGroupId} />
                   {storeGroup && <div className="store-task-group-preview">
                     <div className="store-task-group-images">{storeGroup.templates.slice(0, 3).map(template => <StoreImage key={String(template.id)} url={template.imageUrl} alt={template.name} style={{ width: 48, height: 60, objectFit: 'cover', borderRadius: 4 }} />)}</div>
-                    <div><Typography.Text strong>{storeGroup.name}</Typography.Text><br /><Typography.Text type="secondary">{storeGroup.templates.length} 个背景 · Canvas 套图引擎</Typography.Text></div>
+                    <div><Typography.Text strong>{storeGroup.name}</Typography.Text><br /><Typography.Text type="secondary">{storeGroup.templates.length} 个背景</Typography.Text></div>
                   </div>}
                 </div>
                 <div><Checkbox checked={storeGenerateListing} disabled={storeRendering} onChange={event => setStoreGenerateListing(event.target.checked)}>同时生成上架表格</Checkbox><br />
@@ -1556,10 +1561,10 @@ export default function ImageDedupPage() {
                 {storeMissingKeywords && <Alert type="warning" showIcon message="选中的图片缺少侵权检测 AI 英文描述关键词，请查看检测结果" />}
                 {selectedRiskImages.length > 0 && <Alert type="warning" showIcon message="选中的图片包含非低风险图片，请重新选择后再渲染" />}
                 {storeBatch && <>
-                  <Typography.Text strong>批次 {String(storeBatch.id)} · {storeBatch.status === 'COMPLETED' ? '已完成' : storeBatch.status === 'PARTIAL_FAILURE' ? '部分失败' : storeBatch.status === 'FAILED' ? '失败' : '渲染中'}</Typography.Text>
+                  <Typography.Text strong>批次 {String(storeBatch.id)} · {storeBatch.status === 'COMPLETED' ? '已完成' : storeBatch.status === 'PARTIAL_FAILURE' ? '部分失败' : storeBatch.status === 'FAILED' ? '失败' : storeBatch.status === 'STOPPING' ? '停止中' : storeBatch.status === 'STOPPED' ? '已停止' : '渲染中'}</Typography.Text>
                   <Progress percent={storeBatch.totalCount ? Math.round((storeBatch.completedCount + storeBatch.skippedCount + storeBatch.failedCount) / storeBatch.totalCount * 100) : 0} status={storeRendering ? 'active' : storeBatch.failedCount ? 'exception' : 'success'} />
                   <Typography.Text type="secondary">完成 {storeBatch.completedCount} · 跳过重复 {storeBatch.skippedCount} · 失败 {storeBatch.failedCount}</Typography.Text>
-                  {storeRendering ? <Alert type="warning" showIcon message="渲染中，请勿操作当前页面" description="任务由后台继续执行，刷新页面后仍可查看进度。" /> : <Button block onClick={() => history.push('/store-management/render-result')}>查看渲染结果</Button>}
+                  {storeRendering ? <Button block danger onClick={() => Modal.confirm({ title: '停止当前渲染批次？', content: '正在渲染的图片完成后停止，其余图片不再开始。', onOk: async () => { const response = await stopRenderBatch(storeBatch.id); setStoreBatch(response.data); } })}>停止当前批次</Button> : <Button block onClick={() => history.push('/store-management/render-result')}>查看渲染结果</Button>}
                   {storePollFailed && <Button block onClick={async () => { const response = await getRenderBatch(storeBatch.id); setStoreBatch(response.data); setStorePollFailed(false); }}>重新获取进度</Button>}
                 </>}
                 <Button type="primary" block loading={storeSubmitting} disabled={storeRendering || !selectedLibraryIds.length || !storeGroup?.templates.length || storeMissingListing || storeMissingKeywords} onClick={() => void startStoreRender()}>{storeGenerateListing ? '开始渲染并生成表格' : '开始渲染成品'} →</Button>

@@ -246,7 +246,7 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
             // 保存文件信息
             return buildResultEntity(originalfileName, suffix, instance.clientId(), result, ossExt);
         } catch (IOException e) {
-            throw new ServiceException(e.getMessage());
+            throw new ServiceException(e.getMessage(), 500);
         }
     }
 
@@ -316,16 +316,18 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
     }
 
     /**
-     * 桶类型为 private 的URL 修改为临时URL时长为120s
+     * 私有桶图片链接有效期为24小时，其他文件为120秒
      *
      * @param oss OSS对象
      * @return oss 匹配Url的OSS对象
      */
     private SysOssVo matchingUrl(SysOssVo oss) {
         OssClient instance = OssFactory.instance(oss.getService());
-        // 仅修改桶类型为 private 的URL，临时URL时长为120s
+        // 仅为私有桶生成临时链接
         if (instance.verifyConfig(config -> AccessPolicy.PRIVATE.equals(config.accessControlPolicyConfig().accessPolicy()))) {
-            oss.setUrl(instance.presignGetUrl(oss.getFileName(), Duration.ofSeconds(120)));
+            String suffix = StringUtils.lowerCase(oss.getFileSuffix());
+            boolean image = List.of(".bmp", ".gif", ".jpg", ".jpeg", ".png", ".webp", ".svg").contains(suffix);
+            oss.setUrl(instance.presignGetUrl(oss.getFileName(), image ? Duration.ofHours(24) : Duration.ofSeconds(120)));
         }
         return oss;
     }

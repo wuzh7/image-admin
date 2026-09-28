@@ -42,7 +42,7 @@ export type SaveTemplateGroup = Omit<StoreTemplateGroup, 'id' | 'createTime' | '
 };
 export interface StoreRenderBatch {
   id: StoreId;
-  status: 'CREATED' | 'RUNNING' | 'COMPLETED' | 'PARTIAL_FAILURE' | 'FAILED';
+  status: 'CREATED' | 'RUNNING' | 'STOPPING' | 'STOPPED' | 'COMPLETED' | 'PARTIAL_FAILURE' | 'FAILED' | 'DELETED';
   categoryId: StoreId;
   templateGroupId: StoreId;
   shopId?: StoreId;
@@ -111,11 +111,14 @@ export const createRenderBatch = (data: {
 }) => request<R<StoreRenderBatch>>({ url: '/store/render-batches', method: 'post', data, headers: { repeatSubmit: false } });
 export const listRenderBatches = (params: { pageNum?: number; pageSize?: number; status?: string; shopId?: StoreId; categoryId?: StoreId }) => request<R<StorePageData<StoreRenderBatch>>>({ url: '/store/render-batches', method: 'get', params });
 export const getRenderBatch = (id: StoreId) => request<R<StoreRenderBatch>>({ url: `/store/render-batches/${id}`, method: 'get' });
+export const stopRenderBatch = (id: StoreId) => request<R<StoreRenderBatch>>({ url: `/store/render-batches/${id}/stop`, method: 'post', headers: { repeatSubmit: false } });
 export const listRenderResults = (params: { batchId: StoreId; pageNum?: number; pageSize?: number }) => request<R<StorePageData<StoreRenderItem>>>({ url: '/store/render-results', method: 'get', params });
 export const listRenderGroups = (params: { batchId: StoreId; pageNum?: number; pageSize?: number }) => request<R<StorePageData<StoreRenderGroup>>>({ url: '/store/render-result-groups', method: 'get', params });
 export const listRenderLogs = (params: { userName?: string; pageNum?: number; pageSize?: number } = {}) => request<R<StorePageData<StoreRenderLog>>>({ url: '/store/render-logs', method: 'get', params });
 export const retryRenderBatch = (id: StoreId) => request<R>({ url: `/store/render-batches/${id}/retry`, method: 'post', headers: { repeatSubmit: false } });
 export const getRenderArchive = (id: StoreId, nameMode: 'ORIGINAL_NAME' | 'ENGLISH_KEYWORDS') => request<Blob>({ url: `/store/render-batches/${id}/download`, method: 'get', params: { nameMode }, responseType: 'blob' });
+export const confirmRenderDownload = (id: StoreId) => request<R>({ url: `/store/render-batches/${id}/download-confirmed`, method: 'post', headers: { repeatSubmit: false } });
+export const deleteRenderResults = (id: StoreId) => request<R>({ url: `/store/render-batches/${id}/results`, method: 'delete' });
 export const listListingTemplates = (params: { shopId: StoreId; categoryId: StoreId }) => request<R<StoreListingTemplate[]>>({ url: '/store/listing-templates', method: 'get', params });
 export const uploadListingTemplate = async (data: { shopId: StoreId; categoryId: StoreId; file: File; configJson: string }) => {
   const body = new FormData(); body.append('file', data.file);

@@ -149,12 +149,30 @@ public final class OrderDetailDtos {
     @Data
     @ExcelIgnoreUnannotated
     public static class ExportRow {
-        @ExcelProperty("订单号")
-        private String orderNo;
+        @ExcelProperty("主订单号")
+        private String parentOrderSn;
+        @ExcelProperty("订单创建时间")
+        private String parentOrderTimeStr;
+        @ExcelProperty("子订单号")
+        private String orderSn;
         @ExcelProperty("店铺ID")
         private String fulfillmentMallId;
-        @ExcelProperty("运费")
-        private BigDecimal estimatedAmount;
+        @ExcelProperty("店铺名称")
+        private String storeName;
+        @ExcelProperty("店铺备注")
+        private String storeRemark;
+        @ExcelProperty("下单工厂")
+        private String sendWarehouseName;
+        @ExcelProperty("物流商")
+        private String shippingCompanyName;
+        @ExcelProperty("图片")
+        private String thumbUrl;
+        @ExcelProperty("商品名称")
+        private String goodsName;
+        @ExcelProperty("SKU")
+        private String spec;
+        @ExcelProperty("数量")
+        private Integer skuQuantity;
         @ExcelProperty("订单运费预计冲回")
         private BigDecimal shippingSettleAmount;
         @ExcelProperty("子订单预计回款")
@@ -163,21 +181,9 @@ public final class OrderDetailDtos {
         private String siteName;
         @ExcelProperty("是否定制")
         private String customizedProducts;
-        @ExcelProperty("下单工厂")
-        private String sendWarehouseName;
-        @ExcelProperty("物流商")
-        private String shippingCompanyName;
-        @ExcelProperty("子订单号")
-        private String orderSn;
-        @ExcelProperty("商品名称")
-        private String goodsName;
-        @ExcelProperty("主订单号")
-        private String parentOrderSn;
-        @ExcelProperty("数量")
-        private Integer skuQuantity;
-        @ExcelProperty("SKU")
-        private String spec;
-        @ExcelProperty("图片地址")
-        private String thumbUrl;
+        @ExcelProperty("运费")
+        private BigDecimal estimatedAmount;
+        @ExcelProperty("更新时间")
+        private String updateTime;
     }
 }

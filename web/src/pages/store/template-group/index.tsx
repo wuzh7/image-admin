@@ -6,6 +6,7 @@ import { ApiError, CategorySelect, PageToolbar, StorePage, useStoreCategories } 
 import StoreImage from '../StoreImage';
 import { useUserStore } from '@/stores/userStore';
 import { hasPermi } from '@/utils/permission';
+import { userErrorMessage } from '@/api/request';
 
 type Scene = { id?: StoreId; name: string; categoryId: StoreId; ossKey: string; imageUrl?: string; width: number; height: number; config: string; maskOssKey?: string; templateConfigJson?: string };
 type Editor = { group?: StoreTemplateGroup; name: string; categoryId?: StoreId; scenes: Scene[] };
@@ -70,22 +71,22 @@ export default function TemplateGroupPage() {
           templateConfigJson: scene.id == null ? (scene.templateConfigJson || '{}') : JSON.stringify({ calibrationId: scene.id }) })) };
       if (editor.group) await updateTemplateGroup(editor.group.id, payload); else await createTemplateGroup(payload);
       setEditor(undefined); message.success('模板组已保存'); await load();
-    } catch (failure) { message.error(failure instanceof Error ? failure.message : '保存失败'); }
+    } catch (failure) { message.error(userErrorMessage(failure)); }
     finally { setSaving(false); }
   };
   const remove = async (group: StoreTemplateGroup) => {
     try {
       await deleteTemplateGroup(group.id);
       message.success('已删除，历史任务保留'); await load();
-    } catch (failure) { message.error(failure instanceof Error ? failure.message : '操作失败'); }
+    } catch (failure) { message.error(userErrorMessage(failure)); }
   };
   const removeBackground = async (item: StoreCalibration) => {
     try { await deleteCalibration(item.id); message.success('背景已删除，模板组已同步'); await load(); }
-    catch (failure) { message.error(failure instanceof Error ? failure.message : '删除失败'); }
+    catch (failure) { message.error(userErrorMessage(failure)); }
   };
   const enable = async (group: StoreTemplateGroup) => {
     try { await setTemplateGroupStatus(group.id, 'ACTIVE'); message.success('已启用'); await load(); }
-    catch (failure) { message.error(failure instanceof Error ? failure.message : '操作失败'); }
+    catch (failure) { message.error(userErrorMessage(failure)); }
   };
   const move = (index: number, direction: number) => setEditor(current => {
     if (!current) return current;
@@ -109,7 +110,7 @@ export default function TemplateGroupPage() {
         </Card>)}
       </div> : <Empty description="此类目暂无已发布背景" />}
     </Card>
-    <Card title={`Canvas 套图模板组 · ${visibleGroups.length} 组`}>
+    <Card title={`套图模板组 · ${visibleGroups.length} 组`}>
       <Typography.Paragraph type="secondary">每组选择 1–8 张同类目背景，第一张为主图；删除不会影响历史任务。</Typography.Paragraph>
       {visibleGroups.length ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 16 }}>
         {visibleGroups.map(group => <Card key={String(group.id)} size="small" title={group.name} extra={<Tag color={group.status === 'ACTIVE' ? 'success' : 'warning'}>{group.status === 'ACTIVE' ? '已启用' : '已停用'}</Tag>}>
@@ -129,7 +130,7 @@ export default function TemplateGroupPage() {
         </Card>)}
       </div> : <Empty description="此类目暂无模板组" />}
     </Card>
-    <Modal title={editor?.group ? '编辑 Canvas 模板组' : '新增 Canvas 模板组'} open={!!editor} width={760} okText="保存配置" okButtonProps={{ loading: saving }} cancelButtonProps={{ disabled: saving }} onOk={() => void save()} onCancel={() => { if (!saving) setEditor(undefined); }} destroyOnHidden>
+    <Modal title={editor?.group ? '编辑模板组' : '新增模板组'} open={!!editor} width={760} okText="保存配置" okButtonProps={{ loading: saving }} cancelButtonProps={{ disabled: saving }} onOk={() => void save()} onCancel={() => { if (!saving) setEditor(undefined); }} destroyOnHidden>
       {editor && <Space direction="vertical" style={{ width: '100%' }} size="middle">
         <label>模板组名称<Input maxLength={80} value={editor.name} onChange={event => setEditor({ ...editor, name: event.target.value })} placeholder="例如：地毯夏季上新组" /></label>
         <label>商品类目<Select style={{ width: '100%' }} value={editor.categoryId} options={categories.map(item => ({ value: item.id, label: item.name }))} onChange={value => setEditor({ ...editor, categoryId: value, scenes: [] })} /></label>

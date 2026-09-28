@@ -24,10 +24,10 @@ public interface TroCaseMapper extends BaseMapper<TroCase> {
         FROM tro_case
         WHERE 1 = 0
         <if test="plaintiffValues.size() > 0">
-          OR LOWER(plaintiff) IN <foreach collection="plaintiffValues" item="value" open="(" separator="," close=")">#{value}</foreach>
+          OR <foreach collection="plaintiffValues" item="value" separator=" OR ">LOCATE(LOWER(REPLACE(#{value}, ' ', '')), LOWER(REGEXP_REPLACE(plaintiff, '[[:space:]]+', ''))) > 0</foreach>
           OR EXISTS (SELECT 1 FROM JSON_TABLE(COALESCE(plaintiff_names, JSON_ARRAY()), '$[*]'
             COLUMNS (name VARCHAR(255) PATH '$')) AS names
-            WHERE LOWER(names.name) IN <foreach collection="plaintiffValues" item="value" open="(" separator="," close=")">#{value}</foreach>)
+            WHERE <foreach collection="plaintiffValues" item="value" separator=" OR ">LOCATE(LOWER(REPLACE(#{value}, ' ', '')), LOWER(REGEXP_REPLACE(names.name, '[[:space:]]+', ''))) > 0</foreach>)
         </if>
         <if test="caseNoFormats.size() > 0">
           OR case_no_format IN <foreach collection="caseNoFormats" item="value" open="(" separator="," close=")">#{value}</foreach>

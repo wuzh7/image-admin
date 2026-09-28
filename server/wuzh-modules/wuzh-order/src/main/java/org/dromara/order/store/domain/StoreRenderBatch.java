@@ -25,4 +25,5 @@ public class StoreRenderBatch extends BaseEntity {
     private Integer failedCount;
     private String listingProfileJson;
     private String idempotencyKey;
+    private LocalDateTime downloadedAt;
 }

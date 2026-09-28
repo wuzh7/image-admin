@@ -387,7 +387,7 @@ public class ImageService {
         } catch (IOException | RuntimeException exception) {
             if (!admin) records.releaseExport(requestId);
             if (exception instanceof ServiceException serviceException) throw serviceException;
-            throw new ServiceException("图片导出失败：" + exception.getMessage());
+            throw new ServiceException("图片导出失败：" + exception.getMessage(), 500);
         } finally {
             if (archive != null) {
                 try { Files.deleteIfExists(archive); } catch (IOException cleanup) { log.warn("清理导出临时文件失败", cleanup); }
@@ -430,7 +430,7 @@ public class ImageService {
             ImageIO.write(SscdFeatureExtractor.readOriented(file.path(), 640), "jpeg", output);
             return output.toByteArray();
         } catch (Exception exception) {
-            throw new ServiceException("图片预览生成失败: " + exception.getMessage());
+            throw new ServiceException("图片预览生成失败: " + exception.getMessage(), 500);
         }
     }
 

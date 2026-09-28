@@ -52,7 +52,7 @@ public class GlobalExceptionHandler {
                                                        HttpServletRequest request) {
         String requestURI = request.getRequestURI();
         log.error("请求地址'{}',不支持'{}'请求", requestURI, e.getMethod());
-        return R.fail(HttpStatus.HTTP_BAD_METHOD, e.getMessage());
+        return R.fail(HttpStatus.HTTP_BAD_METHOD, "请求方式不支持");
     }
 
     /**
@@ -62,7 +62,7 @@ public class GlobalExceptionHandler {
     public R<Void> handleServiceException(ServiceException e, HttpServletRequest request) {
         log.error(e.getMessage());
         Integer code = e.getCode();
-        return ObjectUtil.isNotNull(code) ? R.fail(code, e.getMessage()) : R.fail(e.getMessage());
+        return ObjectUtil.isNotNull(code) ? R.fail(code, e.getMessage()) : R.warn(e.getMessage());
     }
 
     /**
@@ -92,7 +92,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BaseException.class)
     public R<Void> handleBaseException(BaseException e, HttpServletRequest request) {
         log.error(e.getMessage());
-        return R.fail(e.getMessage());
+        return R.warn(e.getMessage());
     }
 
     /**
@@ -102,7 +102,7 @@ public class GlobalExceptionHandler {
     public R<Void> handleMissingPathVariableException(MissingPathVariableException e, HttpServletRequest request) {
         String requestURI = request.getRequestURI();
         log.error("请求路径中缺少必需的路径变量'{}',发生系统异常.", requestURI);
-        return R.fail(String.format("请求路径中缺少必需的路径变量[%s]", e.getVariableName()));
+        return R.fail(HttpStatus.HTTP_BAD_REQUEST, "请求参数格式错误");
     }
 
     /**
@@ -112,7 +112,7 @@ public class GlobalExceptionHandler {
     public R<Void> handleMethodArgumentTypeMismatchException(MethodArgumentTypeMismatchException e, HttpServletRequest request) {
         String requestURI = request.getRequestURI();
         log.error("请求参数类型不匹配'{}',发生系统异常.", requestURI);
-        return R.fail(String.format("请求参数类型不匹配，参数[%s]要求类型为：'%s'，但输入值为：'%s'", e.getName(), e.getRequiredType().getName(), e.getValue()));
+        return R.fail(HttpStatus.HTTP_BAD_REQUEST, "请求参数格式错误");
     }
 
     /**
@@ -187,7 +187,7 @@ public class GlobalExceptionHandler {
     public R<Void> handleBindException(BindException e) {
         log.error(e.getMessage());
         String message = StreamUtils.join(e.getAllErrors(), DefaultMessageSourceResolvable::getDefaultMessage, ", ");
-        return R.fail(message);
+        return R.warn(message);
     }
 
     /**
@@ -197,7 +197,7 @@ public class GlobalExceptionHandler {
     public R<Void> constraintViolationException(ConstraintViolationException e) {
         log.error(e.getMessage());
         String message = StreamUtils.join(e.getConstraintViolations(), ConstraintViolation::getMessage, ", ");
-        return R.fail(message);
+        return R.warn(message);
     }
 
     /**
@@ -207,7 +207,7 @@ public class GlobalExceptionHandler {
     public R<Void> handleMethodArgumentNotValidException(MethodArgumentNotValidException e) {
         log.error(e.getMessage());
         String message = StreamUtils.join(e.getBindingResult().getAllErrors(), DefaultMessageSourceResolvable::getDefaultMessage, ", ");
-        return R.fail(message);
+        return R.warn(message);
     }
 
     /**
@@ -217,7 +217,7 @@ public class GlobalExceptionHandler {
     public R<Void> handlerMethodValidationException(HandlerMethodValidationException e) {
         log.error(e.getMessage());
         String message = StreamUtils.join(e.getAllErrors(), MessageSourceResolvable::getDefaultMessage, ", ");
-        return R.fail(message);
+        return R.warn(message);
     }
 
     /**
@@ -246,7 +246,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ExpressionException.class)
     public R<Void> handleSpelException(ExpressionException e, HttpServletRequest request) {
         log.error("请求地址'{}'，SpEL解析异常: {}", request.getRequestURI(), e.getMessage());
-        return R.fail(HttpStatus.HTTP_INTERNAL_ERROR, "SpEL解析失败：" + e.getMessage());
+        return R.fail(HttpStatus.HTTP_INTERNAL_ERROR, "系统错误，请稍后重试");
     }
 
 }

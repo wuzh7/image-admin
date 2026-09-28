@@ -56,7 +56,7 @@ export default function ListingPage() {
     <Card title="上架表格列表" style={{ marginTop: 16 }}>
       {exports.length ? exports.map(row => <div key={String(row.id)} style={{ marginTop: 16 }}><Space wrap>
         <span>{row.filename}</span><span>{row.status}</span>
-        {row.errorMessage && <Typography.Text type="danger">{row.errorMessage}</Typography.Text>}
+        {row.errorMessage && <Typography.Text type="danger">系统错误，请稍后重试</Typography.Text>}
         {canDownload && row.status === 'COMPLETED' && <Button onClick={() => void download(row)}>下载</Button>}
       </Space></div>) : <Empty description="暂无上架表格记录" />}
     </Card>

@@ -105,6 +105,8 @@ public class StoreWorkflowController {
     @GetMapping("/render-batches") public R<StoreDtos.PageView<StoreDtos.RenderBatchView>> batches(@RequestParam(required = false) String status, @RequestParam(required = false) Long shopId, @RequestParam(required = false) Long categoryId, @RequestParam(defaultValue="1") int pageNum, @RequestParam(defaultValue="20") int pageSize) { return R.ok(service.batches(status, shopId, categoryId, pageNum, pageSize)); }
     @SaCheckPermission(value = {"store:render:query", "store:render:add"}, mode = SaMode.OR)
     @GetMapping("/render-batches/{id}") public R<StoreDtos.RenderBatchView> batch(@PathVariable long id) { return R.ok(service.batch(id)); }
+    @SaCheckPermission("store:render:add")
+    @PostMapping("/render-batches/{id}/stop") public R<StoreDtos.RenderBatchView> stopBatch(@PathVariable long id) { return R.ok(service.stopBatch(id)); }
     @SaCheckPermission("store:render:retry")
     @PostMapping("/render-batches/{id}/retry") public R<StoreDtos.RenderBatchView> retryBatch(@PathVariable long id) { return R.ok(service.retryBatch(id)); }
     @SaCheckPermission("store:render:download")
@@ -123,6 +125,10 @@ public class StoreWorkflowController {
                 zip.finish();
             });
     }
+    @SaCheckPermission("store:render:download")
+    @PostMapping("/render-batches/{id}/download-confirmed") public R<Void> confirmDownload(@PathVariable long id) { service.confirmDownload(id); return R.ok(); }
+    @SaCheckPermission("store:render:add")
+    @DeleteMapping("/render-batches/{id}/results") public R<Void> deleteResults(@PathVariable long id) { service.deleteResults(id); return R.ok(); }
     @SaCheckPermission("store:render:list")
     @GetMapping("/render-results") public R<StoreDtos.PageView<StoreRenderItem>> results(@RequestParam(required = false) Long batchId, @RequestParam(defaultValue="1") int pageNum, @RequestParam(defaultValue="24") int pageSize) { return R.ok(service.results(batchId, pageNum, pageSize)); }
     @SaCheckPermission("store:render:list")

@@ -76,7 +76,7 @@ public class StoreObjectStorage {
         } catch (ServiceException exception) {
             throw exception;
         } catch (Exception exception) {
-            throw new ServiceException("文件保存失败: " + exception.getMessage());
+            throw new ServiceException("文件保存失败: " + exception.getMessage(), 500);
         } finally {
             if (temporary != null) try { Files.deleteIfExists(temporary); } catch (Exception ignored) { }
         }
@@ -98,7 +98,7 @@ public class StoreObjectStorage {
         } catch (ServiceException exception) {
             throw exception;
         } catch (Exception exception) {
-            throw new ServiceException("上架表保存失败: " + exception.getMessage());
+            throw new ServiceException("上架表保存失败: " + exception.getMessage(), 500);
         }
     }
 
@@ -127,5 +127,11 @@ public class StoreObjectStorage {
         Path path = root.resolve(key).normalize();
         if (!path.startsWith(root) || !Files.isRegularFile(path)) throw new ServiceException("文件不存在");
         return new ImageStorage.LocalFile(path, false);
+    }
+
+    public void delete(String key) {
+        if (key == null || !key.matches("(store/results|render-public/results)/[0-9]+/[0-9a-f-]+\\.(jpg|jpeg|png|webp)"))
+            throw new ServiceException("渲染结果文件路径无效");
+        imageStorage.delete(key);
     }
 }

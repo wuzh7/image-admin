@@ -112,11 +112,13 @@ services:
       - ../../script/sql/order.sql:/migrations/order.sql:ro
       - ../../script/sql/store.sql:/migrations/store.sql:ro
       - ../../script/sql/tro.sql:/migrations/tro.sql:ro
-      # 历史用户、订单归属及部门权限的一次性升级，脚本内用版本标记避免重复授权。
+      # 先建立部门权限表供图片和店铺脚本使用，最后迁移历史权限；版本标记避免重复授权。
       - ../../script/sql/migrations/20260928_access_control.sql:/migrations/access_control.sql:ro
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
+        mysql --default-character-set=utf8mb4 -h mysql -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
+        "$${MYSQL_DATABASE}" -e "CREATE TABLE IF NOT EXISTS sys_dept_menu (dept_id BIGINT NOT NULL COMMENT '部门ID', menu_id BIGINT NOT NULL COMMENT '菜单或按钮ID', PRIMARY KEY (dept_id,menu_id), KEY idx_sys_dept_menu_mid (menu_id)) ENGINE=InnoDB COMMENT='部门菜单按钮权限上限';" &&
         mysql --default-character-set=utf8mb4 -h mysql -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
         "$${MYSQL_DATABASE}" < /migrations/image.sql &&
         mysql --default-character-set=utf8mb4 -h mysql -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
@@ -125,7 +127,7 @@ services:
         "$${MYSQL_DATABASE}" < /migrations/store.sql &&
         mysql --default-character-set=utf8mb4 -h mysql -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
         "$${MYSQL_DATABASE}" < /migrations/tro.sql &&
-        exec mysql --default-character-set=utf8mb4 -h mysql -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
+        mysql --default-character-set=utf8mb4 -h mysql -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
         "$${MYSQL_DATABASE}" < /migrations/access_control.sql
     depends_on:
       mysql:

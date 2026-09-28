@@ -8,6 +8,7 @@ import { getMessageBox } from '@/api/system/message';
 import { useNoticeStore, type NoticeItem } from '@/stores/noticeStore';
 import { getReadMessageIds, markMessageRead, markMessageReadBatch } from '@/utils/messageRead';
 import { isHttp } from '@/utils/wuzh';
+import { userErrorMessage } from '@/api/request';
 
 type MessageCategory = 'system' | 'notice';
 
@@ -59,7 +60,7 @@ export default function MessageBox({ userId }: MessageBoxProps) {
       manual: true,
       onSuccess: data => setNotices(data),
       onError: error => {
-        message.error((error as Error).message || '加载消息失败');
+        message.error(userErrorMessage(error));
       }
     }
   );

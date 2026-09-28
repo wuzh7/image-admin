@@ -75,7 +75,7 @@ public class LocalImageStorage implements ImageStorage {
         } catch (ServiceException exception) {
             throw exception;
         } catch (Exception exception) {
-            throw new ServiceException("图片保存失败: " + exception.getMessage());
+            throw new ServiceException("图片保存失败: " + exception.getMessage(), 500);
         } finally {
             if (temporary != null) {
                 try {
@@ -103,7 +103,7 @@ public class LocalImageStorage implements ImageStorage {
             }
             return new MovedFiles(targetImage, targetThumbnail);
         } catch (Exception exception) {
-            throw new ServiceException("图片移入正式图库失败: " + exception.getMessage());
+            throw new ServiceException("图片移入正式图库失败: " + exception.getMessage(), 500);
         }
     }
 
@@ -116,7 +116,7 @@ public class LocalImageStorage implements ImageStorage {
                 move(resolve(moved.thumbnailKey()), prepare(thumbnailKey));
             }
         } catch (IOException exception) {
-            throw new ServiceException("回滚图片文件失败: " + exception.getMessage());
+            throw new ServiceException("回滚图片文件失败: " + exception.getMessage(), 500);
         }
     }
 
@@ -167,7 +167,7 @@ public class LocalImageStorage implements ImageStorage {
         try {
             Files.deleteIfExists(resolve(key));
         } catch (IOException exception) {
-            throw new ServiceException("图片文件清理失败: " + exception.getMessage());
+            throw new ServiceException("图片文件清理失败: " + exception.getMessage(), 500);
         }
     }
 

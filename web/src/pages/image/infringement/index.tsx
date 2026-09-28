@@ -255,7 +255,7 @@ export default function ImageInfringementPage() {
     {
       title: '失败原因', dataIndex: 'errorMessage', width: 240, search: false,
       render: value => value
-        ? <Text type="danger" ellipsis={{ tooltip: value }} style={{ display: 'block' }}>{value}</Text>
+        ? <Text type="danger" style={{ display: 'block' }}>系统错误，请稍后重试</Text>
         : '-'
     },
     { title: '模型', dataIndex: 'model', width: 140, search: false, ellipsis: true },
@@ -357,7 +357,7 @@ export default function ImageInfringementPage() {
               <Descriptions.Item label="输出 / 思考 Token">{selectedCall.candidatesTokenCount ?? '-'} / {selectedCall.thoughtsTokenCount ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="工具输入 Token">{selectedCall.toolUsePromptTokenCount ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="总 Token">{selectedCall.totalTokenCount ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="错误">{selectedCall.errorMessage || '-'}</Descriptions.Item>
+              <Descriptions.Item label="错误">{selectedCall.errorMessage ? '系统错误，请稍后重试' : '-'}</Descriptions.Item>
             </Descriptions>
             <ProviderResponsePanel call={selectedCall} />
             <div>
@@ -407,7 +407,7 @@ export default function ImageInfringementPage() {
               <Descriptions.Item label="执行方式">{selectedItem.executionMode ? executionModeLabel[selectedItem.executionMode] : '-'}</Descriptions.Item>
               <Descriptions.Item label="Google 搜索">{selectedItem.searchUsed == null ? '未记录' : selectedItem.searchUsed ? `已使用（${selectedItem.searchQueryCount || 0} 次）` : '未使用'}</Descriptions.Item>
               <Descriptions.Item label="完成时间">{selectedItem.finishedAt || '-'}</Descriptions.Item>
-              {selectedItem.errorMessage && <Descriptions.Item label="异常信息"><Text type="danger">{selectedItem.errorMessage}</Text></Descriptions.Item>}
+              {selectedItem.errorMessage && <Descriptions.Item label="异常信息"><Text type="danger">系统错误，请稍后重试</Text></Descriptions.Item>}
             </Descriptions>
           </Space>
         )}

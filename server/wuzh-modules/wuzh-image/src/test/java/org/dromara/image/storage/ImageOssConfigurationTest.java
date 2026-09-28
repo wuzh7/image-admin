@@ -36,6 +36,7 @@ class ImageOssConfigurationTest {
             URI thumbnail = URI.create(new OssImageStorage(properties, client, client)
                 .accessUrl("review/1/a.png", "image/png", true).orElseThrow());
             String thumbnailQuery = URLDecoder.decode(thumbnail.getRawQuery(), StandardCharsets.UTF_8);
+            assertTrue(thumbnailQuery.toLowerCase().contains("expires=86400"));
             assertTrue(thumbnailQuery.contains("x-oss-process=image/auto-orient,1/resize,m_lfit,w_480,h_480/quality,q_82"));
             assertFalse(thumbnailQuery.contains("response-content-type"));
         }

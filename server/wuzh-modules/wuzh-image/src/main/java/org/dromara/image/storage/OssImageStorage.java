@@ -116,7 +116,7 @@ public class OssImageStorage implements ImageStorage {
 
     @Override public Optional<String> accessUrl(String key, String contentType, boolean thumbnail) {
         if (key == null || key.isBlank()) return Optional.empty();
-        return Optional.of(external.presignGetUrl(key, Duration.ofMinutes(10), thumbnail
+        return Optional.of(external.presignGetUrl(key, Duration.ofHours(24), thumbnail
             ? Map.of("x-oss-process", "image/auto-orient,1/resize,m_lfit,w_480,h_480/quality,q_82") : Map.of()));
     }
 

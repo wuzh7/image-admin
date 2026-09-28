@@ -43,7 +43,7 @@ class OssImageStorageTest {
         OssImageStorage storage = new OssImageStorage(new ImageProperties(), client, client);
         Map<String, String> query = Map.of(
             "x-oss-process", "image/auto-orient,1/resize,m_lfit,w_480,h_480/quality,q_82");
-        when(client.presignGetUrl("review/42/a.png", Duration.ofMinutes(10), query)).thenReturn("https://example.test/thumb");
+        when(client.presignGetUrl("review/42/a.png", Duration.ofHours(24), query)).thenReturn("https://example.test/thumb");
         assertEquals("https://example.test/thumb", storage.accessUrl("review/42/a.png", "image/png", true).orElseThrow());
     }
 

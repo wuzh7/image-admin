@@ -36,9 +36,9 @@ done
 
 [[ $version =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { printf 'Invalid version: %s\n' "$version" >&2; exit 2; }
 
-archive="$script_dir/releases/image-admin-$version.tar"
-remote_prefix="/tmp/image-admin-publish-$version-$$"
-remote_archive="$remote_prefix.tar"
+archive="$repo_root/image-admin-$version.tar"
+remote_prefix="$remote_root/.publish-$version-$$"
+remote_archive="$remote_root/image-admin-$version.tar"
 remote_log="$remote_prefix.log"
 remote_result="$remote_prefix.result"
 

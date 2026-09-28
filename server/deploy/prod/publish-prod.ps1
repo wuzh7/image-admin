@@ -9,9 +9,9 @@ $OutputEncoding = [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $instanceId = 'i-bp10t7y63rvasdu34imd'
 $remoteRoot = '/data/app/image-admin'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
-$archive = Join-Path $PSScriptRoot "releases/image-admin-$Version.tar"
-$remotePrefix = "/tmp/image-admin-publish-$Version-$([Guid]::NewGuid().ToString('N'))"
-$remoteArchive = "$remotePrefix.tar"
+$archive = Join-Path $repoRoot "image-admin-$Version.tar"
+$remotePrefix = "$remoteRoot/.publish-$Version-$([Guid]::NewGuid().ToString('N'))"
+$remoteArchive = "$remoteRoot/image-admin-$Version.tar"
 $remoteLog = "$remotePrefix.log"
 $remoteResult = "$remotePrefix.result"
 $publishStarted = Get-Date

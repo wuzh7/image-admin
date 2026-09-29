@@ -2,7 +2,8 @@ import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
 import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { Button, Empty, Modal, Pagination, Progress, Select, Space, Tag, message } from 'antd';
 import { useEffect, useRef, useState } from 'react';
-import { confirmRenderDownload, deleteRenderResults, getRenderArchive, listRenderBatches, listRenderGroups, retryRenderBatch, stopRenderBatch, type StoreId, type StoreRenderBatch, type StoreRenderGroup } from '@/api/store';
+import { confirmRenderDownload, deleteRenderResults, getRenderArchive, getRenderArchiveUrl, listRenderBatches, listRenderGroups, retryRenderBatch, stopRenderBatch, type StoreId, type StoreRenderBatch, type StoreRenderGroup } from '@/api/store';
+import { isHandledRequestError } from '@/api/request';
 import AuthorizedImage from '@/components/common/AuthorizedImage';
 import StoreImage from '../StoreImage';
 import { useUserStore } from '@/stores/userStore';
@@ -47,15 +48,18 @@ export default function RenderResultPage() {
   const download = async (row: StoreRenderBatch) => {
     setDownloading(true);
     try {
-      const archive = await getRenderArchive(row.id, nameMode);
-      const signature = new Uint8Array(await archive.slice(0, 2).arrayBuffer());
-      if (signature[0] !== 0x50 || signature[1] !== 0x4b) throw new Error('ZIP 内容无效');
-      const url = URL.createObjectURL(archive);
+      let url = (await getRenderArchiveUrl(row.id, nameMode)).data;
+      if (!url) {
+        const archive = await getRenderArchive(row.id, nameMode);
+        const signature = new Uint8Array(await archive.slice(0, 2).arrayBuffer());
+        if (signature[0] !== 0x50 || signature[1] !== 0x4b) throw new Error('ZIP 内容无效');
+        url = URL.createObjectURL(archive);
+        window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+      }
       const anchor = document.createElement('a'); anchor.href = url; anchor.download = `render-${row.id}.zip`; anchor.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
       try { await confirmRenderDownload(row.id); }
-      catch { message.warning('ZIP 已返回浏览器，但下载记录未保存；请重试下载以启用三天后自动清理'); }
-    } catch { message.error('ZIP 下载失败，请检查命名信息后重试'); }
+      catch { message.warning('ZIP 下载已开始，但下载记录未保存；请重试下载以启用三天后自动清理'); }
+    } catch (error) { if (!isHandledRequestError(error)) message.error('ZIP 下载失败，请稍后重试'); }
     finally { setDownloading(false); }
   };
   const columns: ProColumns<StoreRenderBatch>[] = [

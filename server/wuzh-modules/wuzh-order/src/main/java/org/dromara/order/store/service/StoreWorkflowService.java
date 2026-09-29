@@ -551,6 +551,7 @@ public class StoreWorkflowService {
         int retried = itemMapper.update(null, Wrappers.<StoreRenderItem>lambdaUpdate().eq(StoreRenderItem::getBatchId, id).eq(StoreRenderItem::getStatus, "FAILED")
             .set(StoreRenderItem::getStatus, "PENDING").set(StoreRenderItem::getErrorMessage, null).set(StoreRenderItem::getCompletedAt, null));
         if (retried == 0) return batchView(batch);
+        storeStorage.deleteRenderArchives(batch.getOwnerId(), id);
         batch.setFailedCount(0); batch.setStatus("RUNNING"); batchMapper.updateById(batch);
         return batchView(batch);
     }
@@ -594,7 +595,9 @@ public class StoreWorkflowService {
         return new StoreDtos.PageView<>(records, total == null ? 0 : total);
     }
     public List<StoreDtos.ArchiveFile> archiveFiles(long batchId, String nameMode) {
-        if ("DELETED".equals(requireBatch(batchId).getStatus())) throw new ServiceException("渲染结果已删除");
+        String status = requireBatch(batchId).getStatus();
+        if ("DELETED".equals(status)) throw new ServiceException("渲染结果已删除");
+        if (!Set.of("COMPLETED", "PARTIAL_FAILURE", "STOPPED").contains(status)) throw new ServiceException("请等待渲染批次结束后下载");
         if (!Set.of("ORIGINAL_NAME", "ENGLISH_KEYWORDS").contains(nameMode)) throw new ServiceException("图片命名方式无效");
         List<StoreRenderItem> items = itemMapper.selectList(Wrappers.<StoreRenderItem>lambdaQuery().eq(StoreRenderItem::getBatchId, batchId).in(StoreRenderItem::getStatus, "SUCCEEDED", "SKIPPED"));
         if (items.isEmpty()) throw new ServiceException("该批次暂无可下载图片");
@@ -641,8 +644,13 @@ public class StoreWorkflowService {
         do { name = base + (index == 0 ? "" : "(" + index + ")") + extension; index++; } while (!used.add(name.toLowerCase(Locale.ROOT)));
         return name;
     }
-    public ImageStorage.LocalFile archiveFile(StoreDtos.ArchiveFile file) {
-        return storeStorage.open(file.ossKey());
+    public void streamArchiveFile(StoreDtos.ArchiveFile file, OutputStream output) {
+        storeStorage.stream(file.ossKey(), output);
+    }
+
+    public Optional<String> archiveUrl(long batchId, String nameMode) {
+        List<StoreDtos.ArchiveFile> files = archiveFiles(batchId, nameMode);
+        return storeStorage.renderArchiveUrl(owner(), batchId, nameMode, files);
     }
 
     @Transactional public void confirmDownload(long batchId) {
@@ -663,17 +671,18 @@ public class StoreWorkflowService {
     }
 
     public List<Long> expiredDownloadedBatchIds() {
-        return jdbcTemplate.queryForList("SELECT b.id FROM store_render_batch b WHERE b.downloaded_at IS NOT NULL " +
+        LocalDateTime cutoff = LocalDateTime.now().minusDays(3);
+        return jdbcTemplate.queryForList("SELECT b.id FROM store_render_batch b WHERE b.downloaded_at<=? " +
             "AND b.status IN ('COMPLETED','PARTIAL_FAILURE','STOPPED') " +
             "AND NOT EXISTS (SELECT 1 FROM store_render_item i WHERE i.batch_id=b.id AND i.status='RUNNING' AND i.lease_until>=NOW()) " +
             "AND NOT EXISTS (SELECT 1 FROM store_render_item i WHERE i.batch_id=b.id AND i.result_oss_key IS NOT NULL " +
             "AND (CASE WHEN i.status='SKIPPED' THEN b.create_time ELSE i.completed_at END IS NULL OR " +
-            "CASE WHEN i.status='SKIPPED' THEN b.create_time ELSE i.completed_at END>?)) ORDER BY b.id LIMIT 100", Long.class, LocalDateTime.now().minusDays(3));
+            "CASE WHEN i.status='SKIPPED' THEN b.create_time ELSE i.completed_at END>?)) ORDER BY b.id LIMIT 100", Long.class, cutoff, cutoff);
     }
 
     @Transactional public void deleteExpiredResults(long batchId) {
         StoreRenderBatch batch = batchMapper.selectById(batchId);
-        if (batch == null || batch.getDownloadedAt() == null ||
+        if (batch == null || batch.getDownloadedAt() == null || batch.getDownloadedAt().isAfter(LocalDateTime.now().minusDays(3)) ||
             !Set.of("COMPLETED", "PARTIAL_FAILURE", "STOPPED").contains(batch.getStatus())) return;
         Long recent = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM store_render_item i JOIN store_render_batch b ON b.id=i.batch_id WHERE i.batch_id=? AND " +
             "((i.status='RUNNING' AND i.lease_until>=NOW()) OR (i.result_oss_key IS NOT NULL AND " +
@@ -684,6 +693,7 @@ public class StoreWorkflowService {
     }
 
     private void markResultsDeleted(StoreRenderBatch batch) {
+        storeStorage.deleteRenderArchives(batch.getOwnerId(), batch.getId());
         itemMapper.update(null, Wrappers.<StoreRenderItem>lambdaUpdate().eq(StoreRenderItem::getBatchId, batch.getId())
             .in(StoreRenderItem::getStatus, "SUCCEEDED", "SKIPPED")
             .set(StoreRenderItem::getStatus, "RESULT_DELETED").set(StoreRenderItem::getResultUrl, null));

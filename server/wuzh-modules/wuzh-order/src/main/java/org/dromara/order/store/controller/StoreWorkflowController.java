@@ -22,6 +22,7 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 import java.nio.file.Files;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import java.util.zip.Deflater;
 import java.util.List;
 
 @RestController
@@ -115,15 +116,18 @@ public class StoreWorkflowController {
         return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=render-" + id + ".zip")
             .contentType(MediaType.parseMediaType("application/zip")).body(output -> {
                 ZipOutputStream zip = new ZipOutputStream(output);
+                zip.setLevel(Deflater.NO_COMPRESSION);
                 for (StoreDtos.ArchiveFile entry : files) {
-                    try (ImageStorage.LocalFile file = service.archiveFile(entry)) {
-                        zip.putNextEntry(new ZipEntry(entry.filename()));
-                        Files.copy(file.path(), zip);
-                        zip.closeEntry();
-                    }
+                    zip.putNextEntry(new ZipEntry(entry.filename()));
+                    service.streamArchiveFile(entry, zip);
+                    zip.closeEntry();
                 }
                 zip.finish();
             });
+    }
+    @SaCheckPermission("store:render:download")
+    @GetMapping("/render-batches/{id}/download-url") public R<String> downloadUrl(@PathVariable long id, @RequestParam(defaultValue="ORIGINAL_NAME") String nameMode) {
+        return R.ok(service.archiveUrl(id, nameMode).orElse(""));
     }
     @SaCheckPermission("store:render:download")
     @PostMapping("/render-batches/{id}/download-confirmed") public R<Void> confirmDownload(@PathVariable long id) { service.confirmDownload(id); return R.ok(); }

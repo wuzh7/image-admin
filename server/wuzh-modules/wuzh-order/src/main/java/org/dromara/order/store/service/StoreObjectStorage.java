@@ -3,6 +3,7 @@ package org.dromara.order.store.service;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.oss.client.OssClient;
+import org.dromara.common.oss.model.Options;
 import org.dromara.image.config.ImageProperties;
 import org.dromara.image.storage.ImageStorage;
 import org.dromara.order.store.domain.StoreDtos;
@@ -21,9 +22,15 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.zip.Deflater;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 @Component
 public class StoreObjectStorage {
@@ -143,6 +150,55 @@ public class StoreObjectStorage {
         } catch (IOException exception) {
             throw new ServiceException("文件读取失败", 500);
         }
+    }
+
+    public Optional<String> renderArchiveUrl(long ownerId, long batchId, String nameMode, List<StoreDtos.ArchiveFile> files) {
+        if (!"oss".equalsIgnoreCase(properties.getStorage().getType())) return Optional.empty();
+        OssClient client = ossClient.getIfAvailable();
+        if (client == null) throw new ServiceException("OSS 存储不可用");
+        String key = archiveKey(ownerId, batchId, nameMode);
+        boolean exists;
+        try {
+            exists = client.head(key).size() > 0;
+        } catch (RuntimeException error) {
+            Throwable cause = error;
+            while (cause.getCause() != null) cause = cause.getCause();
+            if (!(cause instanceof S3Exception s3 && s3.statusCode() == 404)) throw error;
+            exists = false;
+        }
+        if (!exists) {
+            Path archive = null;
+            try {
+                archive = Files.createTempFile("render-archive-", ".zip");
+                try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(archive))) {
+                    zip.setLevel(Deflater.NO_COMPRESSION);
+                    for (StoreDtos.ArchiveFile file : files) {
+                        zip.putNextEntry(new ZipEntry(file.filename()));
+                        stream(file.ossKey(), zip);
+                        zip.closeEntry();
+                    }
+                }
+                client.bucketUpload(properties.getStorage().getOss().getBucket(), key, archive,
+                    Options.create().setContentType("application/zip"));
+            } catch (IOException error) {
+                throw new ServiceException("ZIP 生成失败，请稍后重试", 500);
+            } finally {
+                if (archive != null) try { Files.deleteIfExists(archive); } catch (IOException ignored) { }
+            }
+        }
+        return imageStorage.signGetUrl(key, java.time.Duration.ofHours(24));
+    }
+
+    public void deleteRenderArchives(long ownerId, long batchId) {
+        if (!"oss".equalsIgnoreCase(properties.getStorage().getType())) return;
+        OssClient client = ossClient.getIfAvailable();
+        if (client == null) throw new ServiceException("OSS 存储不可用");
+        for (String nameMode : List.of("ORIGINAL_NAME", "ENGLISH_KEYWORDS"))
+            client.delete(archiveKey(ownerId, batchId, nameMode));
+    }
+
+    private static String archiveKey(long ownerId, long batchId, String nameMode) {
+        return "store/archives/" + ownerId + "/" + batchId + "/" + nameMode + "/render-" + batchId + ".zip";
     }
 
     public void delete(String key) {

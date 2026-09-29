@@ -25,6 +25,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Map;
+import java.io.ByteArrayOutputStream;
+import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -50,7 +52,7 @@ class StoreRenderArchiveTest {
     @InjectMocks StoreWorkflowService service;
 
     @Test void includesOnlyNumberedRenderedFiles() {
-        StoreRenderBatch batch = new StoreRenderBatch(); batch.setOwnerId(42L);
+        StoreRenderBatch batch = new StoreRenderBatch(); batch.setOwnerId(42L); batch.setStatus("COMPLETED");
         when(batchMapper.selectById(1L)).thenReturn(batch);
         StoreRenderItem first = new StoreRenderItem(); first.setId(11L); first.setImageId(2L); first.setTemplateId(3L); first.setOutputFormat("png"); first.setResultOssKey("result-1");
         StoreRenderItem second = new StoreRenderItem(); second.setId(12L); second.setImageId(2L); second.setTemplateId(4L); second.setOutputFormat("png"); second.setResultOssKey("result-2");
@@ -62,8 +64,11 @@ class StoreRenderArchiveTest {
             var files = service.archiveFiles(1L, "ORIGINAL_NAME");
             assertEquals(List.of("a(1).png", "a(2).png"), files.stream().map(file -> file.filename()).toList());
             assertEquals(List.of("result-1", "result-2"), files.stream().map(file -> file.ossKey()).toList());
-            service.archiveFile(files.get(0));
-            verify(imageStorage, never()).open(any()); verify(storeStorage).open("result-1");
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            service.streamArchiveFile(files.get(0), output);
+            verify(imageStorage, never()).open(any());
+            verify(storeStorage).stream("result-1", output);
+            verify(storeStorage, never()).open(any());
             assertThrows(org.dromara.common.core.exception.ServiceException.class, () -> service.archiveFiles(1L, "ENGLISH_KEYWORDS"));
             InfringementScanItem scan = new InfringementScanItem(); scan.setId(5L); scan.setStatus("SUCCESS"); scan.setImageDescription("Blue Cat");
             when(infringementService.currentResults(any())).thenReturn(Map.of(5L, scan));
@@ -95,6 +100,7 @@ class StoreRenderArchiveTest {
             assertEquals("DELETED", batch.getStatus());
         }
         verify(itemMapper).update(isNull(), any());
+        verify(storeStorage).deleteRenderArchives(42L, 1L);
         verify(storeStorage, never()).delete(any());
     }
 
@@ -106,5 +112,15 @@ class StoreRenderArchiveTest {
         when(itemMapper.selectCount(any())).thenReturn(0L);
         service.purgeDeletedResultFiles();
         verify(storeStorage).delete("store/results/42/00000000-0000-0000-0000-000000000001.png");
+    }
+
+    @Test void recentlyDownloadedBatchIsNotDeleted() {
+        StoreRenderBatch batch = new StoreRenderBatch();
+        batch.setDownloadedAt(LocalDateTime.now().minusHours(1));
+        batch.setStatus("COMPLETED");
+        when(batchMapper.selectById(1L)).thenReturn(batch);
+        service.deleteExpiredResults(1L);
+        verifyNoInteractions(jdbcTemplate);
+        verify(storeStorage, never()).deleteRenderArchives(anyLong(), anyLong());
     }
 }

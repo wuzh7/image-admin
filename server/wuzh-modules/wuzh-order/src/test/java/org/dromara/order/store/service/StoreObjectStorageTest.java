@@ -15,7 +15,14 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletionException;
+import java.util.zip.ZipInputStream;
+
+import org.dromara.order.store.domain.StoreDtos;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -104,6 +111,38 @@ class StoreObjectStorageTest {
         new StoreObjectStorage(properties, imageStorage, provider).stream("store/templates/42/background.png", output);
 
         assertArrayEquals(new byte[] { 1, 2, 3 }, output.toByteArray());
+        verify(imageStorage, never()).open(anyString());
+    }
+
+    @Test
+    void cachesRenderedArchiveAndStreamsImagesDirectlyFromOss() throws Exception {
+        ImageProperties properties = new ImageProperties();
+        properties.getStorage().setType("oss");
+        properties.getStorage().getOss().setBucket("render-bucket");
+        ImageStorage imageStorage = mock(ImageStorage.class);
+        @SuppressWarnings("unchecked") ObjectProvider<OssClient> provider = mock(ObjectProvider.class);
+        OssClient client = mock(OssClient.class);
+        when(provider.getIfAvailable()).thenReturn(client);
+        String key = "store/archives/42/1/ORIGINAL_NAME/render-1.zip";
+        when(client.head(key)).thenThrow(new CompletionException(S3Exception.builder().statusCode(404).build()))
+            .thenReturn(new org.dromara.common.oss.model.ObjectInfo(100, "application/zip", "etag"));
+        when(imageStorage.signGetUrl(key, Duration.ofHours(24))).thenReturn(Optional.of("https://oss.example/render-1.zip"));
+        doAnswer(invocation -> { ((java.io.OutputStream) invocation.getArgument(1)).write(new byte[]{1, 2, 3}); return null; })
+            .when(client).download(eq("result-1"), any(java.io.OutputStream.class));
+        doAnswer(invocation -> {
+            try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(invocation.getArgument(2)))) {
+                assertEquals("a(1).png", zip.getNextEntry().getName());
+                assertArrayEquals(new byte[]{1, 2, 3}, zip.readAllBytes());
+                assertNull(zip.getNextEntry());
+            }
+            return null;
+        }).when(client).bucketUpload(eq("render-bucket"), eq(key), any(Path.class), any());
+        StoreObjectStorage storage = new StoreObjectStorage(properties, imageStorage, provider);
+        List<StoreDtos.ArchiveFile> files = List.of(new StoreDtos.ArchiveFile("result-1", "a(1).png"));
+
+        assertEquals("https://oss.example/render-1.zip", storage.renderArchiveUrl(42, 1, "ORIGINAL_NAME", files).orElseThrow());
+        assertEquals("https://oss.example/render-1.zip", storage.renderArchiveUrl(42, 1, "ORIGINAL_NAME", files).orElseThrow());
+        verify(client, times(1)).bucketUpload(eq("render-bucket"), eq(key), any(Path.class), any());
         verify(imageStorage, never()).open(anyString());
     }
 }

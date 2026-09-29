@@ -10,8 +10,10 @@ $sshHost = '47.84.93.1'
 $remoteRoot = '/opt/image-admin-ai-gateway'
 $serverRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $jarPath = Join-Path $serverRoot 'wuzh-ai-gateway\target\wuzh-ai-gateway.jar'
+$promptPath = Join-Path $PSScriptRoot 'image_analysis_prompt.txt'
 $remotePrefix = "/tmp/image-admin-gateway-direct-$([Guid]::NewGuid().ToString('N'))"
 $remoteJar = "$remotePrefix.jar"
+$remotePrompt = "$remotePrefix.prompt"
 $publishStarted = Get-Date
 $sshTarget = "${sshUser}@${sshHost}"
 $sshOptions = @('-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4', '-o', 'StrictHostKeyChecking=accept-new')
@@ -39,9 +41,8 @@ docker info >/dev/null
 docker compose --env-file .env config --images | grep -Fx 'image-admin-ai-gateway:latest' >/dev/null
 id=$(docker compose --env-file .env ps -q ai-gateway)
 test -n "$id"
-prompt=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$id" | sed -n 's/^GEMINI_PROMPT_FILE=//p')
-test -n "$prompt" && docker exec "$id" test -s "$prompt"
-echo 'ECS connection: OK. Existing .env and server prompt will be preserved.'
+test -d prompts
+echo 'ECS connection: OK. Existing .env will be preserved.'
 '@
 Invoke-SshScript $preflight
 
@@ -63,17 +64,20 @@ if ($SkipBuild) {
     if ($LASTEXITCODE -ne 0) { throw "Gateway JAR build failed (exit code $LASTEXITCODE)." }
 }
 if (-not (Test-Path -LiteralPath $jarPath -PathType Leaf)) { throw "Gateway JAR was not produced: $jarPath" }
+if (-not (Test-Path -LiteralPath $promptPath -PathType Leaf)) { throw "Image analysis prompt is missing: $promptPath" }
 $jar = Get-Item -LiteralPath $jarPath
 if ($jar.Length -le 0) { throw 'Gateway JAR is empty.' }
 
 Write-Host "[3/4] Copying $([Math]::Round($jar.Length / 1MB, 1)) MiB JAR directly to ECS..."
 & scp @sshOptions $jarPath "${sshTarget}:$remoteJar"
 if ($LASTEXITCODE -ne 0) { throw "Direct SCP upload failed (exit code $LASTEXITCODE)." }
+& scp @sshOptions $promptPath "${sshTarget}:$remotePrompt"
+if ($LASTEXITCODE -ne 0) { throw "Prompt upload failed (exit code $LASTEXITCODE)." }
 
 Write-Host '[4/4] Updating Gateway and waiting for health checks...'
 $remoteScript = @'
 set -Eeuo pipefail
-trap 'code=$?; trap - EXIT; rm -f "__JAR__"; exit "$code"' EXIT
+trap 'code=$?; trap - EXIT; rm -f "__JAR__" "__PROMPT__"; exit "$code"' EXIT
 cd '__ROOT__'
 exec 9>.publish.lock
 flock -n 9 || { echo 'Another Gateway deployment is running.' >&2; exit 2; }
@@ -81,6 +85,7 @@ echo '[ECS 1/3] Verifying uploaded JAR...'
 test -s '__JAR__'
 old_image=$(docker inspect --format '{{.Image}}' "$(docker compose --env-file .env ps -q ai-gateway)")
 install -m 644 '__JAR__' wuzh-ai-gateway.jar
+install -m 644 '__PROMPT__' prompts/image_analysis_prompt.txt
 echo '[ECS 2/3] Building Gateway image (existing Docker cache)...'
 docker compose --env-file .env --progress plain build ai-gateway
 echo '[ECS 3/3] Recreating Gateway and checking health (up to 180s)...'
@@ -92,8 +97,8 @@ if ! docker compose --env-file .env up -d --no-build --no-deps --force-recreate 
     exit 10
 fi
 docker compose --env-file .env ps ai-gateway
-echo 'Gateway deployment succeeded. Existing .env and prompt were not modified.'
+echo 'Gateway deployment succeeded. The image analysis prompt was updated.'
 '@
-$remoteScript = $remoteScript.Replace('__ROOT__', $remoteRoot).Replace('__JAR__', $remoteJar)
+$remoteScript = $remoteScript.Replace('__ROOT__', $remoteRoot).Replace('__JAR__', $remoteJar).Replace('__PROMPT__', $remotePrompt)
 Invoke-SshScript $remoteScript
 Write-Host "Done. Total elapsed: $([int]((Get-Date) - $publishStarted).TotalSeconds)s."

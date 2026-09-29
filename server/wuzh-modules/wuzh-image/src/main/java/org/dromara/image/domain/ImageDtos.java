@@ -24,7 +24,7 @@ public final class ImageDtos {
     public record CreateBatchRequest(
         @DecimalMin("0.50") @DecimalMax("0.99") BigDecimal similarityThreshold,
         @NotNull Long categoryId,
-        @NotBlank @Pattern(regexp = "RELAY|OFFICIAL_HYBRID|OFFICIAL_FLEX", message = "侵权检测模式不正确") String infringementMode
+        @NotBlank @Pattern(regexp = "RELAY", message = "AI 分析渠道只支持中转站") String infringementMode
     ) {
     }
 
@@ -141,6 +141,7 @@ public final class ImageDtos {
         String errorMessage,
         LocalDateTime approvedAt,
         String infringementStatus,
+        String infringementPromptVersion,
         String infringementRiskLevel,
         String infringementRiskReason,
         List<String> infringementCaseNumbers,

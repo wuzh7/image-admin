@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -70,6 +69,21 @@ class GeminiGatewayClientTest {
     }
 
     @Test
+    void acceptsSuccessfulImageAnalysisWithoutRiskLevel() throws Exception {
+        startServer(200, """
+            {"requestId":"request","riskLevel":null,"riskReason":null,"imageDescription":"A red flower.",
+             "rawAiResponse":"{}","model":"doubao-seed-2-0-lite-260428","promptVersion":"relay_image_analysis_v1",
+             "searchUsed":false,"searchQueryCount":0,"caseNumbers":[]}
+            """);
+
+        var response = client("http://127.0.0.1:" + server.getAddress().getPort())
+            .analyze("request", new byte[]{1}, "image/png", "a.png", "RELAY");
+
+        assertEquals(null, response.riskLevel());
+        assertEquals("A red flower.", response.imageDescription());
+    }
+
+    @Test
     void readsCompleteUsageMetadata() throws Exception {
         startServer(200, """
             {"requestId":"request","riskLevel":"LOW","riskReason":null,
@@ -91,29 +105,6 @@ class GeminiGatewayClientTest {
         assertEquals(24, response.usage().totalTokenCount());
         assertEquals("{\"totalTokenCount\":24}", response.usage().rawJson());
         assertEquals("{\"candidates\":[],\"groundingMetadata\":{}}", response.rawProviderResponse());
-    }
-
-    @Test
-    void sendsBatchAsJsonSignedUrls() throws Exception {
-        AtomicReference<String> requestBody = new AtomicReference<>();
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/internal/v1/image-risk/batches", exchange -> {
-            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-            byte[] response = "{\"requestId\":\"request\",\"providerJobId\":\"batches/1\",\"requestCount\":1}"
-                .getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, response.length);
-            exchange.getResponseBody().write(response);
-            exchange.close();
-        });
-        server.start();
-
-        var response = client("http://127.0.0.1:" + server.getAddress().getPort()).createBatch("request", List.of(
-            new GeminiGatewayClient.BatchImage("https://oss.example/a.png?signature=1", "image/png")));
-
-        assertEquals("batches/1", response.providerJobId());
-        assertTrue(requestBody.get().contains("https://oss.example/a.png?signature=1"));
-        assertFalse(requestBody.get().contains("bytes"));
     }
 
     private GeminiGatewayClient.GatewayException callStatus(int status) throws Exception {

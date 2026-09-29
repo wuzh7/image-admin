@@ -224,7 +224,7 @@ public class InfringementService {
         item.setTaskId(taskId);
         item.setImageId(image.getId());
         item.setStatus(PENDING);
-        item.setCallType("RISK_SCAN");
+        item.setCallType("IMAGE_ANALYSIS");
         item.setExecutionMode(executionMode);
         item.setAttemptCount(0);
         item.setCreateBy(image.getCreateBy());
@@ -270,13 +270,7 @@ public class InfringementService {
     }
 
     static String executionMode(ImageBatch batch) {
-        if (batch == null || "RELAY".equals(batch.getInfringementMode())) return "RELAY";
-        if (!"OFFICIAL_HYBRID".equals(batch.getInfringementMode())) return "OFFICIAL_STANDARD";
-        return uniqueCount(batch) <= 100 ? "OFFICIAL_STANDARD" : "OFFICIAL_BATCH";
-    }
-
-    private static int uniqueCount(ImageBatch batch) {
-        return Math.max(0, value(batch.getProcessedCount()) - value(batch.getDuplicateCount()) - value(batch.getFailedCount()));
+        return "RELAY";
     }
 
     private static int value(Integer value) {

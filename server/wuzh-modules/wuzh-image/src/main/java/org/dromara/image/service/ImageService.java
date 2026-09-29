@@ -345,7 +345,7 @@ public class ImageService {
         boolean admin = LoginHelper.isAdmin();
         var selection = approvedQuery(query);
         if (!admin) {
-            selection.apply("infringement_scan_item_id IN (SELECT id FROM infringement_scan_item WHERE status = 'SUCCESS' AND risk_level = 'LOW')")
+            selection.apply("infringement_scan_item_id IN (SELECT id FROM infringement_scan_item WHERE status = 'SUCCESS' AND (risk_level = 'LOW' OR (prompt_version = 'relay_image_analysis_v1' AND risk_level IS NULL AND image_description IS NOT NULL)))")
                 .apply("NOT EXISTS (SELECT 1 FROM img_image_export e WHERE e.image_id = img_asset.id AND e.user_id = {0})", userId);
         }
         List<ImageAsset> candidates = assetMapper.selectList(selection.last("LIMIT 1001"));
@@ -357,7 +357,7 @@ public class ImageService {
             for (ImageAsset image : candidates) {
                 if (admin || records.reserveExport(userId, image.getId(), requestId) == 1) selected.add(image);
             }
-            if (selected.isEmpty()) throw new ServiceException("没有可导出的图片：普通用户仅可导出低风险且未导出过的本人图片");
+            if (selected.isEmpty()) throw new ServiceException("没有可导出的图片：普通用户仅可导出分析完成或历史低风险且未导出过的本人图片");
             Map<Long, String> categoryNames = categoryNames(selected);
             Map<Long, InfringementScanItem> riskResults = infringementService.currentResults(selected.stream()
                 .map(ImageAsset::getInfringementScanItemId).filter(Objects::nonNull).distinct().toList());
@@ -617,8 +617,8 @@ public class ImageService {
     }
 
     private static String requireInfringementMode(String mode) {
-        if ("RELAY".equals(mode) || "OFFICIAL_HYBRID".equals(mode) || "OFFICIAL_FLEX".equals(mode)) return mode;
-        throw new ServiceException("请选择侵权检测模式");
+        if ("RELAY".equals(mode)) return mode;
+        throw new ServiceException("AI 分析渠道只支持中转站");
     }
 
     private LambdaQueryWrapper<ImageAsset> approvedQuery(ImageDtos.ImageQuery query) {
@@ -784,6 +784,7 @@ public class ImageService {
                 ImageStatus.APPROVED.name().equals(asset.getStatus()) && !finalIndexedIds.contains(asset.getId()),
                 asset.getErrorMessage(), asset.getApprovedAt(),
                 infringement == null ? null : infringement.getStatus(),
+                infringement == null ? null : infringement.getPromptVersion(),
                 detectionSucceeded ? infringement.getRiskLevel() : null,
                 detectionSucceeded ? infringement.getRiskReason() : null,
                 detectionSucceeded ? InfringementRiskRules.cases(infringement.getCaseNumbersJson()) : List.of(),
@@ -848,8 +849,7 @@ public class ImageService {
             .in(ImageAsset::getStatus, "UPLOADING", "UPLOADED", "CHECKING", "WAIT_REVIEW", "APPROVING", "APPROVAL_FAILED", "FAILED")) > 0) {
             throw new ServiceException("这张图片已有替换任务，请先处理该任务");
         }
-        ImageBatch sourceBatch = batchMapper.selectById(old.getBatchId());
-        ImageDtos.BatchView batch = createBatch(new ImageDtos.CreateBatchRequest(properties.getSimilarityThreshold(), old.getCategoryId(), sourceBatch.getInfringementMode()));
+        ImageDtos.BatchView batch = createBatch(new ImageDtos.CreateBatchRequest(properties.getSimilarityThreshold(), old.getCategoryId(), "RELAY"));
         upload(batch.id(), List.of(file));
         ImageAsset replacement = assetMapper.selectList(Wrappers.<ImageAsset>lambdaQuery().eq(ImageAsset::getBatchId, batch.id())).getFirst();
         assetMapper.update(null, Wrappers.<ImageAsset>lambdaUpdate().eq(ImageAsset::getId, replacement.getId()).set(ImageAsset::getReplacesImageId, oldId));

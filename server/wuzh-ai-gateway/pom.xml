@@ -9,17 +9,12 @@
         <version>${revision}</version>
     </parent>
     <artifactId>wuzh-ai-gateway</artifactId>
-    <description>Gemini 图片侵权风险检测网关</description>
+    <description>图片 AI 分析网关</description>
 
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.google.genai</groupId>
-            <artifactId>google-genai</artifactId>
-            <version>${google-genai.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

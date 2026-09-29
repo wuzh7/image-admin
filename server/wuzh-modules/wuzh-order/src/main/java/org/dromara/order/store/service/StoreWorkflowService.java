@@ -398,11 +398,11 @@ public class StoreWorkflowService {
         for (int start = 0; start < imageIds.size(); start += 500)
             validImages += imageMapper.selectCount(Wrappers.<ImageAsset>lambdaQuery().in(ImageAsset::getId, imageIds.subList(start, Math.min(start + 500, imageIds.size()))).eq(ImageAsset::getStatus, ImageStatus.APPROVED.name()).eq(ImageAsset::getCategoryId, request.categoryId()).eq(ImageAsset::getCreateBy, owner));
         if (validImages != imageIds.size()) throw new ServiceException("存在无权限或未审核图片");
-        long lowRiskImages = 0;
+        long analyzedImages = 0;
         for (int start = 0; start < imageIds.size(); start += 500)
-            lowRiskImages += imageMapper.selectCount(Wrappers.<ImageAsset>lambdaQuery().in(ImageAsset::getId, imageIds.subList(start, Math.min(start + 500, imageIds.size()))).eq(ImageAsset::getStatus, ImageStatus.APPROVED.name()).eq(ImageAsset::getCategoryId, request.categoryId()).eq(ImageAsset::getCreateBy, owner)
-                .apply("infringement_scan_item_id IN (SELECT id FROM infringement_scan_item WHERE status = 'SUCCESS' AND risk_level = 'LOW')"));
-        if (lowRiskImages != imageIds.size()) throw new ServiceException("仅低风险图片可以渲染，请重新选择图片");
+            analyzedImages += imageMapper.selectCount(Wrappers.<ImageAsset>lambdaQuery().in(ImageAsset::getId, imageIds.subList(start, Math.min(start + 500, imageIds.size()))).eq(ImageAsset::getStatus, ImageStatus.APPROVED.name()).eq(ImageAsset::getCategoryId, request.categoryId()).eq(ImageAsset::getCreateBy, owner)
+                .apply("infringement_scan_item_id IN (SELECT id FROM infringement_scan_item WHERE status = 'SUCCESS' AND (risk_level = 'LOW' OR (prompt_version = 'relay_image_analysis_v1' AND risk_level IS NULL AND image_description IS NOT NULL)))"));
+        if (analyzedImages != imageIds.size()) throw new ServiceException("仅分析完成或历史低风险图片可以渲染，请重新选择图片");
         Map<String, String> keywordSnapshot = new HashMap<>();
         if (!destinations.isEmpty()) for (int start = 0; start < imageIds.size(); start += 500) {
             List<ImageAsset> images = imageMapper.selectByIds(imageIds.subList(start, Math.min(start + 500, imageIds.size())));

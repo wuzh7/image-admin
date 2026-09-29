@@ -13,7 +13,7 @@ public class GatewayExceptionHandler {
                 exception.rawProviderResponse()));
     }
 
-    public record ErrorResponse(String code, String message, String rawAiResponse, GeminiClient.Usage usage,
+    public record ErrorResponse(String code, String message, String rawAiResponse, RelayImageClient.Usage usage,
                                 String rawProviderResponse) {
     }
 }

@@ -14,7 +14,6 @@ import { useUserStore } from '@/stores/userStore';
 import { hasPermi } from '@/utils/permission';
 import AuthorizedImage from '@/components/common/AuthorizedImage';
 import { toPageQuery, toTableData } from '@/utils/wuzh';
-import { usedPromptNames } from './usedPrompts';
 
 const { Text } = Typography;
 
@@ -22,36 +21,6 @@ function formatJson(value?: string) {
   if (!value) return '-';
   try { return JSON.stringify(JSON.parse(value), null, 2); }
   catch { return value; }
-}
-
-function UsedPrompts({ taskId, itemId, imageId }: {
-  taskId: InfringementTaskSummary['id']; itemId: InfringementItemView['id']; imageId: InfringementItemView['imageId'];
-}) {
-  const [prompts, setPrompts] = useState<ReturnType<typeof usedPromptNames>>();
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    let active = true;
-    setPrompts(undefined);
-    setFailed(false);
-    void listInfringementCallLogs(taskId, { imageId, pageNum: 1, pageSize: 1 }).then(async result => {
-      const call = result.data.rows[0];
-      if (!active) return;
-      if (!call || String(call.scanItemId) !== String(itemId)) {
-        setPrompts({ names: [], inferred: false });
-        return;
-      }
-      const response = await getInfringementCallResponse(taskId, call.id);
-      if (active) setPrompts(usedPromptNames(response.data.rawProviderResponse));
-    }).catch(() => { if (active) setFailed(true); });
-    return () => { active = false; };
-  }, [taskId, itemId, imageId]);
-  if (failed) return <Text type="danger">读取失败，请关闭详情后重试</Text>;
-  if (!prompts) return <span aria-busy="true">正在读取调用记录…</span>;
-  if (!prompts.names.length) return <Text type="secondary">暂无调用记录或未记录提示词名称</Text>;
-  return <Space direction="vertical" size={4}>
-    <span style={{ overflowWrap: 'anywhere' }}>{prompts.names.join('、')}</span>
-    {prompts.inferred && <Text type="secondary">历史记录未保存文件名，按实际调用类型显示默认名称</Text>}
-  </Space>;
 }
 
 function ProviderResponsePanel({ call }: { call: InfringementCallLogView }) {
@@ -90,7 +59,7 @@ function ProviderResponsePanel({ call }: { call: InfringementCallLogView }) {
         ? `groundingMetadata：${grounding.length ? '响应包含该字段，具体搜索记录见下方' : '响应未包含该字段'}`
         : '上游返回不是有效 JSON，以下保留原始响应内容'} />
       <div>
-        <Text strong>上游完整响应 JSON{call.executionMode === 'OFFICIAL_BATCH' ? '（当前图片条目）' : ''}</Text>
+        <Text strong>上游完整响应 JSON</Text>
         <Typography.Paragraph copyable={{ text: response }}
           style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'monospace', maxHeight: 480, overflow: 'auto', marginTop: 8 }}>
           {formatJson(response)}
@@ -122,10 +91,11 @@ const itemStatus = {
   FAILED: { color: 'error', text: '检测失败' }
 } as const;
 
-const riskTag = (riskLevel?: InfringementItemView['riskLevel']) => {
+const riskTag = (riskLevel?: InfringementItemView['riskLevel'], analyzed = false) => {
   if (riskLevel === 'HIGH') return <Tag color="error">高风险</Tag>;
   if (riskLevel === 'NEEDS_REVIEW') return <Tag color="warning">疑似侵权</Tag>;
   if (riskLevel === 'LOW') return <Tag color="success">低风险</Tag>;
+  if (analyzed) return <Tag color="blue">未评估</Tag>;
   return '-';
 };
 
@@ -211,9 +181,9 @@ export default function ImageInfringementPage() {
       valueEnum: { SUCCESS: { text: '成功' }, FAILED: { text: '失败' } },
       render: (_, row) => <Tag color={row.status === 'SUCCESS' ? 'success' : 'error'}>{row.status === 'SUCCESS' ? '成功' : '失败'}</Tag>
     },
-    { title: '风险', dataIndex: 'riskLevel', width: 90, search: false, render: (_, row) => riskTag(row.riskLevel) },
+    { title: '风险', dataIndex: 'riskLevel', width: 90, search: false, render: (_, row) => riskTag(row.riskLevel, row.status === 'SUCCESS') },
     { title: '调用类型', dataIndex: 'callType', width: 100, search: false,
-      render: (_, row) => row.callType === 'CASE_LOOKUP' ? '案号补查' : '风险检测' },
+      render: (_, row) => row.callType === 'CASE_LOOKUP' ? '案号补查' : row.status === 'SUCCESS' && !row.riskLevel ? '图片分析' : '风险检测' },
     {
       title: '执行方式', dataIndex: 'executionMode', width: 150,
       valueEnum: Object.fromEntries(Object.entries(executionModeLabel).map(([key, text]) => [key, { text }])),
@@ -245,7 +215,7 @@ export default function ImageInfringementPage() {
     {
       title: '风险等级', dataIndex: 'riskLevel', width: 105,
       valueEnum: { HIGH: { text: '高风险' }, NEEDS_REVIEW: { text: '疑似侵权' }, LOW: { text: '低风险' } },
-      render: (_, row) => riskTag(row.riskLevel)
+      render: (_, row) => riskTag(row.riskLevel, row.status === 'SUCCESS' && row.promptVersion === 'relay_image_analysis_v1')
     },
     { title: '风险原因/疑点', dataIndex: 'riskReason', width: 220, search: false, ellipsis: true },
     { title: 'TRO 案号', dataIndex: 'caseNumbers', width: 180, search: false,
@@ -280,7 +250,7 @@ export default function ImageInfringementPage() {
   };
 
   return (
-    <PageContainer title="图片侵权检测" subTitle="检测失败不会影响图片正式入库">
+    <PageContainer title="图片 AI 分析" subTitle="只分析可见内容；历史风险结果仍可查看">
       <main>
         <ProTable<InfringementTaskSummary>
           actionRef={actionRef}
@@ -290,7 +260,7 @@ export default function ImageInfringementPage() {
           scroll={{ x: 1420 }}
           pagination={{ defaultPageSize: 10, showSizeChanger: true }}
           request={async params => toTableData(await listInfringementTasks(toPageQuery(params)))}
-          toolbar={{ title: '检测任务' }}
+          toolbar={{ title: '分析任务' }}
         />
       </main>
 
@@ -303,7 +273,7 @@ export default function ImageInfringementPage() {
       >
         {selectedTask && (
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            <Text type="secondary">风险结果仅供运营判断，图片入库状态独立处理。</Text>
+            <Text type="secondary">新任务只返回英文描述和中文分类，不进行风险判断。</Text>
             <ProTable<InfringementItemView>
               rowKey="id"
               columns={itemColumns}
@@ -331,7 +301,7 @@ export default function ImageInfringementPage() {
             search={{ labelWidth: 80, defaultCollapsed: false }}
             pagination={{ defaultPageSize: 20, showSizeChanger: true }}
             request={async params => toTableData(await listInfringementCallLogs(logTask.id, toPageQuery(params)))}
-            toolbar={{ title: '每次 Gemini 调用' }}
+            toolbar={{ title: '每次 AI 调用' }}
           />
         )}
       </Drawer>
@@ -349,7 +319,7 @@ export default function ImageInfringementPage() {
               <Descriptions.Item label="批次ID">{selectedCall.batchId || '-'}</Descriptions.Item>
               <Descriptions.Item label="图片ID">{selectedCall.imageId}</Descriptions.Item>
               <Descriptions.Item label="执行方式">{selectedCall.executionMode ? executionModeLabel[selectedCall.executionMode] : '-'}</Descriptions.Item>
-              <Descriptions.Item label="调用类型">{selectedCall.callType === 'CASE_LOOKUP' ? '案号补查' : '风险检测'}</Descriptions.Item>
+              <Descriptions.Item label="调用类型">{selectedCall.callType === 'CASE_LOOKUP' ? '案号补查' : selectedCall.status === 'SUCCESS' && !selectedCall.riskLevel ? '图片分析' : '风险检测'}</Descriptions.Item>
               <Descriptions.Item label="Batch作业ID">{selectedCall.providerJobId || '-'}</Descriptions.Item>
               <Descriptions.Item label="模型">{selectedCall.model || '-'}</Descriptions.Item>
               <Descriptions.Item label="Google搜索">{selectedCall.searchUsed == null ? '未记录' : selectedCall.searchUsed ? `已使用（${selectedCall.searchQueryCount || 0} 次）` : '未使用'}</Descriptions.Item>
@@ -387,7 +357,7 @@ export default function ImageInfringementPage() {
             <AuthorizedImage url={selectedItem.thumbnailUrl} alt={selectedItem.imageDescription || selectedItem.imageName} width={260} height={260} />
             <Descriptions bordered column={1} size="small">
               <Descriptions.Item label="检测状态"><Tag color={itemStatus[selectedItem.status].color}>{itemStatus[selectedItem.status].text}</Tag></Descriptions.Item>
-              <Descriptions.Item label="风险等级">{riskTag(selectedItem.riskLevel)}</Descriptions.Item>
+              <Descriptions.Item label="风险等级">{riskTag(selectedItem.riskLevel, selectedItem.status === 'SUCCESS' && selectedItem.promptVersion === 'relay_image_analysis_v1')}</Descriptions.Item>
               <Descriptions.Item label="风险原因/疑点">{selectedItem.riskReason || '-'}</Descriptions.Item>
               <Descriptions.Item label="TRO 案号">{labels(selectedItem.caseNumbers || [])}</Descriptions.Item>
               <Descriptions.Item label="判断置信度">{selectedItem.confidence == null ? '-' : `${selectedItem.confidence}%`}</Descriptions.Item>
@@ -400,9 +370,7 @@ export default function ImageInfringementPage() {
               <Descriptions.Item label="主色">{labels(selectedItem.colors)}</Descriptions.Item>
               <Descriptions.Item label="模型">{selectedItem.model || '-'}</Descriptions.Item>
               <Descriptions.Item label={selectedItem.executionMode === 'RELAY' ? '实际使用提示词' : '提示词版本'}>
-                {selectedItem.executionMode === 'RELAY' && selectedTask
-                  ? <UsedPrompts key={String(selectedItem.id)} taskId={selectedTask.id} itemId={selectedItem.id} imageId={selectedItem.imageId} />
-                  : selectedItem.promptVersion || '-'}
+                {selectedItem.promptVersion === 'relay_image_analysis_v1' ? 'image_analysis_prompt.txt' : selectedItem.promptVersion || '-'}
               </Descriptions.Item>
               <Descriptions.Item label="执行方式">{selectedItem.executionMode ? executionModeLabel[selectedItem.executionMode] : '-'}</Descriptions.Item>
               <Descriptions.Item label="Google 搜索">{selectedItem.searchUsed == null ? '未记录' : selectedItem.searchUsed ? `已使用（${selectedItem.searchQueryCount || 0} 次）` : '未使用'}</Descriptions.Item>

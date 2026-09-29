@@ -78,18 +78,12 @@ services:
       TZ: Asia/Shanghai
       OPENLUX_BASE_URL: ${OPENLUX_BASE_URL:-https://api.openlux.ai}
       OPENLUX_API_KEY: ${OPENLUX_API_KEY:-}
-      OPENLUX_MODEL: ${OPENLUX_MODEL:-gemini-3.8-flash}
       OPENLUX_TIMEOUT_SECONDS: ${OPENLUX_TIMEOUT_SECONDS:-900}
-      RELAY_PROMPT2_FILE: ${RELAY_PROMPT2_FILE-/app/config/relay-prompts/prompt2.txt}
-      RELAY_STAGE2_MODEL: ${RELAY_STAGE2_MODEL:-doubao-seed-2-0-lite-260215}
-      RELAY_STAGE2_PROTOCOL: ${RELAY_STAGE2_PROTOCOL:-CHAT_COMPLETIONS}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      # 中转站只读取这一份可更新的图片分析提示词。
+      RELAY_PROMPT_FILE: /app/config/image_analysis_prompt.txt
       AI_GATEWAY_TOKEN: ${AI_GATEWAY_TOKEN:-local-gateway-token}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
-      GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-900}
     volumes:
-      - ../../wuzh-ai-gateway/src/main/resources/prompts/gemini_prompt.txt:/app/config/gemini_prompt.txt:ro
-      - ../gateway/relay-prompts:/app/config/relay-prompts:ro
+      - ../gateway/image_analysis_prompt.txt:/app/config/image_analysis_prompt.txt:ro
     ports:
       - "127.0.0.1:18080:18080"
     healthcheck:
@@ -160,7 +154,6 @@ services:
       AI_GATEWAY_URL: http://ai-gateway:18080
       AI_GATEWAY_TOKEN: ${AI_GATEWAY_TOKEN:-local-gateway-token}
       AI_GATEWAY_TIMEOUT_SECONDS: ${AI_GATEWAY_TIMEOUT_SECONDS:-960}
-      IMAGE_INFRINGEMENT_WORKERS: ${IMAGE_INFRINGEMENT_WORKERS:-8}
       IMAGE_INFRINGEMENT_RELAY_WORKERS: ${IMAGE_INFRINGEMENT_RELAY_WORKERS:-10}
       SSCD_MODEL_PATH: /models/sscd_disc_mixup.torchscript.pt
       IMAGE_STORAGE_ROOT: /data/images

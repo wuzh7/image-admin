@@ -59,7 +59,6 @@ public class ImageProperties {
         private String gatewayUrl = "http://ai-gateway:18080";
         private String gatewayToken = "local-gateway-token";
         private int requestTimeoutSeconds = 960;
-        private int workers = 8;
         private int relayWorkers = 10;
     }
 

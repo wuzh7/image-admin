@@ -44,22 +44,6 @@ public class ImageConfiguration {
         return scheduler;
     }
 
-    @Bean("imageInfringementBatchScheduler")
-    public ThreadPoolTaskScheduler imageInfringementBatchScheduler() {
-        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-        scheduler.setPoolSize(1);
-        scheduler.setThreadNamePrefix("image-infringement-batch-");
-        return scheduler;
-    }
-
-    @Bean("imageInfringementBatchPollScheduler")
-    public ThreadPoolTaskScheduler imageInfringementBatchPollScheduler() {
-        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-        scheduler.setPoolSize(1);
-        scheduler.setThreadNamePrefix("image-infringement-batch-poll-");
-        return scheduler;
-    }
-
     @Bean("imageTaskExecutor")
     public ThreadPoolTaskExecutor imageTaskExecutor(ImageProperties properties) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
@@ -68,18 +52,6 @@ public class ImageConfiguration {
         executor.setMaxPoolSize(workerCount);
         executor.setQueueCapacity(100);
         executor.setThreadNamePrefix("image-dedup-");
-        executor.initialize();
-        return executor;
-    }
-
-    @Bean("imageInfringementExecutor")
-    public ThreadPoolTaskExecutor imageInfringementExecutor(ImageProperties properties) {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        int workers = Math.max(1, properties.getInfringement().getWorkers());
-        executor.setCorePoolSize(workers);
-        executor.setMaxPoolSize(workers);
-        executor.setQueueCapacity(0);
-        executor.setThreadNamePrefix("image-infringement-");
         executor.initialize();
         return executor;
     }

@@ -117,7 +117,6 @@ image:
     gateway-url: ${AI_GATEWAY_URL}
     gateway-token: ${AI_GATEWAY_TOKEN}
     request-timeout-seconds: ${AI_GATEWAY_TIMEOUT_SECONDS:960}
-    workers: ${IMAGE_INFRINGEMENT_WORKERS:2}
     relay-workers: ${IMAGE_INFRINGEMENT_RELAY_WORKERS:10}
   storage:
     type: oss

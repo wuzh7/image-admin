@@ -91,16 +91,16 @@ class InfringementServiceTest {
     }
 
     @Test
-    void officialHybridUsesStandardThrough100AndBatchAbove100() {
+    void newScansUseRelayEvenForHistoricalOfficialBatches() {
         ImageBatch batch = new ImageBatch();
         batch.setInfringementMode("OFFICIAL_HYBRID");
         batch.setProcessedCount(115);
         batch.setDuplicateCount(10);
         batch.setFailedCount(5);
-        assertEquals("OFFICIAL_STANDARD", InfringementService.executionMode(batch));
+        assertEquals("RELAY", InfringementService.executionMode(batch));
 
         batch.setProcessedCount(116);
-        assertEquals("OFFICIAL_BATCH", InfringementService.executionMode(batch));
+        assertEquals("RELAY", InfringementService.executionMode(batch));
     }
 
     @Test
@@ -120,7 +120,7 @@ class InfringementServiceTest {
 
         ArgumentCaptor<InfringementScanItem> created = ArgumentCaptor.forClass(InfringementScanItem.class);
         verify(items).insert(created.capture());
-        assertEquals("OFFICIAL_BATCH", created.getValue().getExecutionMode());
+        assertEquals("RELAY", created.getValue().getExecutionMode());
     }
 
     @Test

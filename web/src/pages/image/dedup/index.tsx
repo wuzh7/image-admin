@@ -28,7 +28,6 @@ import {
   Pagination,
   Popconfirm,
   Progress,
-  Radio,
   Select,
   Space,
   Table,
@@ -236,6 +235,9 @@ function statusTag(status: ImageView['status']) {
 
 function infringementTag(image: ImageView) {
   if (image.infringementStatus === 'FAILED') return <Tag color="error">检测失败</Tag>;
+  if (image.infringementStatus === 'SUCCESS' && image.infringementPromptVersion === 'relay_image_analysis_v1') {
+    return <Tag color="blue">已分析 · 风险未评估</Tag>;
+  }
   if (image.infringementStatus === 'SUCCESS' && image.infringementRiskLevel === 'HIGH') {
     return <Tag color="red">高风险</Tag>;
   }
@@ -300,7 +302,7 @@ export default function ImageDedupPage() {
       window.removeEventListener('drop', preventFileNavigation);
     };
   }, [categoryId]);
-  const [infringementMode, setInfringementMode] = useState<InfringementMode>('RELAY');
+  const infringementMode: InfringementMode = 'RELAY';
   const [threshold, setThreshold] = useState(0.6);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -405,7 +407,8 @@ export default function ImageDedupPage() {
     const pageIds = new Set(library.map(image => String(image.id)));
     setSelectedLibraryIds(current => current.filter(id => !pageIds.has(String(id))));
   };
-  const selectedRiskImages = library.filter(image => selectedLibraryIdSet.has(String(image.id)) && image.infringementRiskLevel !== 'LOW');
+  const selectedRiskImages = library.filter(image => selectedLibraryIdSet.has(String(image.id)) && image.infringementRiskLevel !== 'LOW'
+    && !(image.infringementStatus === 'SUCCESS' && image.infringementPromptVersion === 'relay_image_analysis_v1' && image.infringementDescriptionKeywords));
 
   const loadHealth = useCallback(async () => {
     const response = await getImageHealth();
@@ -649,9 +652,9 @@ export default function ImageDedupPage() {
     if (storeCategoryId == null || storeGroupId == null || !selectedLibraryIds.length) { message.warning('请选择类目、模板组和正式图库图片'); return; }
     const group = storeGroups.find(item => String(item.id) === String(storeGroupId));
     if (!group || String(group.categoryId) !== String(storeCategoryId)) { message.warning('模板组与图片类目不一致'); return; }
-    if (selectedRiskImages.length) { message.warning('仅低风险图片可以渲染，请重新选择图片'); return; }
+    if (selectedRiskImages.length) { message.warning('仅分析完成或历史低风险图片可以渲染，请重新选择图片'); return; }
     if (storeMissingListing) { message.warning('请选择目标店铺及各店铺已配置的上架表格'); return; }
-    if (storeMissingKeywords) { message.warning('选中的图片缺少侵权检测 AI 英文描述关键词'); return; }
+    if (storeMissingKeywords) { message.warning('选中的图片缺少 AI 英文描述，请查看分析结果'); return; }
     const destinations = storeGenerateListing ? storeShopIds.map(shopId => ({
       shopId, listingTemplateId: storeListingByShop[String(shopId)]
     })).sort((left, right) => String(left.shopId).localeCompare(String(right.shopId))) : [];
@@ -730,7 +733,7 @@ export default function ImageDedupPage() {
     { title: '批次 ID', dataIndex: 'id', width: 210 },
     { title: '创建人', dataIndex: 'creatorName', width: 120 },
     { title: '类目', dataIndex: 'categoryName', width: 120 },
-    { title: '侵权检测', dataIndex: 'infringementMode', width: 110, render: value => infringementModeText[value as InfringementMode] },
+    { title: 'AI 分析渠道', dataIndex: 'infringementMode', width: 110, render: value => infringementModeText[value as InfringementMode] },
     { title: '状态', dataIndex: 'status', width: 100, render: value => batchStatusTag(value) },
     {
       title: '进度',
@@ -980,17 +983,7 @@ export default function ImageDedupPage() {
             <Typography.Text strong>重复阈值</Typography.Text>
             <InputNumber min={0.5} max={0.99} step={0.01} value={threshold} disabled={!canRemove} onChange={value => setThreshold(value ?? 0.6)} />
           </label>
-          <label className="image-upload-config__mode">
-            <Typography.Text strong>侵权检测模式（必选）</Typography.Text>
-            <Radio.Group value={infringementMode} onChange={event => setInfringementMode(event.target.value)}>
-              <Space direction="vertical" size={4}>
-                <Radio value="RELAY">中转站（默认）</Radio>
-                <Typography.Text type="secondary">OpenLux，支持 Google Search</Typography.Text>
-                <Radio value="OFFICIAL_HYBRID">官方混合（≤100 张 Standard，&gt;100 张 Batch）</Radio>
-                <Typography.Text type="secondary">小批次实时返回；大批次约半价异步处理，最长可能等待24小时</Typography.Text>
-              </Space>
-            </Radio.Group>
-          </label>
+          <Typography.Text type="secondary">AI 图片分析：中转站 · doubao-seed-2-0-lite-260428</Typography.Text>
         </div>
         <Upload.Dragger
             className="image-upload-dropzone"
@@ -1128,7 +1121,7 @@ export default function ImageDedupPage() {
       <Progress percent={taskProcessedPercent} status={taskBatch.status === 'FAILED' ? 'exception' : taskBatch.status === 'COMPLETED' ? 'success' : 'active'} />
       <Space wrap>
         <Tag color="cyan">类目 {taskBatch.categoryName}</Tag>
-        <Tag color="geekblue">侵权检测 {infringementModeText[taskBatch.infringementMode]}</Tag>
+        <Tag color="geekblue">AI 分析 {infringementModeText[taskBatch.infringementMode]}</Tag>
         <Tag>总数 {taskBatch.totalCount}</Tag>
         <Tag color="blue">已处理 {taskBatch.processedCount}</Tag>
         <Tag color="green">唯一 {taskBatch.uniqueCount}</Tag>
@@ -1335,7 +1328,7 @@ export default function ImageDedupPage() {
       className="image-workflow-card"
       loading={libraryLoading}
     >
-      {!canRemove && <Alert type="info" showIcon message="仅展示本人上传的图片；只能导出检测成功、低风险且尚未导出过的图片。" style={{ marginBottom: 16 }} />}
+      {!canRemove && <Alert type="info" showIcon message="仅展示本人上传的图片；只能导出分析完成或历史低风险且尚未导出过的图片。" style={{ marginBottom: 16 }} />}
       <div className="image-library-filters">
         <Input allowClear placeholder="图片 ID" aria-label="图片 ID" value={libraryFilters.imageId} style={{ width: 210 }}
           onChange={event => updateLibraryFilters({ imageId: event.target.value.replace(/\D/g, '') || undefined })} />
@@ -1558,8 +1551,8 @@ export default function ImageDedupPage() {
                 </div>}
                 <div className="store-task-estimate"><div><Typography.Text type="secondary">已选原图</Typography.Text><strong>{selectedLibraryIds.length} 张</strong></div><span>×</span><div><Typography.Text type="secondary">背景模板</Typography.Text><strong>{storeGroup?.templates.length || 0} 个</strong></div><span>=</span><div><Typography.Text type="secondary">预计成品</Typography.Text><strong>{selectedLibraryIds.length * (storeGroup?.templates.length || 0)} 张</strong></div></div>
                 <Typography.Text type="secondary">{storeGenerateListing ? `${storeShopIds.length} 家店铺 · ${storeShopIds.length} 份表格 · 成品无需按店铺重复渲染` : '仅生成成品 · 不需要选择店铺或上架表格'}</Typography.Text>
-                {storeMissingKeywords && <Alert type="warning" showIcon message="选中的图片缺少侵权检测 AI 英文描述关键词，请查看检测结果" />}
-                {selectedRiskImages.length > 0 && <Alert type="warning" showIcon message="选中的图片包含非低风险图片，请重新选择后再渲染" />}
+                {storeMissingKeywords && <Alert type="warning" showIcon message="选中的图片缺少 AI 英文描述，请查看分析结果" />}
+                {selectedRiskImages.length > 0 && <Alert type="warning" showIcon message="选中的图片包含未完成分析且非历史低风险的图片，请重新选择后再渲染" />}
                 {storeBatch && <>
                   <Typography.Text strong>批次 {String(storeBatch.id)} · {storeBatch.status === 'COMPLETED' ? '已完成' : storeBatch.status === 'PARTIAL_FAILURE' ? '部分失败' : storeBatch.status === 'FAILED' ? '失败' : storeBatch.status === 'STOPPING' ? '停止中' : storeBatch.status === 'STOPPED' ? '已停止' : '渲染中'}</Typography.Text>
                   <Progress percent={storeBatch.totalCount ? Math.round((storeBatch.completedCount + storeBatch.skippedCount + storeBatch.failedCount) / storeBatch.totalCount * 100) : 0} status={storeRendering ? 'active' : storeBatch.failedCount ? 'exception' : 'success'} />
@@ -1654,7 +1647,7 @@ export default function ImageDedupPage() {
               <Descriptions.Item label="上传时间">{detailImage.createTime || '-'}</Descriptions.Item>
               <Descriptions.Item label="入库时间">{detailImage.approvedAt || '-'}</Descriptions.Item>
               <Descriptions.Item label="使用次数">{detailImage.renderUseCount ?? 0}</Descriptions.Item>
-              <Descriptions.Item label="侵权检测">{infringementTag(detailImage)}</Descriptions.Item>
+              <Descriptions.Item label="AI 分析">{infringementTag(detailImage)}</Descriptions.Item>
               {detailImage.vectorIndexMissing && <Descriptions.Item label="向量索引"><Tag color="error">异常</Tag></Descriptions.Item>}
               {detailImage.exported && <Descriptions.Item label="导出状态">已导出</Descriptions.Item>}
               <Descriptions.Item label="英文描述关键词" span={2}>{detailImage.infringementDescriptionKeywords || '-'}</Descriptions.Item>

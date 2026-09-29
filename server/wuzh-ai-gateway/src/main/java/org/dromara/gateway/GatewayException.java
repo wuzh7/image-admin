@@ -4,7 +4,7 @@ public class GatewayException extends RuntimeException {
     private final int status;
     private final String code;
     private final String rawAiResponse;
-    private final GeminiClient.Usage usage;
+    private final RelayImageClient.Usage usage;
     private final String rawProviderResponse;
 
     public GatewayException(int status, String code, String message) {
@@ -12,7 +12,7 @@ public class GatewayException extends RuntimeException {
     }
 
     private GatewayException(int status, String code, String message, String rawAiResponse,
-                             GeminiClient.Usage usage, String rawProviderResponse) {
+                             RelayImageClient.Usage usage, String rawProviderResponse) {
         super(message);
         this.status = status;
         this.code = code;
@@ -33,11 +33,11 @@ public class GatewayException extends RuntimeException {
         return rawAiResponse;
     }
 
-    public GeminiClient.Usage usage() {
+    public RelayImageClient.Usage usage() {
         return usage;
     }
 
-    public GatewayException withAiResponse(String rawAiResponse, GeminiClient.Usage usage) {
+    public GatewayException withAiResponse(String rawAiResponse, RelayImageClient.Usage usage) {
         return new GatewayException(status, code, getMessage(), rawAiResponse, usage, rawProviderResponse);
     }
 

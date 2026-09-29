@@ -23,7 +23,7 @@ public class InfringementCallLogger {
         InfringementCallLog log = base(item, requestId, startedAt, finishedAt);
         log.setStatus("SUCCESS");
         log.setModel(result.model());
-        log.setRiskLevel(normalizeRisk(result.riskLevel()));
+        log.setRiskLevel(null);
         log.setRawAiResponse(result.rawAiResponse());
         log.setRawProviderResponse(result.rawProviderResponse());
         log.setSearchUsed(result.searchUsed());
@@ -71,7 +71,7 @@ public class InfringementCallLogger {
         try {
             logs.insert(callLog);
         } catch (RuntimeException exception) {
-            log.error("Gemini调用日志写入失败 taskId={} imageId={} requestId={}", callLog.getTaskId(),
+            log.error("AI 调用日志写入失败 taskId={} imageId={} requestId={}", callLog.getTaskId(),
                 callLog.getImageId(), callLog.getRequestId(), exception);
         }
     }
@@ -89,21 +89,12 @@ public class InfringementCallLogger {
         log.setProviderRequestIndex(item.getProviderRequestIndex());
         log.setExecutionMode(item.getExecutionMode());
         log.setCallType(item.getCallType() == null ? "RISK_SCAN" : item.getCallType());
-        if ("CASE_LOOKUP".equals(item.getCallType())) {
-            log.setExecutionMode("RELAY".equals(item.getExecutionMode()) ? "RELAY" : "OFFICIAL_STANDARD");
-            log.setProviderJobId(null);
-            log.setProviderRequestIndex(null);
-        }
         log.setStartedAt(startedAt);
         log.setFinishedAt(finishedAt);
         if (startedAt != null && finishedAt != null) {
             log.setDurationMs(Math.max(0, Duration.between(startedAt, finishedAt).toMillis()));
         }
         return log;
-    }
-
-    static String normalizeRisk(String riskLevel) {
-        return "NEEDS_REVIEW".equalsIgnoreCase(riskLevel) ? "NEEDS_REVIEW" : riskLevel;
     }
 
     private static String limit(String value, int max) {

@@ -45,6 +45,7 @@ export interface ImageView {
   errorMessage?: string;
   approvedAt?: string;
   infringementStatus?: InfringementItemStatus;
+  infringementPromptVersion?: string;
   infringementRiskLevel?: InfringementRiskLevel;
   infringementRiskReason?: string;
   infringementCaseNumbers?: string[];

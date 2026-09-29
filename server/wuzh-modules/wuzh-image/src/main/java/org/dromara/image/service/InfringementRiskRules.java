@@ -9,19 +9,6 @@ final class InfringementRiskRules {
 
     private InfringementRiskRules() { }
 
-    static boolean needsCaseLookup(GeminiGatewayClient.GatewayResponse result) {
-        return (result.caseNumbers().isEmpty() && result.riskReason() != null && !result.riskReason().isBlank())
-            || "LOW".equals(result.riskLevel());
-    }
-
-    static String riskLevel(GeminiGatewayClient.GatewayResponse result) {
-        return result.caseNumbers().isEmpty() ? InfringementCallLogger.normalizeRisk(result.riskLevel()) : "HIGH";
-    }
-
-    static String casesJson(List<String> values) {
-        return JSON.writeValueAsString(values);
-    }
-
     static List<String> cases(String json) {
         if (json == null || json.isBlank()) return List.of();
         try {

@@ -18,7 +18,7 @@ function regionMatte(base, c, mask, W, H, scale) {
   let repairs = [];
   let edgeWarning = '';
   const matte = make(W, H),
-    mc = matte.getContext('2d');
+    mc = matte.getContext('2d', { willReadFrequently: true });
   mc.fillStyle = '#fff';
   mc.beginPath();
   const border = [],
@@ -87,7 +87,7 @@ function regionMatte(base, c, mask, W, H, scale) {
   }
   if (mask) {
     const mm = make(W, H),
-      mx = mm.getContext('2d');
+      mx = mm.getContext('2d', { willReadFrequently: true });
     mx.drawImage(mask, 0, 0, W, H);
     const md = mx.getImageData(0, 0, W, H);
     for (let i = 0; i < md.data.length; i += 4)
@@ -280,7 +280,7 @@ function renderRegion(ctx, base, design, c, mask, scale, W, H, view) {
       }
     }
   const layer = make(W, H),
-    lc = layer.getContext('2d');
+    lc = layer.getContext('2d', { willReadFrequently: true });
   lc.putImageData(out, 0, 0);
   // Extend colour one pixel into the AA footprint, without leaving white fringes.
   const expanded = lc.getImageData(0, 0, W, H);

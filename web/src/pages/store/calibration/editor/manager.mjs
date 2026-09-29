@@ -691,7 +691,7 @@ export class CalibrationManager {
     const test = document.createElement('canvas');
     test.width = this.design?.naturalWidth || 240;
     test.height = this.design?.naturalHeight || 240;
-    const tc = test.getContext('2d');
+    const tc = test.getContext('2d', { willReadFrequently: true });
     if (this.design) tc.drawImage(this.design, 0, 0);
     else {
       tc.fillStyle = '#24594c';
@@ -805,7 +805,7 @@ export class CalibrationManager {
         buffer.width = Math.round(c.width * scale);
         buffer.height = Math.round(c.height * scale);
         const result = renderDeclarative(
-          buffer.getContext('2d'),
+          buffer.getContext('2d', { willReadFrequently: true }),
           this.backgroundImage,
           this.testPixels(),
           c,

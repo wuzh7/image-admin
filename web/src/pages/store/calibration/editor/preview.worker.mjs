@@ -27,7 +27,7 @@ self.onmessage = async ({ data }) => {
       Math.max(1, Math.round(c.height * scale)),
     );
     const result = renderDeclarative(
-      canvas.getContext('2d'),
+      canvas.getContext('2d', { willReadFrequently: true }),
       assets.background,
       assets.design,
       c,

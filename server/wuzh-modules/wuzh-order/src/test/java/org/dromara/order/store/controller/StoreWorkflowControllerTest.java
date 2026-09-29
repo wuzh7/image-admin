@@ -11,11 +11,23 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
 @Tag("local")
 class StoreWorkflowControllerTest {
+    @Test
+    void streamsOwnedFileWithoutProxyBuffering() throws Exception {
+        StoreWorkflowService service = mock(StoreWorkflowService.class);
+        when(service.ownedFile("store/templates/42/background.png")).thenReturn(output -> { });
+        MockMvc mvc = standaloneSetup(new StoreWorkflowController(service, mock(StoreReferenceService.class))).build();
+
+        mvc.perform(get("/store/files").param("key", "store/templates/42/background.png"))
+            .andExpect(status().isOk())
+            .andExpect(header().string("X-Accel-Buffering", "no"));
+    }
+
     @Test
     void returnsWorkerAssetUrlsAsData() throws Exception {
         StoreWorkflowService service = mock(StoreWorkflowService.class);

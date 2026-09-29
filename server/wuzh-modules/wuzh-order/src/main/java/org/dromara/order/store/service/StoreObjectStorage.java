@@ -13,6 +13,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -127,6 +129,20 @@ public class StoreObjectStorage {
         Path path = root.resolve(key).normalize();
         if (!path.startsWith(root) || !Files.isRegularFile(path)) throw new ServiceException("文件不存在");
         return new ImageStorage.LocalFile(path, false);
+    }
+
+    public void stream(String key, OutputStream output) {
+        if ("oss".equalsIgnoreCase(properties.getStorage().getType())) {
+            OssClient client = ossClient.getIfAvailable();
+            if (client == null) throw new ServiceException("OSS 存储不可用");
+            client.download(key, output);
+            return;
+        }
+        try (ImageStorage.LocalFile file = open(key)) {
+            Files.copy(file.path(), output);
+        } catch (IOException exception) {
+            throw new ServiceException("文件读取失败", 500);
+        }
     }
 
     public void delete(String key) {

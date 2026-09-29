@@ -21,10 +21,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.function.Consumer;
 
 @Service
 @RequiredArgsConstructor
@@ -773,9 +775,9 @@ public class StoreWorkflowService {
         batchMapper.completeItem(item.getBatchId());
         finishStoppingBatch(item.getBatchId());
     }
-    public ImageStorage.LocalFile ownedFile(String key) {
+    public Consumer<OutputStream> ownedFile(String key) {
         if (key == null || !key.matches("(store/(templates|results|listing)|render-public/results)/" + owner() + "/[0-9a-f-]+\\.(jpg|jpeg|png|webp|xlsx)")) throw new ServiceException("无权访问文件");
-        return storeStorage.open(key);
+        return output -> storeStorage.stream(key, output);
     }
     @Transactional
     public void fail(long itemId, StoreDtos.FailRequest request) { if (itemMapper.fail(itemId, request.workerId(), request.leaseToken(), request.errorMessage()) != 1) throw new ServiceException("渲染租约已失效"); long batchId = itemMapper.selectById(itemId).getBatchId(); batchMapper.failItem(batchId); finishStoppingBatch(batchId); }

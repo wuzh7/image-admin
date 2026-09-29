@@ -89,7 +89,7 @@ public class StoreWorkflowController {
     @PutMapping("/listing-templates/{id}/profile") public R<StoreDtos.ListingTemplateView> saveListingProfile(@PathVariable long id, @Valid @RequestBody StoreDtos.ListingProfileRequest request) { return R.ok(service.saveListingProfile(id, request)); }
     @SaCheckPermission("store:listing-template:upload")
     @PostMapping(value = "/listing-templates/files", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) public R<StoreDtos.UploadView> uploadListing(@RequestPart("file") MultipartFile file) { return R.ok(service.uploadListing(file)); }
-    @GetMapping("/files") public ResponseEntity<StreamingResponseBody> ownedFile(@RequestParam String key) { return file(service.ownedFile(key)); }
+    @GetMapping("/files") public ResponseEntity<StreamingResponseBody> ownedFile(@RequestParam String key) { return ResponseEntity.ok().header("X-Accel-Buffering", "no").contentType(MediaType.APPLICATION_OCTET_STREAM).body(service.ownedFile(key)::accept); }
     @SaCheckPermission(value = {"store:listing-template:list", "store:render:add"}, mode = SaMode.OR)
     @GetMapping("/listing-templates") public R<List<StoreDtos.ListingTemplateView>> listingTemplates(@RequestParam(required=false) Long shopId, @RequestParam(required=false) Long categoryId) { return R.ok(service.listingTemplates(shopId, categoryId)); }
     @SaCheckPermission("store:listing-template:add")

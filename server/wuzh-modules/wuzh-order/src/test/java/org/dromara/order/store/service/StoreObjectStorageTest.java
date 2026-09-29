@@ -43,6 +43,9 @@ class StoreObjectStorageTest {
         assertEquals(3, image.height());
         assertTrue(image.ossKey().startsWith("store/templates/42/"));
         try (var saved = storage.open(image.ossKey())) { assertArrayEquals(png.toByteArray(), Files.readAllBytes(saved.path())); }
+        ByteArrayOutputStream streamed = new ByteArrayOutputStream();
+        storage.stream(image.ossKey(), streamed);
+        assertArrayEquals(png.toByteArray(), streamed.toByteArray());
 
         ByteArrayOutputStream xlsx = new ByteArrayOutputStream();
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
@@ -84,5 +87,23 @@ class StoreObjectStorageTest {
         assertEquals("https://render-bucket.oss-cn-hangzhou.aliyuncs.com/" + result.ossKey(), result.imageUrl());
         verify(client).bucketUpload(eq("render-bucket"), eq(result.ossKey()), any(Path.class));
         verify(imageStorage, never()).accessUrl(eq(result.ossKey()), anyString(), anyBoolean());
+    }
+
+    @Test
+    void streamsOssFileWithoutOpeningTemporaryFile() throws Exception {
+        ImageProperties properties = new ImageProperties();
+        properties.getStorage().setType("oss");
+        ImageStorage imageStorage = mock(ImageStorage.class);
+        @SuppressWarnings("unchecked") ObjectProvider<OssClient> provider = mock(ObjectProvider.class);
+        OssClient client = mock(OssClient.class);
+        when(provider.getIfAvailable()).thenReturn(client);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        doAnswer(invocation -> { ((java.io.OutputStream) invocation.getArgument(1)).write(new byte[] { 1, 2, 3 }); return null; })
+            .when(client).download(eq("store/templates/42/background.png"), any(java.io.OutputStream.class));
+
+        new StoreObjectStorage(properties, imageStorage, provider).stream("store/templates/42/background.png", output);
+
+        assertArrayEquals(new byte[] { 1, 2, 3 }, output.toByteArray());
+        verify(imageStorage, never()).open(anyString());
     }
 }

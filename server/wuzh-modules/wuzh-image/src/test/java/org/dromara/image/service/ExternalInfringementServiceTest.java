@@ -46,6 +46,15 @@ class ExternalInfringementServiceTest {
     }
 
     @Test
+    void claimFailsWhenOssUrlCannotBeSigned() {
+        when(items.selectExternalUnclaimed(any())).thenReturn(List.of(row(1, 11)));
+        when(items.claimExternal(anyList(), anyString(), any())).thenReturn(1);
+        when(storage.signGetUrl(anyString(), any())).thenReturn(Optional.empty());
+
+        assertThrows(ServiceException.class, service::claim);
+    }
+
+    @Test
     void completionRejectsStaleTokenAndAcceptsIdenticalRetry() {
         var result = new ExternalInfringementDtos.Result("11", "claim-1", "needs_review", "疑似侵权",
             List.of("26-cv-1"), List.of("https://example.com/evidence"));

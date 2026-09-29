@@ -59,16 +59,6 @@ public interface InfringementScanItemMapper extends BaseMapper<InfringementScanI
         """)
     InfringementScanItem selectCurrentExternal(@Param("imageId") long imageId);
 
-    @Select("""
-        SELECT a.storage_key FROM infringement_scan_item i
-        JOIN img_asset a ON a.id = i.image_id AND a.infringement_scan_item_id = i.id
-        WHERE i.image_id = #{imageId} AND i.external_claim_token = #{token}
-          AND i.external_claimed_at >= #{cutoff} AND i.external_completed_at IS NULL
-          AND a.status = 'APPROVED' AND a.del_flag = '0'
-        """)
-    String selectExternalContentKey(@Param("imageId") long imageId, @Param("token") String token,
-                                    @Param("cutoff") java.time.LocalDateTime cutoff);
-
     @Select("SELECT COUNT(*) FROM infringement_scan_item WHERE status = 'PROCESSING'")
     long countProcessingForReset();
 

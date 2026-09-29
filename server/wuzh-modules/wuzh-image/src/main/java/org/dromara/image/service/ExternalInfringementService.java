@@ -39,7 +39,7 @@ public class ExternalInfringementService {
         if (updated != rows.size()) throw new ServiceException("图片领取冲突，请重试", 409);
         return rows.stream().map(row -> new ExternalInfringementDtos.Claim(String.valueOf(row.getImageId()),
             storage.signGetUrl(row.getStorageKey(), Duration.ofMinutes(minutes))
-                .orElse("/prod-api/open-api/infringement/images/" + row.getImageId() + "/content"),
+                .orElseThrow(() -> new ServiceException("OSS图片链接不可用", 500)),
             token, now.plusMinutes(minutes))).toList();
     }
 
@@ -83,14 +83,6 @@ public class ExternalInfringementService {
             && Objects.equals(current.getCaseNumbersJson(), caseJson)
             && Objects.equals(current.getVerificationUrlsJson(), urlJson)) return;
         throw new ServiceException("领取凭证已失效或图片结果已变更", 409);
-    }
-
-    public String contentKey(long imageId, String token) {
-        if (token == null || token.isBlank()) throw new ServiceException("图片领取凭证无效", 403);
-        String key = items.selectExternalContentKey(imageId, token,
-            LocalDateTime.now().minusMinutes(properties.getInfringement().getExternalLeaseMinutes()));
-        if (key == null) throw new ServiceException("图片领取凭证无效", 403);
-        return key;
     }
 
     private static List<String> normalized(List<String> values, int maxCount, int maxLength, String field) {

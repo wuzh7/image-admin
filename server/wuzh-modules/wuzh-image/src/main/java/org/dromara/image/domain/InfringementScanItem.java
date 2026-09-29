@@ -21,6 +21,10 @@ public class InfringementScanItem extends BaseEntity {
     private String riskLevel;
     private String riskReason;
     private String caseNumbersJson;
+    private String verificationUrlsJson;
+    private String externalClaimToken;
+    private LocalDateTime externalClaimedAt;
+    private LocalDateTime externalCompletedAt;
     private String callType;
     private String imageDescription;
     private String rawAiResponse;

@@ -22,6 +22,23 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 @Tag("local")
 class TroExternalControllerTest {
     @Test
+    void supplementRequiresApiKeyAndAcceptsCaseListString() throws Exception {
+        TroCaseService service = mock(TroCaseService.class);
+        TroProperties properties = new TroProperties();
+        properties.setApiKey("tro-secret");
+        MockMvc mockMvc = standaloneSetup(new TroExternalController(service, properties)).build();
+        String body = """
+            {"caseNoFormat":"26-cv-1,26-cv-2","plaintiff":"Holder",
+             "plaintiffCn":"作者","plaintiffNames":["Holder","作者"]}
+            """;
+        mockMvc.perform(post("/open-api/tro/cases/supplement")
+            .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/open-api/tro/cases/supplement")
+            .header("X-API-Key", "tro-secret").contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isOk());
+        verify(service).supplement(any(TroExternalDtos.Supplement.class));
+    }
+    @Test
     void rejectsMissingApiKey() throws Exception {
         TroCaseService service = mock(TroCaseService.class);
         TroProperties properties = new TroProperties();

@@ -56,6 +56,27 @@ public class TroCaseService {
             .toList();
     }
 
+    @Transactional(rollbackFor = Exception.class)
+    public int supplement(TroExternalDtos.Supplement request) {
+        if (request == null || request.caseNoFormat() == null || request.plaintiff() == null
+            || request.plaintiffCn() == null || request.plaintiffNames() == null) {
+            throw new ServiceException("caseNoFormat、plaintiff、plaintiffCn、plaintiffNames均不能为空");
+        }
+        String plaintiff = request.plaintiff().trim();
+        String plaintiffCn = request.plaintiffCn().trim();
+        List<String> cases = java.util.Arrays.stream(request.caseNoFormat().split(",", -1))
+            .map(String::trim).distinct().toList();
+        List<String> names = request.plaintiffNames().stream()
+            .filter(java.util.Objects::nonNull).map(String::trim).filter(value -> !value.isEmpty()).distinct().toList();
+        if (cases.isEmpty() || cases.size() > 200 || cases.stream().anyMatch(value -> value.isEmpty() || value.length() > 32)
+            || plaintiff.isEmpty() || plaintiff.length() > 255 || plaintiffCn.isEmpty() || plaintiffCn.length() > 255
+            || names.isEmpty() || names.size() > 100 || names.stream().anyMatch(value -> value.length() > 255)) {
+            throw new ServiceException("TRO补充数据格式或长度不合法");
+        }
+        cases.forEach(caseNo -> mapper.supplement(caseNo, plaintiff, plaintiffCn, names));
+        return cases.size();
+    }
+
     private List<String> searchVariants(String value) {
         if (value == null || value.isBlank()) return List.of();
         String trimmed = value.trim();

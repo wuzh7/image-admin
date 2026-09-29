@@ -22,12 +22,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @Tag("local")
 class TroCaseServiceTest {
+    @Test
+    void supplementsEachCaseNumberWithoutChangingOtherCaseFields() {
+        TroCaseMapper mapper = mock(TroCaseMapper.class);
+        TroCaseService service = new TroCaseService(mapper, JsonMapper.builder().build());
+        int count = service.supplement(new TroExternalDtos.Supplement("26-cv-1, 26-cv-2,26-cv-1",
+            "Rights Holder", "作者", List.of("Rights Holder", "作者")));
+        assertThat(count).isEqualTo(2);
+        verify(mapper).supplement("26-cv-1", "Rights Holder", "作者", List.of("Rights Holder", "作者"));
+        verify(mapper).supplement("26-cv-2", "Rights Holder", "作者", List.of("Rights Holder", "作者"));
+    }
     @Mock
     private TroCaseMapper mapper;
     @Captor

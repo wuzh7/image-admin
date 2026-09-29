@@ -53,6 +53,28 @@ public class TroExternalController {
         }
     }
 
+    @PostMapping("/supplement")
+    public ResponseEntity<R<Integer>> supplement(
+        @RequestHeader(value = API_KEY_HEADER, required = false) String apiKey,
+        @RequestBody TroExternalDtos.Supplement request,
+        HttpServletRequest servletRequest
+    ) {
+        if (!validApiKey(apiKey)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(R.fail(HttpStatus.UNAUTHORIZED.value(), "API Key无效"));
+        }
+        try {
+            return ResponseEntity.ok(R.ok(service.supplement(request)));
+        } catch (ServiceException e) {
+            return ResponseEntity.badRequest().body(R.fail(HttpStatus.BAD_REQUEST.value(), e.getMessage()));
+        } catch (RuntimeException e) {
+            String errorId = RandomUtil.randomNumbers(8);
+            log.error("TRO外部补充失败, sourceIp={}, 错误编号: {}", servletRequest.getRemoteAddr(), errorId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(R.fail(HttpStatus.INTERNAL_SERVER_ERROR.value(), "发生系统异常，请联系管理员 [错误编号: " + errorId + "]"));
+        }
+    }
+
     private boolean validApiKey(String candidate) {
         if (candidate == null) return false;
         return MessageDigest.isEqual(properties.getApiKey().getBytes(StandardCharsets.UTF_8),

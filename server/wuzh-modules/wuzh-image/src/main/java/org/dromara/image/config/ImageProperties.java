@@ -60,6 +60,8 @@ public class ImageProperties {
         private String gatewayToken = "local-gateway-token";
         private int requestTimeoutSeconds = 960;
         private int relayWorkers = 10;
+        private String externalApiKey;
+        private int externalLeaseMinutes = 1440;
     }
 
 }

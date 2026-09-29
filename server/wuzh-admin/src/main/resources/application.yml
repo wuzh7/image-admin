@@ -181,13 +181,17 @@ order:
   external:
     api-key: ${ORDER_DETAIL_API_KEY}
 
-# TRO 外部写入接口使用独立密钥。
+# TRO 外部查询与补充接口使用独立密钥。
 tro:
   external:
     api-key: ${TRO_API_KEY}
 
 # 图片管理。生产环境通过环境变量覆盖地址、密钥和模型路径。
 image:
+  infringement:
+    # 三方图片领取与回写使用独立密钥；领取超时后允许重新领取。
+    external-api-key: ${IMAGE_INFRINGEMENT_API_KEY}
+    external-lease-minutes: ${IMAGE_INFRINGEMENT_LEASE_MINUTES:1440}
   max-files-per-batch: 1000
   max-files-per-request: 10
   max-files-per-upload-session: ${IMAGE_UPLOAD_SESSION_MAX_FILES:1000}

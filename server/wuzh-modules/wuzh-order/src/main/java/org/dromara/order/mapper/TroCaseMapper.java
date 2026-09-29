@@ -52,4 +52,14 @@ public interface TroCaseMapper extends BaseMapper<TroCase> {
             update_time = NOW()
         """)
     int upsert(TroCase troCase);
+
+    @Insert("""
+        INSERT INTO tro_case (case_no_format, plaintiff, plaintiff_cn, plaintiff_names, create_time, update_time)
+        VALUES (#{caseNo}, #{plaintiff}, #{plaintiffCn},
+            #{names,typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler}, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE plaintiff_cn = VALUES(plaintiff_cn),
+            plaintiff_names = VALUES(plaintiff_names), update_time = NOW()
+        """)
+    int supplement(@Param("caseNo") String caseNo, @Param("plaintiff") String plaintiff,
+                   @Param("plaintiffCn") String plaintiffCn, @Param("names") List<String> names);
 }

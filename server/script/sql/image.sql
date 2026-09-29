@@ -136,6 +136,10 @@ CREATE TABLE IF NOT EXISTS infringement_scan_item (
     risk_level            VARCHAR(20)     DEFAULT NULL COMMENT 'HIGH LOW NEEDS_REVIEW',
     risk_reason           VARCHAR(255)    DEFAULT NULL COMMENT '风险原因或疑点',
     case_numbers_json     JSON            DEFAULT NULL COMMENT 'TRO案号数组',
+    verification_urls_json JSON           DEFAULT NULL COMMENT '三方侵权验证URL数组',
+    external_claim_token  CHAR(36)        DEFAULT NULL COMMENT '三方领取凭证',
+    external_claimed_at   DATETIME        DEFAULT NULL COMMENT '三方领取时间',
+    external_completed_at DATETIME        DEFAULT NULL COMMENT '三方检测完成时间',
     call_type             VARCHAR(20)     NOT NULL DEFAULT 'RISK_SCAN' COMMENT 'RISK_SCAN或CASE_LOOKUP',
     image_description     VARCHAR(255)    DEFAULT NULL COMMENT '英文图片解析',
     raw_ai_response       MEDIUMTEXT      DEFAULT NULL COMMENT 'Gemini原始文本响应',
@@ -161,7 +165,8 @@ CREATE TABLE IF NOT EXISTS infringement_scan_item (
     KEY idx_infringement_item_task (task_id, id),
     KEY idx_infringement_item_pending (status, id),
     KEY idx_infringement_item_job (provider_job_id, status),
-    KEY idx_infringement_item_image (image_id, id)
+    KEY idx_infringement_item_image (image_id, id),
+    KEY idx_infringement_external_claim (external_completed_at, status, external_claimed_at, id)
 ) ENGINE=InnoDB COMMENT='图片侵权检测明细';
 
 CREATE TABLE IF NOT EXISTS infringement_call_log (

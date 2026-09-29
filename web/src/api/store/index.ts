@@ -42,7 +42,7 @@ export type SaveTemplateGroup = Omit<StoreTemplateGroup, 'id' | 'createTime' | '
 };
 export interface StoreRenderBatch {
   id: StoreId;
-  status: 'CREATED' | 'RUNNING' | 'STOPPING' | 'STOPPED' | 'COMPLETED' | 'PARTIAL_FAILURE' | 'FAILED' | 'DELETED';
+  status: 'CREATED' | 'RUNNING' | 'STOPPING' | 'STOPPED' | 'COMPLETED' | 'PARTIAL_FAILURE' | 'FAILED' | 'DELETED' | 'EXPIRED';
   categoryId: StoreId;
   templateGroupId: StoreId;
   shopId?: StoreId;

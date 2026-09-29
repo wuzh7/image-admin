@@ -547,7 +547,7 @@ public class StoreWorkflowService {
     }
     @Transactional public StoreDtos.RenderBatchView retryBatch(long id) {
         StoreRenderBatch batch = requireBatch(id);
-        if (Set.of("STOPPING", "STOPPED", "DELETED").contains(batch.getStatus())) throw new ServiceException("已停止或删除的批次不能重试");
+        if (Set.of("STOPPING", "STOPPED", "DELETED", "EXPIRED").contains(batch.getStatus())) throw new ServiceException("已停止或清理的批次不能重试");
         int retried = itemMapper.update(null, Wrappers.<StoreRenderItem>lambdaUpdate().eq(StoreRenderItem::getBatchId, id).eq(StoreRenderItem::getStatus, "FAILED")
             .set(StoreRenderItem::getStatus, "PENDING").set(StoreRenderItem::getErrorMessage, null).set(StoreRenderItem::getCompletedAt, null));
         if (retried == 0) return batchView(batch);
@@ -558,7 +558,7 @@ public class StoreWorkflowService {
     public StoreDtos.PageView<StoreRenderItem> results(Long batchId, int pageNum, int pageSize) { var q=Wrappers.<StoreRenderItem>lambdaQuery().eq(StoreRenderItem::getOwnerId, owner()).ne(StoreRenderItem::getStatus, "RESULT_DELETED"); if(batchId!=null) q.eq(StoreRenderItem::getBatchId,batchId); Page<StoreRenderItem> page=itemMapper.selectPage(new Page<>(Math.max(1,pageNum),Math.max(1,Math.min(100,pageSize))), q.orderByDesc(StoreRenderItem::getId)); page.getRecords().stream().filter(item -> item.getResultOssKey() != null).forEach(item -> item.setResultUrl(storeStorage.url(item.getResultOssKey(), "image/*"))); return new StoreDtos.PageView<>(page.getRecords(),page.getTotal()); }
 
     public StoreDtos.PageView<StoreDtos.RenderGroupView> resultGroups(long batchId, int pageNum, int pageSize) {
-        if ("DELETED".equals(requireBatch(batchId).getStatus())) throw new ServiceException("渲染结果已删除");
+        if (Set.of("DELETED", "EXPIRED").contains(requireBatch(batchId).getStatus())) throw new ServiceException("渲染结果已清理");
         int size = Math.max(1, Math.min(50, pageSize));
         long total = jdbcTemplate.queryForObject("SELECT COUNT(DISTINCT image_id) FROM store_render_item WHERE batch_id=?", Long.class, batchId);
         List<Long> imageIds = jdbcTemplate.queryForList("SELECT image_id FROM store_render_item WHERE batch_id=? GROUP BY image_id ORDER BY MIN(id) DESC LIMIT ? OFFSET ?",
@@ -596,7 +596,7 @@ public class StoreWorkflowService {
     }
     public List<StoreDtos.ArchiveFile> archiveFiles(long batchId, String nameMode) {
         String status = requireBatch(batchId).getStatus();
-        if ("DELETED".equals(status)) throw new ServiceException("渲染结果已删除");
+        if (Set.of("DELETED", "EXPIRED").contains(status)) throw new ServiceException("渲染结果已清理");
         if (!Set.of("COMPLETED", "PARTIAL_FAILURE", "STOPPED").contains(status)) throw new ServiceException("请等待渲染批次结束后下载");
         if (!Set.of("ORIGINAL_NAME", "ENGLISH_KEYWORDS").contains(nameMode)) throw new ServiceException("图片命名方式无效");
         List<StoreRenderItem> items = itemMapper.selectList(Wrappers.<StoreRenderItem>lambdaQuery().eq(StoreRenderItem::getBatchId, batchId).in(StoreRenderItem::getStatus, "SUCCEEDED", "SKIPPED"));
@@ -667,7 +667,7 @@ public class StoreWorkflowService {
         StoreRenderBatch batch = requireBatch(batchId);
         if (!Set.of("COMPLETED", "PARTIAL_FAILURE", "FAILED", "STOPPED").contains(batch.getStatus()))
             throw new ServiceException("请等待当前批次结束后再删除结果");
-        markResultsDeleted(batch);
+        markResultsDeleted(batch, "DELETED");
     }
 
     public List<Long> expiredDownloadedBatchIds() {
@@ -689,15 +689,15 @@ public class StoreWorkflowService {
             "(CASE WHEN i.status='SKIPPED' THEN b.create_time ELSE i.completed_at END IS NULL OR " +
             "CASE WHEN i.status='SKIPPED' THEN b.create_time ELSE i.completed_at END>?)))",
             Long.class, batchId, LocalDateTime.now().minusDays(3));
-        if (recent != null && recent == 0) markResultsDeleted(batch);
+        if (recent != null && recent == 0) markResultsDeleted(batch, "EXPIRED");
     }
 
-    private void markResultsDeleted(StoreRenderBatch batch) {
+    private void markResultsDeleted(StoreRenderBatch batch, String status) {
         storeStorage.deleteRenderArchives(batch.getOwnerId(), batch.getId());
         itemMapper.update(null, Wrappers.<StoreRenderItem>lambdaUpdate().eq(StoreRenderItem::getBatchId, batch.getId())
             .in(StoreRenderItem::getStatus, "SUCCEEDED", "SKIPPED")
             .set(StoreRenderItem::getStatus, "RESULT_DELETED").set(StoreRenderItem::getResultUrl, null));
-        batch.setStatus("DELETED");
+        batch.setStatus(status);
         batchMapper.updateById(batch);
     }
 

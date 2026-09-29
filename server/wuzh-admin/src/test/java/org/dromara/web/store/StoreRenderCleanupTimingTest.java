@@ -31,7 +31,7 @@ import static org.mockito.Mockito.*;
 
 @Tag("local")
 class StoreRenderCleanupTimingTest {
-    @Test void downloadedResultsRemainUntilThreeDayBoundaryThenDisappear() throws Exception {
+    @Test void downloadedResultsRemainUntilThreeDayBoundaryThenShowExpiredStatus() throws Exception {
         assumeTrue("1".equals(System.getenv("RUN_CLEANUP_TDD")));
         String user = System.getenv("MYSQL_USER");
         String password = System.getenv("MYSQL_PASSWORD");
@@ -84,9 +84,9 @@ class StoreRenderCleanupTimingTest {
                     assertEquals("COMPLETED", jdbc.queryForObject("SELECT status FROM store_render_batch WHERE id=1", String.class));
                     verify(storage, never()).deleteRenderArchives(anyLong(), anyLong());
                     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(32);
-                    while (System.nanoTime() < deadline && !"DELETED".equals(jdbc.queryForObject("SELECT status FROM store_render_batch WHERE id=1", String.class)))
+                    while (System.nanoTime() < deadline && !"EXPIRED".equals(jdbc.queryForObject("SELECT status FROM store_render_batch WHERE id=1", String.class)))
                         Thread.sleep(1000);
-                    assertEquals("DELETED", jdbc.queryForObject("SELECT status FROM store_render_batch WHERE id=1", String.class));
+                    assertEquals("EXPIRED", jdbc.queryForObject("SELECT status FROM store_render_batch WHERE id=1", String.class));
                     verify(storage).deleteRenderArchives(42L, 1L);
                     verify(storage).delete(key);
                     assertNull(jdbc.queryForObject("SELECT result_oss_key FROM store_render_item WHERE id=2", String.class));

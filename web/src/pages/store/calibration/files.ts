@@ -6,8 +6,9 @@ let prepared: { id: string; backgroundKey: string; maskKey?: string; files: File
 export async function loadCalibrationFiles(record: StoreCalibration, signal?: AbortSignal): Promise<Files> {
   const load = async (key: string, url: string) => {
     const extension = key.split('.').pop() || 'png';
+    // 列表 <img> 的缓存响应可能没有 CORS 头，编辑时需重新读取。
     const blob = url.startsWith('https://')
-      ? await fetch(url, { signal }).then(response => {
+      ? await fetch(url, { signal, cache: 'reload' }).then(response => {
           if (!response.ok) throw new Error('背景模板加载失败');
           return response.blob();
         })

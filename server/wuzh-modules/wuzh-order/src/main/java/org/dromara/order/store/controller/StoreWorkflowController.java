@@ -127,7 +127,7 @@ public class StoreWorkflowController {
     }
     @SaCheckPermission("store:render:download")
     @GetMapping("/render-batches/{id}/download-url") public R<String> downloadUrl(@PathVariable long id, @RequestParam(defaultValue="ORIGINAL_NAME") String nameMode) {
-        return R.ok(service.archiveUrl(id, nameMode).orElse(""));
+        return R.data(service.archiveUrl(id, nameMode).orElse(""));
     }
     @SaCheckPermission("store:render:download")
     @PostMapping("/render-batches/{id}/download-confirmed") public R<Void> confirmDownload(@PathVariable long id) { service.confirmDownload(id); return R.ok(); }

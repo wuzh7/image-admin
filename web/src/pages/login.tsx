@@ -1,4 +1,4 @@
-import { AppstoreOutlined, BarChartOutlined, GlobalOutlined, LockOutlined, PictureOutlined, SafetyOutlined, ShopOutlined, UserOutlined, VideoCameraOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, BarChartOutlined, CheckCircleFilled, GlobalOutlined, LockOutlined, PictureOutlined, PlayCircleFilled, RocketOutlined, SafetyCertificateOutlined, SafetyOutlined, ShopOutlined, ThunderboltFilled, UserOutlined, VideoCameraOutlined } from '@ant-design/icons';
 import { LoginForm, ProFormCheckbox, ProFormText } from '@ant-design/pro-components';
 import { history, useSearchParams } from '@umijs/max';
 import { ConfigProvider, message } from 'antd';
@@ -11,6 +11,7 @@ import { useTagsViewStore } from '@/stores/tagsViewStore';
 import { getToken, removeToken, setToken } from '@/utils/auth';
 import { appEnv } from '@/utils/env';
 import haiyitongLogo from '@/assets/images/haiyitong-logo.png';
+import loginAiCube from '@/assets/images/login-ai-cube.png';
 
 const DEFAULT_LOGIN_REDIRECT = '/index';
 
@@ -93,56 +94,69 @@ export default function Login() {
     <ConfigProvider locale={zhCN}>
       <div className="login-page">
         <section className="login-showcase">
-          <div className="login-showcase-grid" aria-hidden="true" />
-          <div className="login-showcase-glow login-showcase-glow-one" aria-hidden="true" />
-          <div className="login-showcase-glow login-showcase-glow-two" aria-hidden="true" />
-          <svg className="login-showcase-lines" viewBox="0 0 900 760" aria-hidden="true">
-            <defs>
-              <linearGradient id="login-line-blue" x1="0" y1="0" x2="1" y2="1">
-                <stop stopColor="#2dd4ff" stopOpacity=".1" />
-                <stop offset=".5" stopColor="#63a7ff" stopOpacity=".9" />
-                <stop offset="1" stopColor="#8b5cf6" stopOpacity=".05" />
-              </linearGradient>
-            </defs>
-            <path d="M-80 620C160 350 260 690 430 430S690 170 980 250" stroke="url(#login-line-blue)" strokeWidth="2" fill="none" />
-            <path d="M20 750C180 520 340 520 460 620s220-40 460-300" stroke="url(#login-line-blue)" strokeWidth="1.5" fill="none" opacity=".65" />
-            <circle cx="430" cy="430" r="8" fill="#5ee7ff" /><circle cx="430" cy="430" r="25" stroke="#5ee7ff" opacity=".25" fill="none" />
-            <circle cx="735" cy="270" r="5" fill="#8b5cf6" /><circle cx="225" cy="610" r="5" fill="#5ee7ff" />
-          </svg>
+          <div className="login-showcase-horizon" aria-hidden="true" />
           <header className="login-showcase-header">
             <div className="login-logo-wrap">
               <img src={haiyitongLogo} alt="海益通 HAI YI TONG" />
             </div>
-            <span>GLOBAL E-COMMERCE<br />SOLUTIONS</span>
+            <div className="login-showcase-tagline">
+              <strong>让全球生意 · 更简单</strong>
+              <span>MAKE GLOBAL BUSINESS EASIER</span>
+            </div>
           </header>
           <div className="login-showcase-copy">
-            <p className="login-showcase-kicker">CROSS-BORDER E-COMMERCE</p>
-            <h1>让全球生意<br /><em>更简单</em></h1>
-            <p className="login-showcase-desc">从图库管理到商品增长，海益通提供一站式智能运营服务。</p>
+            <h1><span>AI</span> 驱动<br />助力跨境电商高效增长</h1>
+            <p className="login-showcase-lead">设计走向商品，经营回到数据</p>
+            <p className="login-showcase-desc">从素材到上架，一站式解决方案</p>
+            <div className="login-showcase-rule" />
             <div className="login-showcase-services">
-              <span><PictureOutlined />图库管理</span>
-              <span><BarChartOutlined />图片去重</span>
-              <span><SafetyOutlined />侵权检测</span>
-              <span><ShopOutlined />店铺数据</span>
-              <span><AppstoreOutlined />商品渲染</span>
-              <span><VideoCameraOutlined />图片 · 视频生成</span>
+              <span className="service-image"><PictureOutlined />图片生成</span>
+              <span className="service-safety"><SafetyCertificateOutlined />侵权检测</span>
+              <span className="service-render"><AppstoreOutlined />商品渲染</span>
+              <span className="service-video"><VideoCameraOutlined />视频生成</span>
             </div>
+            <p className="login-showcase-motto">更智能 · 更高效 · 更专业</p>
           </div>
-          <div className="login-showcase-orb" aria-hidden="true">
+          <div className="login-hero-visual" aria-hidden="true">
+            <img src={loginAiCube} alt="" />
+            <div className="login-hero-note note-image"><PictureOutlined /><strong>图片生成</strong><small>创意变现</small></div>
+            <div className="login-hero-note note-video"><PlayCircleFilled /><strong>视频生成</strong><small>让产品更生动</small></div>
+            <div className="login-hero-note note-safety"><SafetyCertificateOutlined /><strong>侵权检测</strong><small>降低风险</small></div>
+            <div className="login-hero-note note-data"><BarChartOutlined /><strong>店铺数据</strong><small>数据驱动增长</small></div>
+          </div>
+          <div className="login-showcase-benefits">
+            <div><i className="benefit-blue"><ThunderboltFilled /></i><span><strong>高效管理</strong><small>海量素材，智能整理</small></span></div>
+            <div><i className="benefit-green"><CheckCircleFilled /></i><span><strong>安全合规</strong><small>侵权检测，降低风险</small></span></div>
+            <div><i className="benefit-purple"><AppstoreOutlined /></i><span><strong>创意无限</strong><small>图片 / 视频生成，提升转化</small></span></div>
+          </div>
+          <div className="login-showcase-one-stop">
+            <strong>一站式服务</strong>
+            <span>图片管理 · AI生成 · 数据驱动</span>
           </div>
           <footer className="login-showcase-footer">
-            <span>图库管理</span><i /> <span>店铺增长</span>
+            <span>HAI YI TONG</span>
+            <span>GLOBAL E-COMMERCE SOLUTIONS</span>
           </footer>
         </section>
         <section className="login-panel">
           <div className="login-panel-bg" aria-hidden="true"><span /><span /><span /></div>
+          <div className="login-panel-topline">GLOBAL<br />E-COMMERCE<br />SOLUTIONS</div>
           <img className="login-mobile-logo" src={haiyitongLogo} alt="海益通 HAI YI TONG" />
+          <div className="login-panel-art" aria-hidden="true">
+            <div className="login-art-screen">
+              <div className="login-art-chart"><i /><i /><i /><i /><i /></div>
+            </div>
+            <div className="login-art-keyboard" />
+            <span className="login-art-icon art-picture"><PictureOutlined /></span>
+            <span className="login-art-icon art-shop"><ShopOutlined /></span>
+            <span className="login-art-icon art-global"><GlobalOutlined /></span>
+          </div>
           <div className="login-panel-inner">
-            <div className="login-panel-kicker">HAI YI TONG · AI BUSINESS PLATFORM</div>
             <LoginForm
               title="欢迎登录海益通"
               subTitle={authText.formSubTitle}
               initialValues={initialValues}
+              submitter={{ searchConfig: { submitText: '登 录  →' }, submitButtonProps: { size: 'large', block: true } }}
               onFinish={async values => {
                 try {
                   if (values.rememberMe) {
@@ -204,13 +218,14 @@ export default function Login() {
                 <ProFormCheckbox name="rememberMe">{authText.rememberMe}</ProFormCheckbox>
               </div>
             </LoginForm>
+            <div className="login-panel-divider"><span>安全 · 高效 · 全球化</span></div>
             <div className="login-panel-security">
+              <span><SafetyCertificateOutlined />数据安全</span>
+              <span><RocketOutlined />高效稳定</span>
               <span><GlobalOutlined />全球服务</span>
-              <span><SafetyOutlined />数据安全</span>
-              <span><AppstoreOutlined />高效运营</span>
             </div>
           </div>
-          <p className="login-panel-caption">让每一张图片，都更接近成交</p>
+          <p className="login-panel-caption"><strong>用 AI 创造更多可能</strong><span>MORE POSSIBILITIES WITH AI</span></p>
         </section>
       </div>
     </ConfigProvider>

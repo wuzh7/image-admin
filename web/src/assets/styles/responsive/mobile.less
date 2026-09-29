@@ -17,44 +17,43 @@
   }
 
   .login-page {
-    display: flex;
-    padding: 24px 16px;
-    background: radial-gradient(circle at 85% 10%, #d6eaff, transparent 45%), #eef7ff;
+    display: block;
+    background: #eef7ff;
   }
 
   .login-panel {
-    flex: 1;
-    min-height: 0;
-    padding: 0;
-    background: transparent;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 26px 18px 38px;
     box-shadow: none;
+  }
+
+  .login-panel-topline,
+  .login-panel-art {
+    display: none;
   }
 
   .login-mobile-logo {
     display: block;
-    width: 150px;
-    height: 92px;
+    width: 160px;
+    height: 105px;
+    margin-bottom: 16px;
     object-fit: cover;
     mix-blend-mode: multiply;
   }
 
   .login-panel-inner {
-    padding: 28px 24px 24px;
-    border-radius: 20px;
-  }
-
-  .login-panel-kicker {
-    margin-bottom: 14px;
+    max-width: 410px;
+    margin-top: 0;
+    padding: 27px 24px 25px;
   }
 
   .login-panel-security {
-    margin-top: 14px;
-    padding-top: 13px;
+    margin-top: 16px;
   }
 
   .login-panel-caption {
-    position: static;
-    margin-top: 18px;
+    margin-top: 22px;
   }
 
   .tree-table-page {

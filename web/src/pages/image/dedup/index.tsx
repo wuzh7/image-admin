@@ -59,6 +59,7 @@ import {
   prepareImageReplacement,
   replaceApprovedImage,
   listImageReplacementLogs,
+  resetImageData,
   rescanImageInfringement,
   retryImageBatch,
   startImageBatch,
@@ -1314,7 +1315,22 @@ export default function ImageDedupPage() {
   const libraryPanel = (
     <ProCard
       title="图片资产库"
-      extra={<Space><Typography.Text type="secondary">共 {libraryTotal} 张</Typography.Text><Button icon={<DownloadOutlined />}
+      extra={<Space><Typography.Text type="secondary">共 {libraryTotal} 张</Typography.Text>
+        {canRemove && <Button danger onClick={() => Modal.confirm({
+          title: '一键清空图库？',
+          content: '将永久删除所有图片、批次、侵权扫描记录、关联文件和向量索引；不受当前筛选条件限制。图片类目及其他系统数据会保留。',
+          okText: '确认清空',
+          okButtonProps: { danger: true },
+          onOk: async () => {
+            const response = await resetImageData();
+            localStorage.removeItem(currentBatchKey);
+            setSelectedLibraryIds([]);
+            setDetailImage(undefined);
+            message.success(`图库已清空：${response.data.assets} 张图片、${response.data.batches} 个批次`);
+            await Promise.all([loadHealth(), loadAspectRatios(), loadLibrary(1, libraryPageSize, keyword, libraryCategoryId, libraryBatchId, libraryAspectRatio)]);
+          }
+        })}>一键清空</Button>}
+        <Button icon={<DownloadOutlined />}
         disabled={!libraryTotal}
         onClick={() => void exportFile('/images/export', '正式图库图片.zip', {
           ...libraryFiltersRef.current,

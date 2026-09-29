@@ -7,6 +7,7 @@ import StoreImage from '../StoreImage';
 import { useUserStore } from '@/stores/userStore';
 import { hasPermi } from '@/utils/permission';
 import { userErrorMessage } from '@/api/request';
+import { loadCalibrationFiles, rememberCalibrationFiles } from '../calibration/files';
 
 type Scene = { id?: StoreId; name: string; categoryId: StoreId; ossKey: string; imageUrl?: string; width: number; height: number; config: string; maskOssKey?: string; templateConfigJson?: string };
 type Editor = { group?: StoreTemplateGroup; name: string; categoryId?: StoreId; scenes: Scene[] };
@@ -30,8 +31,10 @@ export default function TemplateGroupPage() {
   const [editor, setEditor] = useState<Editor>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [openingId, setOpeningId] = useState<string>();
   const [error, setError] = useState<unknown>();
   const openedInitial = useRef(false);
+  const opening = useRef<AbortController | undefined>(undefined);
   const load = async () => {
     setLoading(true);
     try {
@@ -47,7 +50,23 @@ export default function TemplateGroupPage() {
     return published ? fromCalibration(published) : { name: template.name, categoryId: group.categoryId, ossKey: template.ossKey, imageUrl: template.imageUrl,
       width: template.width, height: template.height, config: group.calibrationConfigJson, maskOssKey: group.maskOssKey, templateConfigJson: template.templateConfigJson };
   }) });
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); return () => opening.current?.abort(); }, []);
+  const openCalibration = async (item: StoreCalibration) => {
+    if (opening.current) return;
+    const controller = new AbortController();
+    opening.current = controller;
+    setOpeningId(String(item.id));
+    try {
+      const files = await loadCalibrationFiles(item, controller.signal);
+      if (controller.signal.aborted) return;
+      rememberCalibrationFiles(item, files);
+      history.push(`/store-management/calibration?calibrationId=${item.id}`);
+    } catch (failure) {
+      if (!controller.signal.aborted) message.error(userErrorMessage(failure));
+    } finally {
+      if (opening.current === controller) { opening.current = undefined; setOpeningId(undefined); }
+    }
+  };
   useEffect(() => {
     if (loading || openedInitial.current) return;
     openedInitial.current = true;
@@ -104,7 +123,7 @@ export default function TemplateGroupPage() {
           <Typography.Text strong>{item.name}</Typography.Text><br />
           <Typography.Text type="secondary">{categories.find(c => same(c.id, item.categoryId))?.name || '商品类目'} · 已加入 {groups.filter(g => g.status !== 'DELETED' && g.templates.some(t => t.ossKey === item.backgroundOssKey)).length} 个组</Typography.Text><br />
           <Space size="small" style={{ marginTop: 8 }}>
-            {canEditCalibration && <Button size="small" onClick={() => history.push(`/store-management/calibration?calibrationId=${item.id}`)}>编辑</Button>}
+            {canEditCalibration && <Button size="small" loading={openingId === String(item.id)} disabled={openingId != null && openingId !== String(item.id)} onClick={() => void openCalibration(item)}>编辑</Button>}
             {canRemoveCalibration && <Popconfirm title="删除这张背景？" description="会同步从模板组移除，历史渲染结果保留。" onConfirm={() => void removeBackground(item)}><Button size="small" danger>删除</Button></Popconfirm>}
           </Space>
         </Card>)}
@@ -118,7 +137,7 @@ export default function TemplateGroupPage() {
           <div style={{ display: 'flex', gap: 8, overflowX: 'auto', margin: '12px 0' }}>{group.templates.map((template, index) => {
             const published = backgrounds.find(item => item.backgroundOssKey === template.ossKey);
             return <div key={String(template.id)} style={{ flex: '0 0 88px' }}><StoreImage url={template.imageUrl} alt={template.name} style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 4 }} /><Typography.Text type="secondary" style={{ fontSize: 11 }}>{index === 0 ? '主图' : `附图${index}`}</Typography.Text>
-              {published && <div>{canEditCalibration && <Button type="link" size="small" style={{ padding: 0 }} onClick={() => history.push(`/store-management/calibration?calibrationId=${published.id}`)}>编辑</Button>}{canRemoveCalibration && <Popconfirm title="删除这张背景？" description="会同步从所有模板组移除，历史渲染结果保留。" onConfirm={() => void removeBackground(published)}><Button type="link" size="small" danger style={{ padding: 0 }}>删除</Button></Popconfirm>}</div>}
+              {published && <div>{canEditCalibration && <Button type="link" size="small" style={{ padding: 0 }} loading={openingId === String(published.id)} disabled={openingId != null && openingId !== String(published.id)} onClick={() => void openCalibration(published)}>编辑</Button>}{canRemoveCalibration && <Popconfirm title="删除这张背景？" description="会同步从所有模板组移除，历史渲染结果保留。" onConfirm={() => void removeBackground(published)}><Button type="link" size="small" danger style={{ padding: 0 }}>删除</Button></Popconfirm>}</div>}
             </div>;
           })}</div>
           <Space wrap>

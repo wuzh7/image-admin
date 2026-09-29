@@ -92,7 +92,7 @@ export const listShops = () => request<R<StoreShop[]>>({ url: '/store/shops', me
 export const listCalibrations = () => request<R<StoreCalibration[]>>({ url: '/store/calibrations', method: 'get' });
 export const saveCalibration = (data: SaveCalibration, id?: StoreId) => request<R<StoreCalibration>>({ url: id == null ? '/store/calibrations' : `/store/calibrations/${id}`, method: id == null ? 'post' : 'patch', data, headers: { repeatSubmit: false } });
 export const deleteCalibration = (id: StoreId) => request<R>({ url: `/store/calibrations/${id}`, method: 'delete' });
-export const getStoreFile = (key: string) => request<Blob>({ url: '/store/files', method: 'get', params: { key }, responseType: 'blob' });
+export const getStoreFile = (key: string, signal?: AbortSignal) => request<Blob>({ url: '/store/files', method: 'get', params: { key }, responseType: 'blob', signal });
 export const createShop = (data: CreateStoreShop) => request<R<StoreShop>>({ url: '/store/shops', method: 'post', data, headers: { repeatSubmit: false } });
 export const listTemplateGroups = (categoryId?: StoreId, includeDeleted = false) => request<R<StoreTemplateGroup[]>>({ url: '/store/template-groups', method: 'get', params: { categoryId, includeDeleted } });
 export const getTemplateGroup = (id: StoreId) => request<R<StoreTemplateGroup>>({ url: `/store/template-groups/${id}`, method: 'get' });

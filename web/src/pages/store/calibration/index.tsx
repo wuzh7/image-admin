@@ -2,13 +2,14 @@ import { message, Modal, theme } from 'antd';
 import { useEffect, useRef, type CSSProperties } from 'react';
 import { getImageCategoryOptions } from '@/api/image';
 import {
-  getStoreFile, listCalibrations, saveCalibration, uploadTemplateImage,
+  listCalibrations, saveCalibration, uploadTemplateImage,
   type StoreId,
 } from '@/api/store';
 import { StorePage } from '../common';
 import { useUserStore } from '@/stores/userStore';
 import { hasPermi } from '@/utils/permission';
 import { userErrorMessage } from '@/api/request';
+import { loadCalibrationFiles, takeCalibrationFiles } from './files';
 // @ts-ignore The demo editor is shared JavaScript and has no TypeScript declarations.
 import { CalibrationManager } from './editor/manager.mjs';
 import './editor/styles.css';
@@ -92,20 +93,14 @@ export default function CalibrationPage() {
       if (calibrationId) {
         const record = (await listCalibrations()).data?.find(item => String(item.id) === calibrationId && item.status === 'PUBLISHED');
         if (!record) throw new Error('已发布背景不存在');
-        const file = async (key: string) => {
-          const extension = key.split('.').pop() || 'png';
-          const blob = await getStoreFile(key);
-          return new File([blob], `background.${extension}`, { type: `image/${extension === 'jpg' ? 'jpeg' : extension}` });
-        };
-        const background = await file(record.backgroundOssKey);
-        const mask = record.maskOssKey ? await file(record.maskOssKey) : undefined;
+        const { background, mask } = takeCalibrationFiles(record) || await loadCalibrationFiles(record);
         await editor.loadPublished(record, background, mask);
         currentRecord = { id: String(record.id), backgroundKey: record.backgroundOssKey, maskKey: record.maskOssKey };
         fileCache.set(record.backgroundOssKey, background);
         if (record.maskOssKey && mask) fileCache.set(record.maskOssKey, mask);
       } else editor.reset();
       render();
-    }).catch(error => { if (mounted) message.error(userErrorMessage(error)); });
+    }).catch(error => { if (mounted) { root.textContent = '背景模板加载失败，请返回模板组重试'; message.error(userErrorMessage(error)); } });
     return () => {
       mounted = false; cancelAnimationFrame(frame);
       root.removeEventListener('click', click); root.removeEventListener('change', change);

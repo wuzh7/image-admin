@@ -9,7 +9,6 @@
 | `image-admin-mysql` | 系统表、批次、图片元数据、原始向量 | `127.0.0.1:3306` | `mysql-data` 命名卷 |
 | `image-admin-redis` | 系统登录、Token 和缓存 | `127.0.0.1:6379` | `redis-data` 命名卷 |
 | `image-admin-qdrant` | SSCD 向量召回 | `http://127.0.0.1:6333` | `qdrant-data` 命名卷 |
-| `image-admin-ai-gateway` | 图片侵权检测的 AI 网关 | `http://127.0.0.1:18080` | 不保存业务数据 |
 | `image-admin-backend` | Spring Boot、DJL、图片任务 | `http://127.0.0.1:8080` | 图片使用 `image-files` 命名卷 |
 | `image-admin-render-worker` | 店铺商品详情图渲染 | 仅容器内网访问 | 成品由后端保存 |
 | `image-admin-frontend` | React 构建产物和 Nginx 反向代理 | `http://127.0.0.1:8088` | 不保存业务数据 |
@@ -23,7 +22,7 @@ MySQL + Redis + Qdrant（并行启动并等待健康）
   ↓
 临时执行 image.sql 数据库迁移后自动删除
   ↓
-Java 后端与 AI 网关（校验模型、创建 Qdrant 集合、执行模型预热）
+Java 后端（校验模型、创建 Qdrant 集合、执行模型预热；直接调用中转站）
   ↓
 渲染 Worker + React/Nginx 前端
 ```

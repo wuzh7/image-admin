@@ -56,9 +56,10 @@ public class ImageProperties {
 
     @Data
     public static class Infringement {
-        private String gatewayUrl = "http://ai-gateway:18080";
-        private String gatewayToken = "local-gateway-token";
-        private int requestTimeoutSeconds = 960;
+        private String relayBaseUrl = "https://api.openlux.ai";
+        private String relayApiKey;
+        private String promptFile = "/app/config/image_analysis_prompt.txt";
+        private int requestTimeoutSeconds = 900;
         private int relayWorkers = 10;
         private String externalApiKey;
         private int externalLeaseMinutes = 1440;

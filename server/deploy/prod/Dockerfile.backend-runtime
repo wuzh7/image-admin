@@ -16,6 +16,7 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=build --chown=app:app /workspace/wuzh-admin/target/wuzh-admin.jar /app/app.jar
+COPY --chown=app:app deploy/image_analysis_prompt.txt /app/config/image_analysis_prompt.txt
 
 ENV TZ=Asia/Shanghai \
     LANG=C.UTF-8 \

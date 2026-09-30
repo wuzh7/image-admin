@@ -24,17 +24,17 @@ public class InfringementWorker {
     private final InfringementScanItemMapper items;
     private final ImageAssetMapper assets;
     private final ImageStorage storage;
-    private final GeminiGatewayClient gateway;
+    private final RelayImageClient relay;
     private final InfringementCallLogger callLogger;
     private final ThreadPoolTaskExecutor imageRelayInfringementExecutor;
 
     public InfringementWorker(InfringementScanItemMapper items, ImageAssetMapper assets, ImageStorage storage,
-                              GeminiGatewayClient gateway, InfringementCallLogger callLogger,
+                              RelayImageClient relay, InfringementCallLogger callLogger,
                               @Qualifier("imageRelayInfringementExecutor") ThreadPoolTaskExecutor relayExecutor) {
         this.items = items;
         this.assets = assets;
         this.storage = storage;
-        this.gateway = gateway;
+        this.relay = relay;
         this.callLogger = callLogger;
         this.imageRelayInfringementExecutor = relayExecutor;
     }
@@ -92,28 +92,27 @@ public class InfringementWorker {
             return;
         }
         String requestId = UUID.randomUUID().toString();
-        GeminiGatewayClient.GatewayResponse result;
+        RelayImageClient.AnalysisResponse result;
         LocalDateTime callStartedAt = LocalDateTime.now();
         try {
-            result = gateway.analyze(requestId, bytes,
-                image.getContentType(), image.getOriginalName(), "RELAY");
-        } catch (GeminiGatewayClient.GatewayException exception) {
+            result = relay.analyze(bytes, image.getContentType());
+        } catch (RelayImageClient.RelayException exception) {
             callLogger.failure(item, requestId, exception.code(), exception.getMessage(), exception.rawAiResponse(),
                 exception.usage(), exception.rawProviderResponse(), callStartedAt, LocalDateTime.now());
             fail(item, requestId, exception.code(), exception.getMessage());
             return;
         } catch (RuntimeException exception) {
-            callLogger.failure(item, requestId, "GATEWAY_RESPONSE_ERROR", "AI Gateway 响应异常或超时",
+            callLogger.failure(item, requestId, "OPENLUX_RESPONSE_ERROR", "中转站响应异常或超时",
                 callStartedAt, LocalDateTime.now());
-            fail(item, requestId, "GATEWAY_RESPONSE_ERROR", "AI Gateway 响应异常或超时");
-            log.warn("侵权检测 Gateway 响应失败 itemId={}", item.getId(), exception);
+            fail(item, requestId, "OPENLUX_RESPONSE_ERROR", "中转站响应异常或超时");
+            log.warn("图片分析中转站响应失败 itemId={}", item.getId(), exception);
             return;
         }
         if (!"relay_image_analysis_v1".equals(result.promptVersion()) || result.imageDescription() == null
-            || result.imageDescription().isBlank() || result.riskLevel() != null) {
-            callLogger.failure(item, requestId, "INVALID_ANALYSIS_RESULT", "Gateway 图片分析结果不可识别",
+            || result.imageDescription().isBlank()) {
+            callLogger.failure(item, requestId, "INVALID_ANALYSIS_RESULT", "图片分析结果不可识别",
                 result.rawAiResponse(), result.usage(), result.rawProviderResponse(), callStartedAt, LocalDateTime.now());
-            fail(item, requestId, "INVALID_ANALYSIS_RESULT", "Gateway 图片分析结果不可识别");
+            fail(item, requestId, "INVALID_ANALYSIS_RESULT", "图片分析结果不可识别");
             return;
         }
         callLogger.success(item, requestId, result, callStartedAt, LocalDateTime.now());

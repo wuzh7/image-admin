@@ -80,6 +80,8 @@ docker info >/dev/null
 docker compose --env-file .env -f compose.yml config --images | grep -Fx 'image-admin-backend:latest' >/dev/null
 docker compose --env-file .env -f compose.yml config --images | grep -Fx 'image-admin-frontend:latest' >/dev/null
 docker compose --env-file .env -f compose.yml config --images | grep -Fx 'image-admin-render-worker:latest' >/dev/null
+# 切换直连前必须先更新主服务器 Compose 和密钥，避免新后端启动后无法分析图片。
+docker compose --env-file .env -f compose.yml config | grep -q 'OPENLUX_API_KEY:' || { echo 'Configure direct relay on the main ECS before publishing.' >&2; exit 1; }
 backend_container=$(docker compose --env-file .env -f compose.yml ps -q backend)
 mysql_container=$(docker exec "$backend_container" printenv MYSQL_HOST)
 database=$(docker exec "$backend_container" printenv MYSQL_DATABASE)

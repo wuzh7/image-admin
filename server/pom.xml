@@ -315,8 +315,6 @@
         <module>wuzh-modules</module>
         <!-- api模块 -->
         <module>wuzh-api</module>
-        <!-- 独立 Gemini 网关 -->
-        <module>wuzh-ai-gateway</module>
     </modules>
     <packaging>pom</packaging>
 

@@ -32,9 +32,9 @@ class InfringementWorkerTest {
     private final InfringementScanItemMapper items = mock(InfringementScanItemMapper.class);
     private final ImageAssetMapper assets = mock(ImageAssetMapper.class);
     private final ImageStorage storage = mock(ImageStorage.class);
-    private final GeminiGatewayClient gateway = mock(GeminiGatewayClient.class);
+    private final RelayImageClient relay = mock(RelayImageClient.class);
     private final InfringementCallLogger callLogger = mock(InfringementCallLogger.class);
-    private final InfringementWorker worker = new InfringementWorker(items, assets, storage, gateway,
+    private final InfringementWorker worker = new InfringementWorker(items, assets, storage, relay,
         callLogger, mock(ThreadPoolTaskExecutor.class));
 
     @BeforeEach
@@ -48,9 +48,9 @@ class InfringementWorkerTest {
         InfringementScanItem item = item();
         when(assets.selectById(7L)).thenReturn(image());
         when(storage.open("review/a.png")).thenReturn(new ImageStorage.LocalFile(file, false));
-        when(gateway.analyze(any(), any(), any(), any(), any())).thenReturn(
-            new GeminiGatewayClient.GatewayResponse("request", null, null, "A red flower.", "raw",
-                "doubao-seed-2-0-lite-260428", "relay_image_analysis_v1", false, 0));
+        when(relay.analyze(any(), any())).thenReturn(
+            new RelayImageClient.AnalysisResponse("A red flower.", "raw",
+                "doubao-seed-2-0-lite-260428", "relay_image_analysis_v1", null, null));
         final Collection<?>[] values = new Collection<?>[1];
         final String[] columns = new String[1];
         when(items.update(isNull(), any())).thenAnswer(call -> {
@@ -69,17 +69,16 @@ class InfringementWorkerTest {
         assertFalse(columns[0].contains("risk_level"));
         assertFalse(columns[0].contains("risk_reason"));
         assertFalse(columns[0].contains("case_numbers_json"));
-        verify(gateway).analyze(any(), any(), any(), any(), any());
+        verify(relay).analyze(any(), any());
     }
 
     @Test
-    void rejectsUnexpectedRiskResult(@TempDir Path directory) throws Exception {
+    void rejectsUnexpectedAnalysisResult(@TempDir Path directory) throws Exception {
         Path file = Files.write(directory.resolve("image.png"), new byte[]{1});
         when(assets.selectById(7L)).thenReturn(image());
         when(storage.open("review/a.png")).thenReturn(new ImageStorage.LocalFile(file, false));
-        when(gateway.analyze(any(), any(), any(), any(), any())).thenReturn(
-            new GeminiGatewayClient.GatewayResponse("request", "LOW", null, "A red flower.", "raw",
-                "model", "relay_image_analysis_v1", false, 0));
+        when(relay.analyze(any(), any())).thenReturn(
+            new RelayImageClient.AnalysisResponse("A red flower.", "raw", "model", "unexpected", null, null));
         final Collection<?>[] values = new Collection<?>[1];
         final String[] columns = new String[1];
         when(items.update(isNull(), any())).thenAnswer(call -> {
@@ -92,7 +91,7 @@ class InfringementWorkerTest {
         worker.process(item());
 
         assertTrue(values[0].contains("FAILED"));
-        assertFalse(values[0].contains("LOW"));
+        assertFalse(values[0].contains("A red flower."));
         assertFalse(columns[0].contains("risk_level"));
         assertFalse(columns[0].contains("risk_reason"));
     }

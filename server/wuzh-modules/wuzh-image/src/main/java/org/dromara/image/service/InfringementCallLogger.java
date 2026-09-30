@@ -18,16 +18,15 @@ public class InfringementCallLogger {
     private final InfringementCallLogMapper logs;
 
     public void success(InfringementScanItem item, String requestId,
-                        GeminiGatewayClient.GatewayResponse result,
+                        RelayImageClient.AnalysisResponse result,
                         LocalDateTime startedAt, LocalDateTime finishedAt) {
         InfringementCallLog log = base(item, requestId, startedAt, finishedAt);
         log.setStatus("SUCCESS");
         log.setModel(result.model());
-        log.setRiskLevel(null);
         log.setRawAiResponse(result.rawAiResponse());
         log.setRawProviderResponse(result.rawProviderResponse());
-        log.setSearchUsed(result.searchUsed());
-        log.setSearchQueryCount(result.searchQueryCount());
+        log.setSearchUsed(false);
+        log.setSearchQueryCount(0);
         applyUsage(log, result.usage());
         insert(log);
     }
@@ -38,13 +37,13 @@ public class InfringementCallLogger {
     }
 
     public void failure(InfringementScanItem item, String requestId, String code, String message,
-                        String rawAiResponse, GeminiGatewayClient.UsageMetadata usage,
+                        String rawAiResponse, RelayImageClient.UsageMetadata usage,
                         LocalDateTime startedAt, LocalDateTime finishedAt) {
         failure(item, requestId, code, message, rawAiResponse, usage, null, startedAt, finishedAt);
     }
 
     public void failure(InfringementScanItem item, String requestId, String code, String message,
-                        String rawAiResponse, GeminiGatewayClient.UsageMetadata usage, String rawProviderResponse,
+                        String rawAiResponse, RelayImageClient.UsageMetadata usage, String rawProviderResponse,
                         LocalDateTime startedAt, LocalDateTime finishedAt) {
         InfringementCallLog log = base(item, requestId, startedAt, finishedAt);
         log.setStatus("FAILED");
@@ -56,7 +55,7 @@ public class InfringementCallLogger {
         insert(log);
     }
 
-    private static void applyUsage(InfringementCallLog log, GeminiGatewayClient.UsageMetadata usage) {
+    private static void applyUsage(InfringementCallLog log, RelayImageClient.UsageMetadata usage) {
         if (usage == null) return;
         log.setUsageMetadata(usage.rawJson());
         log.setPromptTokenCount(usage.promptTokenCount());

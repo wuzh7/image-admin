@@ -54,7 +54,7 @@ done
 compose=(docker compose --project-name image-admin-local --env-file "$env_file" -f "$compose_file")
 "${compose[@]}" up --build -d mysql redis qdrant
 "${compose[@]}" --profile maintenance run --rm migrate
-"${compose[@]}" up --build -d backend render-worker frontend
+"${compose[@]}" up --build -d --remove-orphans backend render-worker frontend
 "${compose[@]}" ps
 
 echo '启动完成：http://localhost:8088'

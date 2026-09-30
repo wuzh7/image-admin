@@ -39,11 +39,10 @@ class InfringementCallLoggerTest {
         item.setBatchId(3L);
         item.setImageId(4L);
         item.setExecutionMode("RELAY");
-        GeminiGatewayClient.UsageMetadata usage = new GeminiGatewayClient.UsageMetadata(10, 2, 3, 4, 5, 24,
+        RelayImageClient.UsageMetadata usage = new RelayImageClient.UsageMetadata(10, 2, 3, 4, 5, 24,
             "{\"totalTokenCount\":24}");
-        GeminiGatewayClient.GatewayResponse response = new GeminiGatewayClient.GatewayResponse("request", null,
-            null, "description", "raw", "model", "relay_image_analysis_v1", false, 0, usage)
-            .withRawProviderResponse("{\"candidates\":[],\"providerExtra\":\"preserve\"}");
+        RelayImageClient.AnalysisResponse response = new RelayImageClient.AnalysisResponse("description", "raw",
+            "model", "relay_image_analysis_v1", usage, "{\"candidates\":[],\"providerExtra\":\"preserve\"}");
         LocalDateTime startedAt = LocalDateTime.now();
 
         logger.success(item, "request", response, startedAt, startedAt.plusSeconds(2));

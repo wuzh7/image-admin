@@ -36,15 +36,15 @@ public class RelayImageClient {
         Duration timeout = Duration.ofSeconds(Math.max(1, config.getRequestTimeoutSeconds()));
         factory.setConnectTimeout(timeout);
         factory.setReadTimeout(timeout);
-        this.client = RestClient.builder().baseUrl(config.getRelayBaseUrl().replaceAll("/+$", ""))
+        this.client = RestClient.builder().baseUrl(config.getArkBaseUrl().replaceAll("/+$", ""))
             .requestFactory(factory).build();
-        this.apiKey = config.getRelayApiKey();
+        this.apiKey = config.getArkApiKey();
         this.promptFile = Path.of(config.getPromptFile());
     }
 
     public AnalysisResponse analyze(byte[] image, String contentType) {
-        if (apiKey == null || apiKey.isBlank() || "replace-with-openlux-key".equals(apiKey)) {
-            throw new RelayException("OPENLUX_NOT_CONFIGURED", "中转站 API Key 未配置", false);
+        if (apiKey == null || apiKey.isBlank() || "replace-with-ark-key".equals(apiKey)) {
+            throw new RelayException("ARK_NOT_CONFIGURED", "火山方舟 API Key 未配置", false);
         }
         if (image == null || image.length == 0 || contentType == null
             || !Set.of("image/jpeg", "image/png", "image/webp").contains(contentType)) {
@@ -57,27 +57,36 @@ public class RelayImageClient {
             throw new RelayException("RELAY_PROMPT_UNAVAILABLE", "图片分析提示词不可读取", false);
         }
         if (prompt.isBlank()) throw new RelayException("EMPTY_RELAY_PROMPT", "图片分析提示词为空", false);
-        Map<String, Object> payload = Map.of("model", MODEL, "stream", false,
-            "messages", List.of(Map.of("role", "user", "content", List.of(
-                Map.of("type", "text", "text", prompt),
-                Map.of("type", "image_url", "image_url", Map.of("url", "data:" + contentType + ";base64,"
-                    + Base64.getEncoder().encodeToString(image)))))));
+        Map<String, Object> payload = Map.of("model", MODEL, "stream", false, "store", false,
+            "input", List.of(Map.of("role", "user", "content", List.of(
+                Map.of("type", "input_image", "image_url", "data:" + contentType + ";base64,"
+                    + Base64.getEncoder().encodeToString(image)),
+                Map.of("type", "input_text", "text", prompt)))));
         String raw = null;
         try {
-            raw = client.post().uri("/v1/chat/completions")
+            raw = client.post().uri("/api/v3/responses")
                 .header("Authorization", "Bearer " + apiKey)
                 .contentType(MediaType.APPLICATION_JSON).body(payload).retrieve().body(String.class);
             JsonNode response = JSON.readTree(raw == null ? "" : raw);
-            JsonNode choice = response.path("choices").path(0);
-            String finish = choice.path("finish_reason").asText("");
-            String content = choice.path("message").path("content").asText("");
-            if (content.isBlank() || (!finish.isBlank() && !"stop".equals(finish))) {
-                throw new RelayException("EMPTY_AI_RESPONSE", "中转站返回为空或未完整结束", true);
+            String content = "";
+            for (JsonNode item : response.path("output")) {
+                if (!"message".equals(item.path("type").asText())
+                    || !"completed".equals(item.path("status").asText())) continue;
+                for (JsonNode part : item.path("content")) {
+                    if ("output_text".equals(part.path("type").asText())) {
+                        content = part.path("text").asText("");
+                        break;
+                    }
+                }
+                if (!content.isBlank()) break;
+            }
+            if (!"completed".equals(response.path("status").asText()) || content.isBlank()) {
+                throw new RelayException("EMPTY_AI_RESPONSE", "火山方舟返回为空或未完整结束", true);
             }
             JsonNode usageNode = response.path("usage");
             UsageMetadata usage = usageNode.isObject() ? new UsageMetadata(
-                integer(usageNode.path("prompt_tokens")), integer(usageNode.path("prompt_tokens_details").path("cached_tokens")),
-                integer(usageNode.path("completion_tokens")), integer(usageNode.path("completion_tokens_details").path("reasoning_tokens")),
+                integer(usageNode.path("input_tokens")), integer(usageNode.path("input_tokens_details").path("cached_tokens")),
+                integer(usageNode.path("output_tokens")), integer(usageNode.path("output_tokens_details").path("reasoning_tokens")),
                 null, integer(usageNode.path("total_tokens")), JSON.writeValueAsString(usageNode)) : null;
             String description;
             try {
@@ -88,15 +97,15 @@ public class RelayImageClient {
             return new AnalysisResponse(description, content, MODEL, PROMPT_VERSION, usage, raw);
         } catch (RestClientResponseException exception) {
             int status = exception.getStatusCode().value();
-            throw new RelayException(status == 429 ? "OPENLUX_RATE_LIMITED" : "OPENLUX_UPSTREAM_ERROR",
-                "中转站请求失败", status == 429 || status >= 500)
+            throw new RelayException(status == 429 ? "ARK_RATE_LIMITED" : "ARK_UPSTREAM_ERROR",
+                "火山方舟请求失败", status == 429 || status >= 500)
                 .withRawProviderResponse(exception.getResponseBodyAsString());
         } catch (ResourceAccessException exception) {
-            throw new RelayException("OPENLUX_TIMEOUT", "中转站网络异常或请求超时", true);
+            throw new RelayException("ARK_TIMEOUT", "火山方舟网络异常或请求超时", true);
         } catch (RelayException exception) {
             throw exception.withRawProviderResponse(raw);
         } catch (RuntimeException exception) {
-            throw new RelayException("OPENLUX_RESPONSE_ERROR", "中转站响应异常", true).withRawProviderResponse(raw);
+            throw new RelayException("ARK_RESPONSE_ERROR", "火山方舟响应异常", true).withRawProviderResponse(raw);
         }
     }
 

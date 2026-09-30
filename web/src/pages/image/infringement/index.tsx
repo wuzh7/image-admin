@@ -101,7 +101,7 @@ const riskTag = (riskLevel?: InfringementItemView['riskLevel'], analyzed = false
 
 const labels = (values: string[]) => values.length ? values.map(value => <Tag key={value}>{value}</Tag>) : '-';
 const modeLabel = {
-  RELAY: '中转站',
+  RELAY: '火山方舟',
   OFFICIAL_HYBRID: '官方混合',
   OFFICIAL_STANDARD: '官方 Standard',
   OFFICIAL_BATCH: '官方 Batch',
@@ -109,7 +109,7 @@ const modeLabel = {
 } as const;
 
 const executionModeLabel = {
-  RELAY: '中转站实时',
+  RELAY: '火山方舟实时',
   OFFICIAL_STANDARD: '官方 Standard 实时',
   OFFICIAL_BATCH: '官方 Batch'
 } as const;

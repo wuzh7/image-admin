@@ -82,7 +82,7 @@ const reviewCandidatePageSize = 6;
 const reviewPageSize = 5;
 const aspectRatioOrder = ['1:1', '1:2', '2:1', '3:4', '4:3', '2:3', '3:2'];
 const infringementModeText: Record<InfringementMode, string> = {
-  RELAY: '中转站',
+  RELAY: '火山方舟',
   OFFICIAL_HYBRID: '官方混合',
   OFFICIAL_STANDARD: '官方 Standard',
   OFFICIAL_BATCH: '官方 Batch',
@@ -1008,7 +1008,7 @@ export default function ImageDedupPage() {
             <Typography.Text strong>重复阈值</Typography.Text>
             <InputNumber min={0.5} max={0.99} step={0.01} value={threshold} disabled={!canRemove} onChange={value => setThreshold(value ?? 0.6)} />
           </label>
-          <Typography.Text type="secondary">AI 图片分析：中转站 · doubao-seed-2-0-lite-260428</Typography.Text>
+          <Typography.Text type="secondary">AI 图片分析：火山方舟 · doubao-seed-2-0-lite-260428</Typography.Text>
         </div>
         <Upload.Dragger
             className="image-upload-dropzone"

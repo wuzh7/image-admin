@@ -30,32 +30,41 @@ class RelayImageClientTest {
     }
 
     @Test
-    void sendsImageDirectlyToRelayAndReadsLatestPrompt(@TempDir Path directory) throws Exception {
+    void sendsImageToArkAndReadsLatestPrompt(@TempDir Path directory) throws Exception {
         Path prompt = Files.writeString(directory.resolve("prompt.txt"), "Describe visible content only");
         List<String> requests = new ArrayList<>();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/v1/chat/completions", exchange -> {
+        server.createContext("/api/v3/responses", exchange -> {
             assertEquals("Bearer test-key", exchange.getRequestHeaders().getFirst("Authorization"));
             requests.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             String visual = """
                 {"descriptionKeywords":"A red flower.","subjects":["花卉"],"scenes":[],"themes":[],"visualStyles":[],"colors":["红色"]}
                 """;
             String content = tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(visual);
-            respond(exchange, 200, "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":"
-                + content + "}}],\"usage\":{\"prompt_tokens\":10,\"total_tokens\":23}}");
+            respond(exchange, 200, "{\"status\":\"completed\",\"output\":[{\"type\":\"reasoning\",\"summary\":[{\"text\":\"internal\"}]},"
+                + "{\"type\":\"message\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":"
+                + content + "}]}],\"usage\":{\"input_tokens\":10,\"input_tokens_details\":{\"cached_tokens\":2},"
+                + "\"output_tokens\":13,\"output_tokens_details\":{\"reasoning_tokens\":3},\"total_tokens\":23}}");
         });
         server.start();
         RelayImageClient client = client(prompt);
         var result = client.analyze(new byte[]{1}, "image/png");
         assertEquals("A red flower.", result.imageDescription());
         assertEquals(23, result.usage().totalTokenCount());
-        assertTrue(result.rawProviderResponse().contains("choices"));
+        assertEquals(10, result.usage().promptTokenCount());
+        assertEquals(2, result.usage().cachedContentTokenCount());
+        assertEquals(13, result.usage().candidatesTokenCount());
+        assertEquals(3, result.usage().thoughtsTokenCount());
+        assertTrue(result.rawProviderResponse().contains("output_text"));
         Files.writeString(prompt, "Updated visible-content instruction");
         client.analyze(new byte[]{2}, "image/png");
         assertEquals(2, requests.size());
         assertTrue(requests.getFirst().contains("Describe visible content only"));
         assertTrue(requests.getLast().contains("Updated visible-content instruction"));
         assertTrue(requests.getFirst().contains("data:image/png;base64,AQ=="));
+        assertTrue(requests.getFirst().contains("doubao-seed-2-0-lite-260428"));
+        assertTrue(requests.getFirst().contains("input_image"));
+        assertTrue(requests.getFirst().contains("input_text"));
         assertFalse(requests.getFirst().contains("googleSearch"));
     }
 
@@ -63,27 +72,28 @@ class RelayImageClientTest {
     void preservesInvalidAiOutputAndNeverTreatsItAsDescription(@TempDir Path directory) throws Exception {
         Path prompt = Files.writeString(directory.resolve("prompt.txt"), "Describe");
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/v1/chat/completions", exchange -> respond(exchange, 200,
-            "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"not-json\"}}]}"));
+        server.createContext("/api/v3/responses", exchange -> respond(exchange, 200,
+            "{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"status\":\"completed\","
+                + "\"content\":[{\"type\":\"output_text\",\"text\":\"not-json\"}]}]}"));
         server.start();
         var error = assertThrows(RelayImageClient.RelayException.class,
             () -> client(prompt).analyze(new byte[]{1}, "image/png"));
         assertEquals("UNPARSABLE_AI_RESPONSE", error.code());
         assertEquals("not-json", error.rawAiResponse());
-        assertTrue(error.rawProviderResponse().contains("choices"));
+        assertTrue(error.rawProviderResponse().contains("output_text"));
     }
 
     @Test
-    void distinguishesRetryableRelayFailures(@TempDir Path directory) throws Exception {
+    void distinguishesRetryableArkFailures(@TempDir Path directory) throws Exception {
         Path prompt = Files.writeString(directory.resolve("prompt.txt"), "Describe");
         AtomicInteger status = new AtomicInteger(429);
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/v1/chat/completions", exchange -> respond(exchange, status.get(), "{\"error\":\"failed\"}"));
+        server.createContext("/api/v3/responses", exchange -> respond(exchange, status.get(), "{\"error\":\"failed\"}"));
         server.start();
         RelayImageClient client = client(prompt);
         var rateLimit = assertThrows(RelayImageClient.RelayException.class,
             () -> client.analyze(new byte[]{1}, "image/png"));
-        assertEquals("OPENLUX_RATE_LIMITED", rateLimit.code());
+        assertEquals("ARK_RATE_LIMITED", rateLimit.code());
         assertTrue(rateLimit.retryable());
         status.set(400);
         var badRequest = assertThrows(RelayImageClient.RelayException.class,
@@ -118,8 +128,8 @@ class RelayImageClientTest {
 
     private RelayImageClient client(Path prompt) {
         ImageProperties properties = new ImageProperties();
-        properties.getInfringement().setRelayBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
-        properties.getInfringement().setRelayApiKey("test-key");
+        properties.getInfringement().setArkBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
+        properties.getInfringement().setArkApiKey("test-key");
         properties.getInfringement().setPromptFile(prompt.toString());
         properties.getInfringement().setRequestTimeoutSeconds(1);
         return new RelayImageClient(properties);

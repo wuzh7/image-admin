@@ -56,8 +56,8 @@ public class ImageProperties {
 
     @Data
     public static class Infringement {
-        private String relayBaseUrl = "https://api.openlux.ai";
-        private String relayApiKey;
+        private String arkBaseUrl = "https://ark.cn-beijing.volces.com";
+        private String arkApiKey;
         private String promptFile = "/app/config/image_analysis_prompt.txt";
         private int requestTimeoutSeconds = 900;
         private int relayWorkers = 10;

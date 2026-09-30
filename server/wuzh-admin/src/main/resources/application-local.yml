@@ -49,11 +49,11 @@ mybatis-plus:
 
 image:
   infringement:
-    # 主服务直接调用中转站；提示词随后端镜像打包。
-    relay-base-url: ${OPENLUX_BASE_URL:https://api.openlux.ai}
-    relay-api-key: ${OPENLUX_API_KEY:}
+    # 主服务直接调用火山方舟；提示词随后端镜像打包。
+    ark-base-url: ${ARK_BASE_URL:https://ark.cn-beijing.volces.com}
+    ark-api-key: ${ARK_API_KEY:}
     prompt-file: ${RELAY_PROMPT_FILE:/app/config/image_analysis_prompt.txt}
-    request-timeout-seconds: ${OPENLUX_TIMEOUT_SECONDS:900}
+    request-timeout-seconds: ${ARK_TIMEOUT_SECONDS:900}
     relay-workers: ${IMAGE_INFRINGEMENT_RELAY_WORKERS:10}
   storage:
     type: local

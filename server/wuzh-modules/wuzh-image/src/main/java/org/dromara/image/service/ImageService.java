@@ -618,7 +618,7 @@ public class ImageService {
 
     private static String requireInfringementMode(String mode) {
         if ("RELAY".equals(mode)) return mode;
-        throw new ServiceException("AI 分析渠道只支持中转站");
+        throw new ServiceException("AI 分析渠道只支持火山方舟");
     }
 
     private LambdaQueryWrapper<ImageAsset> approvedQuery(ImageDtos.ImageQuery query) {

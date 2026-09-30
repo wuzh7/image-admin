@@ -102,10 +102,10 @@ public class InfringementWorker {
             fail(item, requestId, exception.code(), exception.getMessage());
             return;
         } catch (RuntimeException exception) {
-            callLogger.failure(item, requestId, "OPENLUX_RESPONSE_ERROR", "中转站响应异常或超时",
+            callLogger.failure(item, requestId, "ARK_RESPONSE_ERROR", "火山方舟响应异常或超时",
                 callStartedAt, LocalDateTime.now());
-            fail(item, requestId, "OPENLUX_RESPONSE_ERROR", "中转站响应异常或超时");
-            log.warn("图片分析中转站响应失败 itemId={}", item.getId(), exception);
+            fail(item, requestId, "ARK_RESPONSE_ERROR", "火山方舟响应异常或超时");
+            log.warn("图片分析火山方舟响应失败 itemId={}", item.getId(), exception);
             return;
         }
         if (!"relay_image_analysis_v1".equals(result.promptVersion()) || result.imageDescription() == null

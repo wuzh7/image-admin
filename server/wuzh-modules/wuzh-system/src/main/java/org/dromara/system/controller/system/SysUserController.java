@@ -1,6 +1,7 @@
 package org.dromara.system.controller.system;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaMode;
 import cn.hutool.core.util.ArrayUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.crypto.digest.BCrypt;
@@ -287,7 +288,7 @@ public class SysUserController extends BaseController {
      * @param userId 用户ID
      * @return 用户及其可授权角色信息
      */
-    @SaCheckPermission("system:user:query")
+    @SaCheckPermission(value = {"system:user:query", "system:user:edit"}, mode = SaMode.OR)
     @GetMapping("/authRole/{userId}")
     public R<SysUserInfoVo> authRole(@PathVariable Long userId) {
         userService.checkUserDataScope(userId);

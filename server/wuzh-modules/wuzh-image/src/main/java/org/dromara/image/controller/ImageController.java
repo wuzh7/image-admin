@@ -2,6 +2,7 @@ package org.dromara.image.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaCheckRole;
+import cn.dev33.satoken.annotation.SaMode;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -150,7 +151,7 @@ public class ImageController {
         return R.ok();
     }
 
-    @SaCheckPermission("image:dedup:list")
+    @SaCheckPermission(value = {"image:dedup:list", "image:dedup:query"}, mode = SaMode.OR)
     @GetMapping("/images")
     public R<PageResult<ImageDtos.ImageView>> images(@Valid ImageDtos.ImageQuery query, PageQuery pageQuery) {
         return R.ok(imageService.listApproved(query, pageQuery));
@@ -163,7 +164,7 @@ public class ImageController {
         imageDataLock.read(() -> imageService.exportApproved(query, response));
     }
 
-    @SaCheckPermission("image:dedup:list")
+    @SaCheckPermission(value = {"image:dedup:list", "image:dedup:query"}, mode = SaMode.OR)
     @GetMapping("/images/aspect-ratios")
     public R<List<String>> aspectRatios() {
         return R.ok(imageService.listAspectRatios());
@@ -250,7 +251,7 @@ public class ImageController {
         return R.ok();
     }
 
-    @SaCheckPermission("image:dedup:list")
+    @SaCheckPermission(value = {"image:dedup:list", "image:dedup:query"}, mode = SaMode.OR)
     @GetMapping("/image/health")
     public R<ImageDtos.HealthView> health() {
         return R.ok(imageService.health());

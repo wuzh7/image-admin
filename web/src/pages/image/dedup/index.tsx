@@ -284,6 +284,7 @@ export default function ImageDedupPage() {
   const userInfo = useUserStore(state => state.userInfo);
   const canUpload = hasPermi(userInfo, ['image:dedup:upload']) && hasPermi(userInfo, ['image:dedup:start']);
   const canQuery = hasPermi(userInfo, ['image:dedup:query']);
+  const canExport = hasPermi(userInfo, ['image:dedup:list']);
   const canConfirm = hasPermi(userInfo, ['image:dedup:confirm']);
   const canRetry = hasPermi(userInfo, ['image:dedup:retry']);
   const canRender = hasPermi(userInfo, ['store:render:add']);
@@ -1354,7 +1355,7 @@ export default function ImageDedupPage() {
             await Promise.all([loadHealth(), loadAspectRatios(), loadLibrary(1, libraryPageSize, keyword, libraryCategoryId, libraryBatchId, libraryAspectRatio)]);
           }
         })}>一键清空</Button>}
-        <Button icon={<DownloadOutlined />}
+        {canExport && <Button icon={<DownloadOutlined />}
         disabled={!libraryTotal}
         onClick={() => void exportFile('/images/export', '正式图库图片.zip', {
           ...libraryFiltersRef.current,
@@ -1362,13 +1363,13 @@ export default function ImageDedupPage() {
           categoryId: libraryCategoryId,
           batchId: libraryBatchId || undefined,
           aspectRatio: libraryAspectRatio
-        }).then(() => loadLibrary(libraryPage, libraryPageSize, keyword, libraryCategoryId, libraryBatchId, libraryAspectRatio))}>导出筛选结果</Button>
+        }).then(() => loadLibrary(libraryPage, libraryPageSize, keyword, libraryCategoryId, libraryBatchId, libraryAspectRatio))}>导出筛选结果</Button>}
         {canRemove && <Button onClick={async () => { const result = await listImageReplacementLogs(); setReplacementLogs(result.data); setReplacementLogsOpen(true); }}>替换日志</Button>}
         </Space>}
       className="image-workflow-card"
       loading={libraryLoading}
     >
-      {!canRemove && <Alert type="info" showIcon message="只能导出分析完成或历史低风险且尚未导出过的图片。" style={{ marginBottom: 16 }} />}
+      {canExport && !canRemove && <Alert type="info" showIcon message="只能导出分析完成或历史低风险且尚未导出过的图片。" style={{ marginBottom: 16 }} />}
       <div className="image-library-filters">
         <Input allowClear placeholder="图片 ID" aria-label="图片 ID" value={libraryFilters.imageId} style={{ width: 210 }}
           onChange={event => updateLibraryFilters({ imageId: event.target.value.replace(/\D/g, '') || undefined })} />

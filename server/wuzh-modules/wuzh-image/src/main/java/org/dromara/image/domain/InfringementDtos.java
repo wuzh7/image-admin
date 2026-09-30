@@ -47,7 +47,7 @@ public final class InfringementDtos {
         String executionMode,
         Boolean searchUsed,
         Integer searchQueryCount,
-        int attemptCount,
+        Integer attemptCount,
         String errorMessage,
         LocalDateTime finishedAt,
         List<String> subjects,

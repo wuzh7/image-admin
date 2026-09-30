@@ -42,6 +42,7 @@ function assetsPanel(m) {
         'image/png,image/jpeg,image/webp',
         m.design ? '已加载' : '仅用于预览',
       ) +
+      help('测试设计图最长边 8192 像素，最多 3200 万像素。') +
       (m.background
         ? help(`${e(m.background.name || '当前背景')} · ${m.config.width} × ${m.config.height}`)
         : '') +

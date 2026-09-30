@@ -19,6 +19,7 @@ function OrderThumbnail({ url, name }: { url?: string; name?: string }) {
   return <Image
     src={url}
     alt={name || '订单商品图片'}
+    preview={{ zIndex: 2147483647 }}
     width={48}
     height={48}
     loading="lazy"

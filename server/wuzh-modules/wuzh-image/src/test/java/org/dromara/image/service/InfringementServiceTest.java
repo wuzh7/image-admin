@@ -226,6 +226,9 @@ class InfringementServiceTest {
         tagged.setImageId(5L);
         tagged.setImageName("lion.png");
         tagged.setExecutionMode("OFFICIAL_BATCH");
+        tagged.setModel("gemini-test");
+        tagged.setAttemptCount(2);
+        tagged.setErrorMessage("timeout");
         tagged.setRawAiResponse("{\"subjects\":[\"雌狮\"],\"scenes\":[],\"themes\":[\"复古\"],\"visualStyles\":[\"水彩插画\"],\"colors\":[\"红色\"]}");
         InfringementDtos.ItemRow legacy = new InfringementDtos.ItemRow();
         legacy.setId(6L);
@@ -246,8 +249,19 @@ class InfringementServiceTest {
             var rows = result.getRows().stream().toList();
             assertEquals(List.of("雌狮"), rows.getFirst().subjects());
             assertEquals(List.of("红色"), rows.getFirst().colors());
-            assertEquals("OFFICIAL_BATCH", rows.getFirst().executionMode());
+            assertNull(rows.getFirst().executionMode());
+            assertNull(rows.getFirst().model());
+            assertNull(rows.getFirst().attemptCount());
+            assertNull(rows.getFirst().errorMessage());
             assertEquals(List.of(), rows.get(1).subjects());
+
+            login.when(LoginHelper::isAdmin).thenReturn(true);
+            var adminItem = service.listItems(3L, null, null,
+                new org.dromara.common.mybatis.core.page.PageQuery(10, 1)).getRows().iterator().next();
+            assertEquals("OFFICIAL_BATCH", adminItem.executionMode());
+            assertEquals("gemini-test", adminItem.model());
+            assertEquals(2, adminItem.attemptCount());
+            assertEquals("timeout", adminItem.errorMessage());
         }
     }
 

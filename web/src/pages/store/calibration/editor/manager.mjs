@@ -689,10 +689,13 @@ export class CalibrationManager {
   testPixels() {
     if (this.previewPixels) return this.previewPixels;
     const test = document.createElement('canvas');
-    test.width = this.design?.naturalWidth || 240;
-    test.height = this.design?.naturalHeight || 240;
+    const width = this.design?.naturalWidth || 240;
+    const height = this.design?.naturalHeight || 240;
+    const scale = Math.min(1, 4096 / Math.max(width, height), Math.sqrt(8_000_000 / (width * height)));
+    test.width = Math.max(1, Math.floor(width * scale));
+    test.height = Math.max(1, Math.floor(height * scale));
     const tc = test.getContext('2d', { willReadFrequently: true });
-    if (this.design) tc.drawImage(this.design, 0, 0);
+    if (this.design) tc.drawImage(this.design, 0, 0, test.width, test.height);
     else {
       tc.fillStyle = '#24594c';
       tc.fillRect(0, 0, 240, 240);
@@ -881,25 +884,27 @@ export class CalibrationManager {
     if (!p || this.selection) return '';
     return `<g class="cal-point-label" transform="translate(${p[0] * 1000} ${p[1] * 1000}) scale(${(1000 * VIEW_SPAN) / (box.width || 1000)} ${(1000 * VIEW_SPAN) / (box.height || 1000)})"><rect x="14" y="-13" width="165" height="26" rx="5"/><text x="22" y="4">X ${(p[0] * this.config.width).toFixed(1)} · Y ${(p[1] * this.config.height).toFixed(1)}</text></g>`;
   }
-  async decode(file, limitBytes = true) {
+  async decode(file, templateAsset = true) {
     if (
       !file ||
       !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) ||
       !file.size ||
-      (limitBytes && file.size > 20 * 1024 * 1024)
+      (templateAsset && file.size > 20 * 1024 * 1024)
     )
-      throw Error(limitBytes ? '请选择 20 MB 内 PNG/JPG/WebP' : '请选择 PNG/JPG/WebP 图片');
+      throw Error(templateAsset ? '请选择 20 MB 内 PNG/JPG/WebP' : '请选择 PNG/JPG/WebP 图片');
     const url = URL.createObjectURL(file),
       image = new Image();
     try {
       image.src = url;
       await image.decode();
       if (
-        image.naturalWidth * image.naturalHeight > 8_000_000 ||
-        Math.max(image.naturalWidth, image.naturalHeight) > 4096 ||
+        image.naturalWidth * image.naturalHeight > (templateAsset ? 8_000_000 : 32_000_000) ||
+        Math.max(image.naturalWidth, image.naturalHeight) > (templateAsset ? 4096 : 8192) ||
         Math.min(image.naturalWidth, image.naturalHeight) < 64
       )
-        throw Error('图片应为 64–4096 像素且最多 800 万像素');
+        throw Error(templateAsset
+          ? '图片应为 64–4096 像素且最多 800 万像素'
+          : '测试设计图应为 64–8192 像素且最多 3200 万像素');
       return image;
     } finally {
       URL.revokeObjectURL(url);

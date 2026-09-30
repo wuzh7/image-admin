@@ -81,3 +81,37 @@ test('test design image accepts files larger than 20 MB', async () => {
     URL.revokeObjectURL = previousRevoke;
   }
 });
+
+test('test design accepts 8192 pixels and 32 megapixels while keeping the preview bounded', async () => {
+  const { CalibrationManager } = await import('../src/pages/store/calibration/editor/manager.mjs');
+  const editor = new CalibrationManager({}, { render() {}, flash() {} });
+  const previousImage = globalThis.Image;
+  const previousDocument = globalThis.document;
+  const previousCreate = URL.createObjectURL;
+  const previousRevoke = URL.revokeObjectURL;
+  let dimensions = [8192, 3906];
+  globalThis.Image = class {
+    get naturalWidth() { return dimensions[0]; }
+    get naturalHeight() { return dimensions[1]; }
+    async decode() {}
+  };
+  URL.createObjectURL = () => 'blob:test';
+  URL.revokeObjectURL = () => {};
+  globalThis.document = { createElement: () => ({
+    getContext: () => ({ drawImage() {}, getImageData: (_x, _y, width, height) => ({ width, height }) }),
+  }) };
+  try {
+    editor.design = await editor.decode({ type: 'image/png', size: 25 * 1024 * 1024 }, false);
+    assert.equal(editor.design.naturalWidth, 8192);
+    const preview = editor.testPixels();
+    assert.ok(preview.width <= 4096 && preview.height <= 4096);
+    assert.ok(preview.width * preview.height <= 8_000_000);
+    dimensions = [8192, 3907];
+    await assert.rejects(editor.decode({ type: 'image/png', size: 25 * 1024 * 1024 }, false), /3200 万像素/);
+  } finally {
+    globalThis.Image = previousImage;
+    globalThis.document = previousDocument;
+    URL.createObjectURL = previousCreate;
+    URL.revokeObjectURL = previousRevoke;
+  }
+});

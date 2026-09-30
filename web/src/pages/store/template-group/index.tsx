@@ -1,5 +1,5 @@
 import { history } from '@umijs/max';
-import { Button, Card, Checkbox, Empty, Input, message, Modal, Popconfirm, Select, Space, Tag, Typography } from 'antd';
+import { Button, Card, Checkbox, Empty, Input, message, Modal, Popconfirm, Select, Space, Spin, Tag, Typography } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { createTemplateGroup, deleteCalibration, deleteTemplateGroup, listCalibrations, listTemplateGroups, setTemplateGroupStatus, updateTemplateGroup, type SaveTemplateGroup, type StoreCalibration, type StoreId, type StoreTemplateGroup } from '@/api/store';
 import { ApiError, CategorySelect, PageToolbar, StorePage, useStoreCategories } from '../common';
@@ -116,39 +116,43 @@ export default function TemplateGroupPage() {
     <PageToolbar><CategorySelect categories={categories} value={categoryId} onChange={setCategoryId} />
       {canAdd && <Button type="primary" onClick={() => setEditor({ name: '', categoryId: categoryId || categories[0]?.id, scenes: [] })}>新增模板组</Button>}</PageToolbar>
     <ApiError error={error} />
-    <Card title={`已发布背景 · ${visibleBackgrounds.length} 张`} style={{ marginBottom: 16 }}>
-      <Typography.Paragraph type="secondary">验收发布后的背景可组成模板组；已有组可通过编辑添加背景。</Typography.Paragraph>
-      {visibleBackgrounds.length ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))', gap: 12 }}>
-        {visibleBackgrounds.map(item => <Card key={String(item.id)} size="small" cover={<StoreImage url={item.backgroundUrl} alt={item.name} style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'cover' }} />}>
-          <Typography.Text strong>{item.name}</Typography.Text><br />
-          <Typography.Text type="secondary">{categories.find(c => same(c.id, item.categoryId))?.name || '商品类目'} · 已加入 {groups.filter(g => g.status !== 'DELETED' && g.templates.some(t => t.ossKey === item.backgroundOssKey)).length} 个组</Typography.Text><br />
-          <Space size="small" style={{ marginTop: 8 }}>
-            {canEditCalibration && <Button size="small" loading={openingId === String(item.id)} disabled={openingId != null && openingId !== String(item.id)} onClick={() => void openCalibration(item)}>编辑</Button>}
-            {canRemoveCalibration && <Popconfirm title="删除这张背景？" description="会同步从模板组移除，历史渲染结果保留。" onConfirm={() => void removeBackground(item)}><Button size="small" danger>删除</Button></Popconfirm>}
-          </Space>
-        </Card>)}
-      </div> : <Empty description="此类目暂无已发布背景" />}
-    </Card>
-    <Card title={`套图模板组 · ${visibleGroups.length} 组`}>
-      <Typography.Paragraph type="secondary">每组选择 1–8 张同类目背景，第一张为主图；删除不会影响历史任务。</Typography.Paragraph>
-      {visibleGroups.length ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 16 }}>
-        {visibleGroups.map(group => <Card key={String(group.id)} size="small" title={group.name} extra={<Tag color={group.status === 'ACTIVE' ? 'success' : 'warning'}>{group.status === 'ACTIVE' ? '已启用' : '已停用'}</Tag>}>
-          <Typography.Text type="secondary">{categories.find(c => same(c.id, group.categoryId))?.name || '商品类目'} · {group.templates.length} 张背景</Typography.Text>
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', margin: '12px 0' }}>{group.templates.map((template, index) => {
-            const published = backgrounds.find(item => item.backgroundOssKey === template.ossKey);
-            return <div key={String(template.id)} style={{ flex: '0 0 88px' }}><StoreImage url={template.imageUrl} alt={template.name} style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 4 }} /><Typography.Text type="secondary" style={{ fontSize: 11 }}>{index === 0 ? '主图' : `附图${index}`}</Typography.Text>
-              {published && <div>{canEditCalibration && <Button type="link" size="small" style={{ padding: 0 }} loading={openingId === String(published.id)} disabled={openingId != null && openingId !== String(published.id)} onClick={() => void openCalibration(published)}>编辑</Button>}{canRemoveCalibration && <Popconfirm title="删除这张背景？" description="会同步从所有模板组移除，历史渲染结果保留。" onConfirm={() => void removeBackground(published)}><Button type="link" size="small" danger style={{ padding: 0 }}>删除</Button></Popconfirm>}</div>}
-            </div>;
-          })}</div>
-          <Space wrap>
-            {group.status === 'ACTIVE' && <Button type="link" onClick={() => history.push(`/image/library?storeGroupId=${group.id}&storeCategoryId=${group.categoryId}`)}>使用此组</Button>}
-            {canEdit && <Button onClick={() => editGroup(group)}>编辑</Button>}
-            {canEdit && group.status === 'INACTIVE' && <Button onClick={() => void enable(group)}>启用</Button>}
-            {canRemove && <Popconfirm title="删除模板组？" description="删除后无法在此页面恢复；历史任务与背景文件保留。" onConfirm={() => void remove(group)}><Button danger>删除</Button></Popconfirm>}
-          </Space>
-        </Card>)}
-      </div> : <Empty description="此类目暂无模板组" />}
-    </Card>
+    <Spin spinning={loading} tip="正在加载模板组" size="large">
+      <div style={{ minHeight: 320 }}>
+        <Card title={`已发布背景 · ${visibleBackgrounds.length} 张`} loading={loading} style={{ marginBottom: 16 }}>
+          <Typography.Paragraph type="secondary">验收发布后的背景可组成模板组；已有组可通过编辑添加背景。</Typography.Paragraph>
+          {visibleBackgrounds.length ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))', gap: 12 }}>
+            {visibleBackgrounds.map(item => <Card key={String(item.id)} size="small" cover={<StoreImage url={item.backgroundUrl} alt={item.name} style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'cover' }} />}>
+              <Typography.Text strong>{item.name}</Typography.Text><br />
+              <Typography.Text type="secondary">{categories.find(c => same(c.id, item.categoryId))?.name || '商品类目'} · 已加入 {groups.filter(g => g.status !== 'DELETED' && g.templates.some(t => t.ossKey === item.backgroundOssKey)).length} 个组</Typography.Text><br />
+              <Space size="small" style={{ marginTop: 8 }}>
+                {canEditCalibration && <Button size="small" loading={openingId === String(item.id)} disabled={openingId != null && openingId !== String(item.id)} onClick={() => void openCalibration(item)}>编辑</Button>}
+                {canRemoveCalibration && <Popconfirm title="删除这张背景？" description="会同步从模板组移除，历史渲染结果保留。" onConfirm={() => void removeBackground(item)}><Button size="small" danger>删除</Button></Popconfirm>}
+              </Space>
+            </Card>)}
+          </div> : <Empty description="此类目暂无已发布背景" />}
+        </Card>
+        <Card title={`套图模板组 · ${visibleGroups.length} 组`} loading={loading}>
+          <Typography.Paragraph type="secondary">每组选择 1–8 张同类目背景，第一张为主图；删除不会影响历史任务。</Typography.Paragraph>
+          {visibleGroups.length ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 16 }}>
+            {visibleGroups.map(group => <Card key={String(group.id)} size="small" title={group.name} extra={<Tag color={group.status === 'ACTIVE' ? 'success' : 'warning'}>{group.status === 'ACTIVE' ? '已启用' : '已停用'}</Tag>}>
+              <Typography.Text type="secondary">{categories.find(c => same(c.id, group.categoryId))?.name || '商品类目'} · {group.templates.length} 张背景</Typography.Text>
+              <div style={{ display: 'flex', gap: 8, overflowX: 'auto', margin: '12px 0' }}>{group.templates.map((template, index) => {
+                const published = backgrounds.find(item => item.backgroundOssKey === template.ossKey);
+                return <div key={String(template.id)} style={{ flex: '0 0 88px' }}><StoreImage url={template.imageUrl} alt={template.name} style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 4 }} /><Typography.Text type="secondary" style={{ fontSize: 11 }}>{index === 0 ? '主图' : `附图${index}`}</Typography.Text>
+                  {published && <div>{canEditCalibration && <Button type="link" size="small" style={{ padding: 0 }} loading={openingId === String(published.id)} disabled={openingId != null && openingId !== String(published.id)} onClick={() => void openCalibration(published)}>编辑</Button>}{canRemoveCalibration && <Popconfirm title="删除这张背景？" description="会同步从所有模板组移除，历史渲染结果保留。" onConfirm={() => void removeBackground(published)}><Button type="link" size="small" danger style={{ padding: 0 }}>删除</Button></Popconfirm>}</div>}
+                </div>;
+              })}</div>
+              <Space wrap>
+                {group.status === 'ACTIVE' && <Button type="link" onClick={() => history.push(`/image/library?storeGroupId=${group.id}&storeCategoryId=${group.categoryId}`)}>使用此组</Button>}
+                {canEdit && <Button onClick={() => editGroup(group)}>编辑</Button>}
+                {canEdit && group.status === 'INACTIVE' && <Button onClick={() => void enable(group)}>启用</Button>}
+                {canRemove && <Popconfirm title="删除模板组？" description="删除后无法在此页面恢复；历史任务与背景文件保留。" onConfirm={() => void remove(group)}><Button danger>删除</Button></Popconfirm>}
+              </Space>
+            </Card>)}
+          </div> : <Empty description="此类目暂无模板组" />}
+        </Card>
+      </div>
+    </Spin>
     <Modal title={editor?.group ? '编辑模板组' : '新增模板组'} open={!!editor} width={760} okText="保存配置" okButtonProps={{ loading: saving }} cancelButtonProps={{ disabled: saving }} onOk={() => void save()} onCancel={() => { if (!saving) setEditor(undefined); }} destroyOnHidden>
       {editor && <Space direction="vertical" style={{ width: '100%' }} size="middle">
         <label>模板组名称<Input maxLength={80} value={editor.name} onChange={event => setEditor({ ...editor, name: event.target.value })} placeholder="例如：地毯夏季上新组" /></label>
@@ -170,6 +174,5 @@ export default function TemplateGroupPage() {
         </div>
       </Space>}
     </Modal>
-    {loading && <div>加载中…</div>}
   </StorePage>;
 }

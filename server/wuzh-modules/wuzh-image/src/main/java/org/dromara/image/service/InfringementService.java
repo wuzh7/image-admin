@@ -148,17 +148,19 @@ public class InfringementService {
     public PageResult<InfringementDtos.ItemView> listItems(long taskId, String status,
                                                             String riskLevel, PageQuery pageQuery) {
         InfringementScanTask task = requireTask(taskId);
-        String fallbackExecutionMode = executionMode(task.getSourceBatchId());
+        boolean admin = LoginHelper.isAdmin();
+        String fallbackExecutionMode = admin ? executionMode(task.getSourceBatchId()) : null;
         Page<InfringementDtos.ItemRow> page = items.selectItemPage(pageQuery.build(), taskId, status, riskLevel);
         List<InfringementDtos.ItemView> rows = page.getRecords().stream().map(row -> {
             VisualTags tags = visualTags(row.getRawAiResponse());
             return new InfringementDtos.ItemView(row.getId(), row.getImageId(), row.getImageName(),
                 "/images/" + row.getImageId() + "/content?thumbnail=true",
                 row.getImageStatus(), row.getStatus(), row.getRiskLevel(), row.getRiskReason(),
-                tags.confidence(), tags.detectedElements(), row.getImageDescription(), row.getModel(), row.getPromptVersion(),
-                StringUtils.defaultIfBlank(row.getExecutionMode(), fallbackExecutionMode),
+                tags.confidence(), tags.detectedElements(), row.getImageDescription(), admin ? row.getModel() : null, row.getPromptVersion(),
+                admin ? StringUtils.defaultIfBlank(row.getExecutionMode(), fallbackExecutionMode) : null,
                 row.getSearchUsed(), row.getSearchQueryCount(),
-                row.getAttemptCount() == null ? 0 : row.getAttemptCount(), row.getErrorMessage(), row.getFinishedAt(),
+                admin ? (row.getAttemptCount() == null ? 0 : row.getAttemptCount()) : null,
+                admin ? row.getErrorMessage() : null, row.getFinishedAt(),
                 tags.subjects(), tags.scenes(), tags.themes(), tags.visualStyles(), tags.colors(),
                 InfringementRiskRules.cases(row.getCaseNumbersJson()));
         }).toList();

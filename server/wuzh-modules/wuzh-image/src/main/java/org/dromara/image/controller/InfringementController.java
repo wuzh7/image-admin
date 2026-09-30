@@ -1,6 +1,7 @@
 package org.dromara.image.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaCheckRole;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.domain.PageResult;
 import org.dromara.common.core.domain.R;
@@ -40,6 +41,7 @@ public class InfringementController {
     }
 
     @SaCheckPermission("image:infringement:list")
+    @SaCheckRole("superadmin")
     @GetMapping("/tasks/{id}/calls")
     public R<PageResult<InfringementDtos.CallLogView>> calls(@PathVariable long id,
         @RequestParam(required = false) Long imageId,
@@ -57,6 +59,7 @@ public class InfringementController {
     }
 
     @SaCheckPermission("image:infringement:list")
+    @SaCheckRole("superadmin")
     @GetMapping("/tasks/{id}/calls/{callId}/response")
     public R<InfringementDtos.CallResponseView> callResponse(@PathVariable long id, @PathVariable long callId) {
         return R.ok(service.callResponse(id, callId));

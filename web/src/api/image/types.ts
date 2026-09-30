@@ -190,7 +190,7 @@ export interface InfringementItemView {
   executionMode?: 'RELAY' | 'OFFICIAL_STANDARD' | 'OFFICIAL_BATCH';
   searchUsed?: boolean;
   searchQueryCount?: number;
-  attemptCount: number;
+  attemptCount?: number;
   errorMessage?: string;
   finishedAt?: string;
   subjects: string[];

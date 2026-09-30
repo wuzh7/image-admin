@@ -11,7 +11,7 @@ import {
 } from '@/api/image';
 import type { InfringementCallLogView, InfringementItemView, InfringementTaskSummary } from '@/api/image/types';
 import { useUserStore } from '@/stores/userStore';
-import { hasPermi } from '@/utils/permission';
+import { hasPermi, hasRole } from '@/utils/permission';
 import AuthorizedImage from '@/components/common/AuthorizedImage';
 import { toPageQuery, toTableData } from '@/utils/wuzh';
 
@@ -123,6 +123,7 @@ export default function ImageInfringementPage() {
   const [selectedCall, setSelectedCall] = useState<InfringementCallLogView>();
   const [retryingTaskId, setRetryingTaskId] = useState<InfringementTaskSummary['id']>();
   const userInfo = useUserStore(state => state.userInfo);
+  const isSuperAdmin = hasRole(userInfo, ['superadmin']);
   const canRetry = hasPermi(userInfo, ['image:infringement:retry']);
 
   const taskColumns: ProColumns<InfringementTaskSummary>[] = [
@@ -161,7 +162,7 @@ export default function ImageInfringementPage() {
         }}>
           明细
         </Button>,
-        <Button key="calls" type="link" icon={<CodeOutlined />} onClick={() => setLogTask(row)}>
+        isSuperAdmin && <Button key="calls" type="link" icon={<CodeOutlined />} onClick={() => setLogTask(row)}>
           调用日志
         </Button>,
         canRetry && <Button key="retry" type="link" icon={<ReloadOutlined />}
@@ -221,15 +222,15 @@ export default function ImageInfringementPage() {
     { title: 'TRO 案号', dataIndex: 'caseNumbers', width: 180, search: false,
       render: (_, row) => labels(row.caseNumbers || []) },
     { title: '描述关键词', dataIndex: 'imageDescription', width: 240, search: false, ellipsis: true },
-    { title: '调用次数', dataIndex: 'attemptCount', width: 90, search: false },
+    { title: '调用次数', dataIndex: 'attemptCount', width: 90, search: false, hideInTable: !isSuperAdmin },
     {
-      title: '失败原因', dataIndex: 'errorMessage', width: 240, search: false,
+      title: '失败原因', dataIndex: 'errorMessage', width: 240, search: false, hideInTable: !isSuperAdmin,
       render: value => value
         ? <Text type="danger" style={{ display: 'block' }}>系统错误，请稍后重试</Text>
         : '-'
     },
-    { title: '模型', dataIndex: 'model', width: 140, search: false, ellipsis: true },
-    { title: '执行方式', dataIndex: 'executionMode', width: 150, search: false, render: value => executionModeLabel[value as keyof typeof executionModeLabel] || '-' },
+    { title: '模型', dataIndex: 'model', width: 140, search: false, ellipsis: true, hideInTable: !isSuperAdmin },
+    { title: '执行方式', dataIndex: 'executionMode', width: 150, search: false, hideInTable: !isSuperAdmin, render: value => executionModeLabel[value as keyof typeof executionModeLabel] || '-' },
     { title: '完成时间', dataIndex: 'finishedAt', valueType: 'dateTime', width: 170, search: false },
     {
       title: '操作', width: 76, fixed: 'right', search: false,
@@ -277,7 +278,7 @@ export default function ImageInfringementPage() {
             <ProTable<InfringementItemView>
               rowKey="id"
               columns={itemColumns}
-              scroll={{ x: 1750 }}
+              scroll={{ x: isSuperAdmin ? 1750 : 1560 }}
               search={{ labelWidth: 80, defaultCollapsed: false }}
               pagination={{ defaultPageSize: 10, showSizeChanger: true }}
               request={async params => toTableData(await listInfringementItems(selectedTask.id, toPageQuery(params)))}
@@ -288,12 +289,12 @@ export default function ImageInfringementPage() {
       </Drawer>
       <Drawer
         title={logTask ? `调用日志 · ${logTask.taskNo}` : '调用日志'}
-        open={Boolean(logTask)}
+        open={isSuperAdmin && Boolean(logTask)}
         width="min(1480px, 96vw)"
         onClose={() => setLogTask(undefined)}
         destroyOnHidden
       >
-        {logTask && (
+        {isSuperAdmin && logTask && (
           <ProTable<InfringementCallLogView>
             rowKey="id"
             columns={callColumns}
@@ -307,12 +308,12 @@ export default function ImageInfringementPage() {
       </Drawer>
       <Drawer
         title={selectedCall ? `调用详情 · ${selectedCall.imageName || selectedCall.imageId}` : '调用详情'}
-        open={Boolean(selectedCall)}
+        open={isSuperAdmin && Boolean(selectedCall)}
         width="min(820px, 94vw)"
         onClose={() => setSelectedCall(undefined)}
         destroyOnHidden
       >
-        {selectedCall && (
+        {isSuperAdmin && selectedCall && (
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
             <Descriptions bordered column={1} size="small">
               <Descriptions.Item label="请求ID">{selectedCall.requestId || '-'}</Descriptions.Item>
@@ -368,14 +369,14 @@ export default function ImageInfringementPage() {
               <Descriptions.Item label="主题">{labels(selectedItem.themes)}</Descriptions.Item>
               <Descriptions.Item label="视觉风格">{labels(selectedItem.visualStyles)}</Descriptions.Item>
               <Descriptions.Item label="主色">{labels(selectedItem.colors)}</Descriptions.Item>
-              <Descriptions.Item label="模型">{selectedItem.model || '-'}</Descriptions.Item>
-              <Descriptions.Item label={selectedItem.executionMode === 'RELAY' ? '实际使用提示词' : '提示词版本'}>
+              {isSuperAdmin && <Descriptions.Item label="模型">{selectedItem.model || '-'}</Descriptions.Item>}
+              {isSuperAdmin && <Descriptions.Item label={selectedItem.executionMode === 'RELAY' ? '实际使用提示词' : '提示词版本'}>
                 {selectedItem.promptVersion === 'relay_image_analysis_v1' ? 'image_analysis_prompt.txt' : selectedItem.promptVersion || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="执行方式">{selectedItem.executionMode ? executionModeLabel[selectedItem.executionMode] : '-'}</Descriptions.Item>
+              </Descriptions.Item>}
+              {isSuperAdmin && <Descriptions.Item label="执行方式">{selectedItem.executionMode ? executionModeLabel[selectedItem.executionMode] : '-'}</Descriptions.Item>}
               <Descriptions.Item label="Google 搜索">{selectedItem.searchUsed == null ? '未记录' : selectedItem.searchUsed ? `已使用（${selectedItem.searchQueryCount || 0} 次）` : '未使用'}</Descriptions.Item>
               <Descriptions.Item label="完成时间">{selectedItem.finishedAt || '-'}</Descriptions.Item>
-              {selectedItem.errorMessage && <Descriptions.Item label="异常信息"><Text type="danger">系统错误，请稍后重试</Text></Descriptions.Item>}
+              {isSuperAdmin && selectedItem.errorMessage && <Descriptions.Item label="异常信息"><Text type="danger">系统错误，请稍后重试</Text></Descriptions.Item>}
             </Descriptions>
           </Space>
         )}

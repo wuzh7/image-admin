@@ -345,7 +345,7 @@ public class ImageService {
         boolean admin = LoginHelper.isAdmin();
         var selection = approvedQuery(query);
         if (!admin) {
-            selection.apply("infringement_scan_item_id IN (SELECT id FROM infringement_scan_item WHERE status = 'SUCCESS' AND (risk_level = 'LOW' OR (prompt_version = 'relay_image_analysis_v1' AND risk_level IS NULL AND image_description IS NOT NULL)))")
+            selection.apply("EXISTS (SELECT 1 FROM infringement_scan_item i WHERE i.id = img_asset.infringement_scan_item_id AND i.status = 'SUCCESS' AND (img_asset.risk_level = 'LOW' OR (i.prompt_version = 'relay_image_analysis_v1' AND img_asset.risk_level IS NULL AND i.image_description IS NOT NULL)))")
                 .apply("NOT EXISTS (SELECT 1 FROM img_image_export e WHERE e.image_id = img_asset.id AND e.user_id = {0})", userId);
         }
         List<ImageAsset> candidates = assetMapper.selectList(selection.last("LIMIT 1001"));
@@ -631,7 +631,7 @@ public class ImageService {
             .eq(!LoginHelper.isAdmin(), ImageAsset::getCreateBy, userId)
             .eq(query.getImageId() != null, ImageAsset::getId, query.getImageId())
             .apply(StringUtils.isNotBlank(query.getUserName()), "create_by IN (SELECT user_id FROM sys_user WHERE user_name = {0} AND del_flag = '0')", query.getUserName())
-            .apply(StringUtils.isNotBlank(query.getRiskLevel()), "infringement_scan_item_id IN (SELECT id FROM infringement_scan_item WHERE status = 'SUCCESS' AND risk_level = {0})", query.getRiskLevel())
+            .eq(StringUtils.isNotBlank(query.getRiskLevel()), ImageAsset::getRiskLevel, query.getRiskLevel())
             .ge(query.getUploadStart() != null, ImageAsset::getCreateTime, query.getUploadStart())
             .lt(query.getUploadEnd() != null, ImageAsset::getCreateTime, query.getUploadEnd())
             .eq(query.getCategoryId() != null, ImageAsset::getCategoryId, query.getCategoryId())
@@ -663,8 +663,8 @@ public class ImageService {
         row.setAspectRatio(asset.getAspectRatio());
         row.setApprovedAt(asset.getApprovedAt());
         row.setInfringementStatus(result == null ? "未检测" : result.getStatus());
-        row.setRiskLevel(result == null ? null : result.getRiskLevel());
-        row.setRiskReason(result == null ? null : result.getRiskReason());
+        row.setRiskLevel(asset.getRiskLevel());
+        row.setRiskReason(asset.getRiskReason());
         row.setDescriptionKeywords(result == null ? null : result.getImageDescription());
         row.setInfringementError(result == null ? null : result.getErrorMessage());
         return row;
@@ -758,7 +758,6 @@ public class ImageService {
                 ? null
                 : infringementResults.get(asset.getInfringementScanItemId());
             var tags = InfringementService.imageVisualTags(infringement == null ? null : infringement.getRawAiResponse());
-            boolean detectionSucceeded = infringement != null && InfringementService.SUCCESS.equals(infringement.getStatus());
             List<ImageDtos.SimilarImageView> similarImages = similaritySnapshots
                 .getOrDefault(asset.getId(), List.of()).stream()
                 .map(match -> {
@@ -785,9 +784,9 @@ public class ImageService {
                 asset.getErrorMessage(), asset.getApprovedAt(),
                 infringement == null ? null : infringement.getStatus(),
                 infringement == null ? null : infringement.getPromptVersion(),
-                detectionSucceeded ? infringement.getRiskLevel() : null,
-                detectionSucceeded ? infringement.getRiskReason() : null,
-                detectionSucceeded ? InfringementRiskRules.cases(infringement.getCaseNumbersJson()) : List.of(),
+                asset.getRiskLevel(),
+                asset.getRiskReason(),
+                InfringementRiskRules.cases(asset.getCaseNumbersJson()),
                 infringement == null ? null : infringement.getErrorMessage(),
                 asset.getRenderUseCount(),
                 asset.getCreateTime(), uploaders.getOrDefault(asset.getCreateBy(), "未知用户"),

@@ -510,6 +510,9 @@ class ImageServiceTest {
         approved.setCreateBy(1L);
         approved.setInfringementScanItemId(601L);
         approved.setApprovedAt(java.time.LocalDateTime.of(2026, 9, 9, 10, 0));
+        approved.setRiskLevel("HIGH");
+        approved.setRiskReason("三方发现风险");
+        approved.setCaseNumbersJson("[\"26-cv-1\"]");
         InfringementScanItem resultItem = new InfringementScanItem();
         resultItem.setId(601L);
         resultItem.setStatus("FAILED");
@@ -530,6 +533,9 @@ class ImageServiceTest {
         assertEquals(approved.getApprovedAt(), row.approvedAt());
         assertEquals("FAILED", row.infringementStatus());
         assertEquals("Gemini quota exhausted", row.infringementErrorMessage());
+        assertEquals("HIGH", row.infringementRiskLevel());
+        assertEquals("三方发现风险", row.infringementRiskReason());
+        assertEquals(List.of("26-cv-1"), row.infringementCaseNumbers());
     }
 
     @Test

@@ -80,6 +80,13 @@ CREATE TABLE IF NOT EXISTS img_asset (
     center_vector         LONGBLOB        DEFAULT NULL COMMENT 'SSCD中心裁剪Float32向量',
     feature_version       VARCHAR(64)     DEFAULT NULL COMMENT '特征版本',
     infringement_scan_item_id BIGINT      DEFAULT NULL COMMENT '当前侵权检测明细ID',
+    risk_level            VARCHAR(20)     DEFAULT NULL COMMENT '三方风险等级',
+    risk_reason           VARCHAR(255)    DEFAULT NULL COMMENT '三方风险原因或疑点',
+    case_numbers_json     JSON            DEFAULT NULL COMMENT '三方TRO案号数组',
+    verification_urls_json JSON           DEFAULT NULL COMMENT '三方侵权验证URL数组',
+    external_claim_token  CHAR(36)        DEFAULT NULL COMMENT '三方领取凭证',
+    external_claimed_at   DATETIME        DEFAULT NULL COMMENT '三方领取时间',
+    external_completed_at DATETIME        DEFAULT NULL COMMENT '三方检测完成时间',
     error_message         VARCHAR(2000)   DEFAULT NULL COMMENT '处理错误',
     render_use_count      INT             NOT NULL DEFAULT 0 COMMENT '成功渲染成品次数',
     approved_at           DATETIME        DEFAULT NULL COMMENT '正式入库时间',
@@ -98,6 +105,7 @@ CREATE TABLE IF NOT EXISTS img_asset (
     KEY idx_img_asset_sha (sha256, status, del_flag),
     KEY idx_img_asset_duplicate (duplicate_of),
     KEY idx_img_asset_infringement (infringement_scan_item_id),
+    KEY idx_img_asset_external_claim (status, del_flag, external_completed_at, external_claimed_at, id),
     KEY idx_img_asset_library (status, del_flag, approved_at, id),
     KEY idx_img_asset_cleanup (deleted_at)
 ) ENGINE=InnoDB COMMENT='图片资源及去重结果';

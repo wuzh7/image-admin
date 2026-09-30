@@ -12,6 +12,39 @@ import java.util.List;
 
 public interface ImageAssetMapper extends BaseMapper<ImageAsset> {
 
+    @Select("""
+        SELECT a.id, a.id image_id, a.storage_key
+        FROM img_asset a
+        WHERE a.status = 'APPROVED' AND a.del_flag = '0' AND a.storage_key IS NOT NULL
+          AND a.external_completed_at IS NULL
+          AND (a.external_claim_token IS NULL OR a.external_claimed_at < #{cutoff})
+        ORDER BY a.id LIMIT 200 FOR UPDATE SKIP LOCKED
+        """)
+    List<org.dromara.image.domain.ExternalInfringementDtos.ClaimRow> selectExternalUnclaimed(@Param("cutoff") LocalDateTime cutoff);
+
+    @Update("""
+        <script>
+        UPDATE img_asset SET external_claim_token = #{token}, external_claimed_at = #{claimedAt}
+        WHERE id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+          AND status = 'APPROVED' AND del_flag = '0' AND external_completed_at IS NULL
+        </script>
+        """)
+    int claimExternal(@Param("ids") List<Long> ids, @Param("token") String token,
+                      @Param("claimedAt") LocalDateTime claimedAt);
+
+    @Update("""
+        UPDATE img_asset
+        SET risk_level = #{riskLevel}, risk_reason = #{riskReason},
+            case_numbers_json = #{caseNumbersJson}, verification_urls_json = #{verificationUrlsJson},
+            external_completed_at = NOW(), update_time = NOW()
+        WHERE id = #{imageId} AND external_claim_token = #{token}
+          AND status = 'APPROVED' AND del_flag = '0' AND external_completed_at IS NULL
+        """)
+    int completeExternal(@Param("imageId") Long imageId, @Param("token") String token,
+                         @Param("riskLevel") String riskLevel, @Param("riskReason") String riskReason,
+                         @Param("caseNumbersJson") String caseNumbersJson,
+                         @Param("verificationUrlsJson") String verificationUrlsJson);
+
     @Select("SELECT id FROM img_library_mutex WHERE id = 1 FOR UPDATE")
     Long lockLibrary();
 

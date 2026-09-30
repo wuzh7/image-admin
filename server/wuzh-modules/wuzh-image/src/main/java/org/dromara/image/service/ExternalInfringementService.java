@@ -4,8 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.image.config.ImageProperties;
 import org.dromara.image.domain.ExternalInfringementDtos;
-import org.dromara.image.domain.InfringementScanItem;
-import org.dromara.image.mapper.InfringementScanItemMapper;
+import org.dromara.image.domain.ImageAsset;
+import org.dromara.image.mapper.ImageAssetMapper;
 import org.dromara.image.storage.ImageStorage;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,7 +23,7 @@ import java.util.UUID;
 public class ExternalInfringementService {
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
-    private final InfringementScanItemMapper items;
+    private final ImageAssetMapper assets;
     private final ImageStorage storage;
     private final ImageProperties properties;
 
@@ -32,10 +32,10 @@ public class ExternalInfringementService {
         int minutes = properties.getInfringement().getExternalLeaseMinutes();
         if (minutes < 1) throw new ServiceException("三方领取超时时间必须大于0", 500);
         LocalDateTime now = LocalDateTime.now();
-        var rows = items.selectExternalUnclaimed(now.minusMinutes(minutes));
+        var rows = assets.selectExternalUnclaimed(now.minusMinutes(minutes));
         if (rows.isEmpty()) return List.of();
         String token = UUID.randomUUID().toString();
-        int updated = items.claimExternal(rows.stream().map(ExternalInfringementDtos.ClaimRow::getId).toList(), token, now);
+        int updated = assets.claimExternal(rows.stream().map(ExternalInfringementDtos.ClaimRow::getId).toList(), token, now);
         if (updated != rows.size()) throw new ServiceException("图片领取冲突，请重试", 409);
         return rows.stream().map(row -> new ExternalInfringementDtos.Claim(String.valueOf(row.getImageId()),
             storage.signGetUrl(row.getStorageKey(), Duration.ofMinutes(minutes))
@@ -75,9 +75,9 @@ public class ExternalInfringementService {
         })) throw new ServiceException("verificationUrls只能包含HTTP或HTTPS链接");
         String caseJson = JSON.writeValueAsString(cases);
         String urlJson = JSON.writeValueAsString(urls);
-        if (items.completeExternal(imageId, result.claimToken(), riskLevel, reason, caseJson, urlJson) == 1) return;
-        InfringementScanItem current = items.selectCurrentExternal(imageId);
-        if (current != null && current.getExternalCompletedAt() != null
+        if (assets.completeExternal(imageId, result.claimToken(), riskLevel, reason, caseJson, urlJson) == 1) return;
+        ImageAsset current = assets.selectById(imageId);
+        if (current != null && "APPROVED".equals(current.getStatus()) && current.getExternalCompletedAt() != null
             && Objects.equals(current.getExternalClaimToken(), result.claimToken())
             && Objects.equals(current.getRiskLevel(), riskLevel) && Objects.equals(current.getRiskReason(), reason)
             && Objects.equals(current.getCaseNumbersJson(), caseJson)

@@ -235,18 +235,18 @@ function statusTag(status: ImageView['status']) {
 }
 
 function infringementTag(image: ImageView) {
-  if (image.infringementStatus === 'FAILED') return <Tag color="error">检测失败</Tag>;
-  if (image.infringementStatus === 'SUCCESS' && image.infringementPromptVersion === 'relay_image_analysis_v1') {
-    return <Tag color="blue">已分析 · 风险未评估</Tag>;
-  }
-  if (image.infringementStatus === 'SUCCESS' && image.infringementRiskLevel === 'HIGH') {
+  if (image.infringementRiskLevel === 'HIGH') {
     return <Tag color="red">高风险</Tag>;
   }
-  if (image.infringementStatus === 'SUCCESS' && image.infringementRiskLevel === 'LOW') {
+  if (image.infringementRiskLevel === 'LOW') {
     return <Tag color="green">低风险</Tag>;
   }
-  if (image.infringementStatus === 'SUCCESS' && image.infringementRiskLevel === 'NEEDS_REVIEW') {
+  if (image.infringementRiskLevel === 'NEEDS_REVIEW') {
     return <Tag color="warning">疑似侵权</Tag>;
+  }
+  if (image.infringementStatus === 'FAILED') return <Tag color="error">AI分析失败</Tag>;
+  if (image.infringementStatus === 'SUCCESS' && image.infringementPromptVersion === 'relay_image_analysis_v1') {
+    return <Tag color="blue">已分析 · 风险未评估</Tag>;
   }
   if (image.infringementStatus === 'PENDING' || image.infringementStatus === 'PROCESSING') {
     return <Tag color="processing">检测中</Tag>;
@@ -1698,7 +1698,7 @@ export default function ImageDedupPage() {
               <Descriptions.Item label="上传时间">{detailImage.createTime || '-'}</Descriptions.Item>
               <Descriptions.Item label="入库时间">{detailImage.approvedAt || '-'}</Descriptions.Item>
               <Descriptions.Item label="使用次数">{detailImage.renderUseCount ?? 0}</Descriptions.Item>
-              <Descriptions.Item label="AI 分析">{infringementTag(detailImage)}</Descriptions.Item>
+              <Descriptions.Item label="AI 分析/三方风险">{infringementTag(detailImage)}</Descriptions.Item>
               {detailImage.vectorIndexMissing && <Descriptions.Item label="向量索引"><Tag color="error">异常</Tag></Descriptions.Item>}
               {detailImage.exported && <Descriptions.Item label="导出状态">已导出</Descriptions.Item>}
               <Descriptions.Item label="英文描述关键词" span={2}>{detailImage.infringementDescriptionKeywords || '-'}</Descriptions.Item>
@@ -1706,7 +1706,7 @@ export default function ImageDedupPage() {
               {(['subjects', 'scenes', 'themes', 'visualStyles', 'colors'] as const).map(field => (
                 <Descriptions.Item key={field} label={field} span={2}>{detailImage[field]?.join(', ') || '-'}</Descriptions.Item>
               ))}
-              {detailImage.infringementStatus === 'SUCCESS' && detailImage.infringementRiskReason && (
+              {detailImage.infringementRiskReason && (
                 <Descriptions.Item label="风险原因" span={2}>{detailImage.infringementRiskReason}</Descriptions.Item>
               )}
             </Descriptions>

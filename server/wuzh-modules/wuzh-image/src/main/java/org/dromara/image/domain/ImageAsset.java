@@ -24,6 +24,13 @@ public class ImageAsset extends BaseEntity {
     private String cleanupKey;
     private String cleanupThumbnailKey;
     private Long infringementScanItemId;
+    private String riskLevel;
+    private String riskReason;
+    private String caseNumbersJson;
+    private String verificationUrlsJson;
+    private String externalClaimToken;
+    private LocalDateTime externalClaimedAt;
+    private LocalDateTime externalCompletedAt;
     private String originalName;
     private String displayName;
     private String contentType;

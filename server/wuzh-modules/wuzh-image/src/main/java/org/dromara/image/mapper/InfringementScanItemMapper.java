@@ -6,7 +6,6 @@ import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
-import org.apache.ibatis.annotations.Update;
 import org.dromara.image.domain.ImageAsset;
 import org.dromara.image.domain.InfringementDtos;
 import org.dromara.image.domain.InfringementScanItem;
@@ -16,48 +15,6 @@ import java.util.List;
 
 @Mapper
 public interface InfringementScanItemMapper extends BaseMapper<InfringementScanItem> {
-
-    @Select("""
-        SELECT i.id, i.image_id, a.storage_key
-        FROM infringement_scan_item i
-        JOIN img_asset a ON a.id = i.image_id AND a.infringement_scan_item_id = i.id
-        WHERE i.status = 'SUCCESS' AND i.external_completed_at IS NULL
-          AND a.status = 'APPROVED' AND a.del_flag = '0' AND a.storage_key IS NOT NULL
-          AND (i.external_claim_token IS NULL OR i.external_claimed_at < #{cutoff})
-        ORDER BY i.id LIMIT 200 FOR UPDATE SKIP LOCKED
-        """)
-    List<org.dromara.image.domain.ExternalInfringementDtos.ClaimRow> selectExternalUnclaimed(@Param("cutoff") java.time.LocalDateTime cutoff);
-
-    @Update("""
-        <script>
-        UPDATE infringement_scan_item SET external_claim_token = #{token}, external_claimed_at = #{claimedAt}
-        WHERE id IN <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
-        </script>
-        """)
-    int claimExternal(@Param("ids") List<Long> ids, @Param("token") String token,
-                      @Param("claimedAt") java.time.LocalDateTime claimedAt);
-
-    @Update("""
-        UPDATE infringement_scan_item i
-        JOIN img_asset a ON a.id = i.image_id AND a.infringement_scan_item_id = i.id
-        SET i.risk_level = #{riskLevel}, i.risk_reason = #{riskReason},
-            i.case_numbers_json = #{caseNumbersJson}, i.verification_urls_json = #{verificationUrlsJson},
-            i.external_completed_at = NOW(), i.update_time = NOW()
-        WHERE i.image_id = #{imageId} AND i.external_claim_token = #{token}
-          AND i.status = 'SUCCESS' AND i.external_completed_at IS NULL
-          AND a.status = 'APPROVED' AND a.del_flag = '0'
-        """)
-    int completeExternal(@Param("imageId") Long imageId, @Param("token") String token,
-                         @Param("riskLevel") String riskLevel, @Param("riskReason") String riskReason,
-                         @Param("caseNumbersJson") String caseNumbersJson,
-                         @Param("verificationUrlsJson") String verificationUrlsJson);
-
-    @Select("""
-        SELECT i.* FROM infringement_scan_item i
-        JOIN img_asset a ON a.id = i.image_id AND a.infringement_scan_item_id = i.id
-        WHERE i.image_id = #{imageId} AND a.status = 'APPROVED' AND a.del_flag = '0'
-        """)
-    InfringementScanItem selectCurrentExternal(@Param("imageId") long imageId);
 
     @Select("SELECT COUNT(*) FROM infringement_scan_item WHERE status = 'PROCESSING'")
     long countProcessingForReset();
@@ -82,18 +39,19 @@ public interface InfringementScanItemMapper extends BaseMapper<InfringementScanI
 
     @Select("""
         <script>
-        SELECT task_id,
+        SELECT i.task_id,
                COUNT(*) total_count,
-               SUM(status = 'SUCCESS') success_count,
-               SUM(status = 'PROCESSING') processing_count,
-               SUM(status = 'SUCCESS' AND risk_level = 'HIGH') high_risk_count,
-               SUM(status = 'SUCCESS' AND risk_level = 'LOW') low_risk_count,
-               SUM(status = 'SUCCESS' AND risk_level = 'NEEDS_REVIEW') needs_review_count,
-               SUM(status = 'FAILED') failed_count
-        FROM infringement_scan_item
-        WHERE task_id IN
+               SUM(i.status = 'SUCCESS') success_count,
+               SUM(i.status = 'PROCESSING') processing_count,
+               SUM(a.risk_level = 'HIGH') high_risk_count,
+               SUM(a.risk_level = 'LOW') low_risk_count,
+               SUM(a.risk_level = 'NEEDS_REVIEW') needs_review_count,
+               SUM(i.status = 'FAILED') failed_count
+        FROM infringement_scan_item i
+        LEFT JOIN img_asset a ON a.id = i.image_id AND a.infringement_scan_item_id = i.id
+        WHERE i.task_id IN
         <foreach collection="taskIds" item="id" open="(" separator="," close=")">#{id}</foreach>
-        GROUP BY task_id
+        GROUP BY i.task_id
         </script>
         """)
     List<InfringementDtos.TaskStats> selectTaskStats(@Param("taskIds") Collection<Long> taskIds);
@@ -101,14 +59,14 @@ public interface InfringementScanItemMapper extends BaseMapper<InfringementScanI
     @Select("""
         <script>
         SELECT i.id, i.image_id, a.display_name image_name, a.status image_status,
-               i.status, i.risk_level, i.risk_reason, i.case_numbers_json, i.image_description, i.raw_ai_response, i.model,
+               i.status, a.risk_level, a.risk_reason, a.case_numbers_json, i.image_description, i.raw_ai_response, i.model,
                i.prompt_version, i.execution_mode, i.search_used, i.search_query_count,
                i.attempt_count, i.error_message, i.finished_at
         FROM infringement_scan_item i
         JOIN img_asset a ON a.id = i.image_id
         WHERE i.task_id = #{taskId}
           <if test="status != null and status != ''">AND i.status = #{status}</if>
-          <if test="riskLevel != null and riskLevel != ''">AND i.risk_level = #{riskLevel}</if>
+          <if test="riskLevel != null and riskLevel != ''">AND a.risk_level = #{riskLevel}</if>
         ORDER BY i.id
         </script>
         """)

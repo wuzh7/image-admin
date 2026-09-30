@@ -52,9 +52,11 @@ class InfringementWorkerTest {
             new GeminiGatewayClient.GatewayResponse("request", null, null, "A red flower.", "raw",
                 "doubao-seed-2-0-lite-260428", "relay_image_analysis_v1", false, 0));
         final Collection<?>[] values = new Collection<?>[1];
+        final String[] columns = new String[1];
         when(items.update(isNull(), any())).thenAnswer(call -> {
             LambdaUpdateWrapper<InfringementScanItem> update = call.getArgument(1);
             values[0] = update.getParamNameValuePairs().values();
+            columns[0] = update.getSqlSet();
             return 1;
         });
 
@@ -64,6 +66,9 @@ class InfringementWorkerTest {
         assertTrue(values[0].contains("A red flower."));
         assertFalse(values[0].contains("HIGH"));
         assertFalse(values[0].contains("LOW"));
+        assertFalse(columns[0].contains("risk_level"));
+        assertFalse(columns[0].contains("risk_reason"));
+        assertFalse(columns[0].contains("case_numbers_json"));
         verify(gateway).analyze(any(), any(), any(), any(), any());
     }
 
@@ -76,9 +81,11 @@ class InfringementWorkerTest {
             new GeminiGatewayClient.GatewayResponse("request", "LOW", null, "A red flower.", "raw",
                 "model", "relay_image_analysis_v1", false, 0));
         final Collection<?>[] values = new Collection<?>[1];
+        final String[] columns = new String[1];
         when(items.update(isNull(), any())).thenAnswer(call -> {
             LambdaUpdateWrapper<InfringementScanItem> update = call.getArgument(1);
             values[0] = update.getParamNameValuePairs().values();
+            columns[0] = update.getSqlSet();
             return 1;
         });
 
@@ -86,6 +93,8 @@ class InfringementWorkerTest {
 
         assertTrue(values[0].contains("FAILED"));
         assertFalse(values[0].contains("LOW"));
+        assertFalse(columns[0].contains("risk_level"));
+        assertFalse(columns[0].contains("risk_reason"));
     }
 
     private static InfringementScanItem item() {

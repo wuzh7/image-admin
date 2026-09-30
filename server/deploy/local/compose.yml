@@ -110,6 +110,8 @@ services:
       - ../../script/sql/migrations/20260928_access_control.sql:/migrations/access_control.sql:ro
       # 现有本地数据卷补齐三方侵权检测字段。
       - ../../script/sql/migrations/20260929_external_infringement.sql:/migrations/external_infringement.sql:ro
+      # 将三方领取和风险结果迁移到图片记录，使 AI 重试不影响三方任务。
+      - ../../script/sql/migrations/20260930_independent_external_infringement.sql:/migrations/independent_external_infringement.sql:ro
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
@@ -126,7 +128,9 @@ services:
         mysql --default-character-set=utf8mb4 -h mysql -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
         "$${MYSQL_DATABASE}" < /migrations/access_control.sql &&
         mysql --default-character-set=utf8mb4 -h mysql -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
-        "$${MYSQL_DATABASE}" < /migrations/external_infringement.sql
+        "$${MYSQL_DATABASE}" < /migrations/external_infringement.sql &&
+        mysql --default-character-set=utf8mb4 -h mysql -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
+        "$${MYSQL_DATABASE}" < /migrations/independent_external_infringement.sql
     depends_on:
       mysql:
         condition: service_healthy

@@ -38,7 +38,7 @@ import {
   type TableColumnsType,
   type UploadFile
 } from 'antd';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   getImageStorageMode,
   prepareImageUploads,
@@ -272,6 +272,13 @@ function isAdmissionProhibited(image: ImageView) {
     || image.similarity != null && Number(image.similarity) > 0.95;
 }
 
+function initialLibraryPageSize() {
+  if (typeof window === 'undefined') return 50;
+  const columns = Math.max(1, Math.floor(Math.max(320, window.innerWidth - 600) / 170));
+  const rows = Math.max(1, Math.ceil(window.innerHeight / 220));
+  return Math.min(200, Math.max(50, Math.ceil(columns * rows / 50) * 50));
+}
+
 export default function ImageDedupPage() {
   const location = useLocation();
   const userInfo = useUserStore(state => state.userInfo);
@@ -312,9 +319,11 @@ export default function ImageDedupPage() {
   const [confirmingBatchId, setConfirmingBatchId] = useState<ImageId>();
   const [health, setHealth] = useState<HealthView>();
   const [library, setLibrary] = useState<ImageView[]>([]);
+  const libraryGridRef = useRef<HTMLDivElement>(null);
+  const [libraryGridWidth, setLibraryGridWidth] = useState(0);
   const [libraryTotal, setLibraryTotal] = useState(0);
   const [libraryPage, setLibraryPage] = useState(1);
-  const [libraryPageSize, setLibraryPageSize] = useState(50);
+  const [libraryPageSize, setLibraryPageSize] = useState(initialLibraryPageSize);
   const [keyword, setKeyword] = useState('');
   const [libraryBatchId, setLibraryBatchId] = useState('');
   const [libraryCategoryId, setLibraryCategoryId] = useState<ImageId | undefined>(() => new URLSearchParams(location.search).get('storeCategoryId') || undefined);
@@ -393,6 +402,21 @@ export default function ImageDedupPage() {
     return image && (!/[A-Za-z]/.test(keywords) || /\.(jpg|jpeg|png|webp)$/i.test(keywords));
   });
   const selectedLibraryIdSet = useMemo(() => new Set(selectedLibraryIds.map(String)), [selectedLibraryIds]);
+  useLayoutEffect(() => {
+    const grid = libraryGridRef.current;
+    if (!library.length || !grid) return;
+    const updateWidth = () => setLibraryGridWidth(grid.clientWidth);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(grid);
+    return () => observer.disconnect();
+  }, [library.length, libraryLoading]);
+  const libraryColumns = useMemo(() => {
+    const columnCount = Math.max(1, Math.floor((libraryGridWidth + 10) / 170));
+    const columns: ImageView[][] = Array.from({ length: columnCount }, () => []);
+    library.forEach((image, index) => columns[index % columnCount].push(image));
+    return columns;
+  }, [library, libraryGridWidth]);
   const currentPageSelectedCount = library.filter(image => selectedLibraryIdSet.has(String(image.id))).length;
   const currentPageFullySelected = library.length > 0 && currentPageSelectedCount === library.length;
   const toggleCurrentPageSelection = (checked: boolean) => {
@@ -1344,7 +1368,7 @@ export default function ImageDedupPage() {
       className="image-workflow-card"
       loading={libraryLoading}
     >
-      {!canRemove && <Alert type="info" showIcon message="仅展示本人上传的图片；只能导出分析完成或历史低风险且尚未导出过的图片。" style={{ marginBottom: 16 }} />}
+      {!canRemove && <Alert type="info" showIcon message="只能导出分析完成或历史低风险且尚未导出过的图片。" style={{ marginBottom: 16 }} />}
       <div className="image-library-filters">
         <Input allowClear placeholder="图片 ID" aria-label="图片 ID" value={libraryFilters.imageId} style={{ width: 210 }}
           onChange={event => updateLibraryFilters({ imageId: event.target.value.replace(/\D/g, '') || undefined })} />
@@ -1409,52 +1433,63 @@ export default function ImageDedupPage() {
             >全选当前页</Checkbox>
             <Typography.Text type="secondary">已跨页选择 {selectedLibraryIds.length} 张</Typography.Text>
           </Flex>
-          <div className="image-library-grid">
-            {library.map(image => (
-              <article
-                className={`image-library-card${image.vectorIndexMissing ? ' is-index-abnormal' : ''}`}
-                key={String(image.id)}
-                role="button"
-                tabIndex={0}
-                aria-label={`打开图片 ${image.displayName} 详情`}
-                onClick={event => {
-                  const target = event.target as HTMLElement;
-                  if (target.closest('button, input, a, .ant-checkbox-wrapper')) return;
-                  void openImageDetail(image.id);
-                }}
-                onKeyDown={event => {
-                  if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) {
-                    event.preventDefault();
-                    void openImageDetail(image.id);
-                  }
-                }}
-              >
-                <div className="image-library-card__preview">
-                  <Checkbox
-                    disabled={storeRendering}
-                    checked={selectedLibraryIdSet.has(String(image.id))}
-                    onChange={event => {
-                      if (event.target.checked) {
-                        if (image.categoryId == null) { message.warning('图片缺少类目，无法套图'); return; }
-                        if (storeCategoryId != null && String(storeCategoryId) !== String(image.categoryId)) {
-                          message.warning('同一任务只能选择相同类目的图片'); return;
-                        }
-                        setStoreCategoryId(image.categoryId);
-                      }
-                      setSelectedLibraryIds(current => event.target.checked
-                        ? current.map(String).includes(String(image.id)) ? current : [...current, image.id]
-                        : current.filter(id => String(id) !== String(image.id)));
+          <div
+            className="image-library-grid"
+            ref={libraryGridRef}
+            style={{ gridTemplateColumns: `repeat(${libraryColumns.length}, minmax(0, 1fr))` }}
+          >
+            {libraryColumns.map((column, index) => (
+              <div className="image-library-column" key={index}>
+                {column.map(image => (
+                  <article
+                    className={`image-library-card${image.vectorIndexMissing ? ' is-index-abnormal' : ''}`}
+                    key={String(image.id)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`打开图片 ${image.displayName} 详情`}
+                    onClick={event => {
+                      const target = event.target as HTMLElement;
+                      if (target.closest('button, input, a, .ant-checkbox-wrapper')) return;
+                      void openImageDetail(image.id);
                     }}
-                    style={{ position: 'absolute', top: 8, left: 8, zIndex: 1 }}
-                  />
-                  <AuthorizedImage url={image.thumbnailUrl} width={240} height={168} alt={image.displayName} preview={false} />
-                  <Tag className="image-library-card__category" color="blue">{image.categoryName}</Tag>
-                  <div className="image-library-card__meta">
-                    {infringementTag(image)}
-                    <span className={image.renderUseCount > 1 ? 'is-repeated' : ''} title="渲染次数">{image.renderUseCount ?? 0}</span>
-                  </div>
-                </div>
-              </article>
+                    onKeyDown={event => {
+                      if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) {
+                        event.preventDefault();
+                        void openImageDetail(image.id);
+                      }
+                    }}
+                  >
+                    <div
+                      className="image-library-card__preview"
+                      style={{ aspectRatio: image.width > 0 && image.height > 0 ? `${image.width} / ${image.height}` : '1' }}
+                    >
+                      <Checkbox
+                        disabled={storeRendering}
+                        checked={selectedLibraryIdSet.has(String(image.id))}
+                        onChange={event => {
+                          if (event.target.checked) {
+                            if (image.categoryId == null) { message.warning('图片缺少类目，无法套图'); return; }
+                            if (storeCategoryId != null && String(storeCategoryId) !== String(image.categoryId)) {
+                              message.warning('同一任务只能选择相同类目的图片'); return;
+                            }
+                            setStoreCategoryId(image.categoryId);
+                          }
+                          setSelectedLibraryIds(current => event.target.checked
+                            ? current.map(String).includes(String(image.id)) ? current : [...current, image.id]
+                            : current.filter(id => String(id) !== String(image.id)));
+                        }}
+                        style={{ position: 'absolute', top: 8, left: 8, zIndex: 1 }}
+                      />
+                      <AuthorizedImage url={image.thumbnailUrl} width={240} height={168} alt={image.displayName} preview={false} />
+                      <Tag className="image-library-card__category" color="blue">{image.categoryName}</Tag>
+                      <div className="image-library-card__meta">
+                        {infringementTag(image)}
+                        <span className={image.renderUseCount > 1 ? 'is-repeated' : ''} title="渲染次数">{image.renderUseCount ?? 0}</span>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
             ))}
           </div>
           <Pagination
@@ -1462,7 +1497,7 @@ export default function ImageDedupPage() {
             pageSize={libraryPageSize}
             total={libraryTotal}
             showSizeChanger
-            pageSizeOptions={[50, 100]}
+            pageSizeOptions={[50, 100, 150, 200]}
             className="image-library-pagination"
             onChange={(page, pageSize) => void loadLibrary(page, pageSize, keyword, libraryCategoryId, libraryBatchId, libraryAspectRatio)}
           />
@@ -1673,9 +1708,6 @@ export default function ImageDedupPage() {
               ))}
               {detailImage.infringementStatus === 'SUCCESS' && detailImage.infringementRiskReason && (
                 <Descriptions.Item label="风险原因" span={2}>{detailImage.infringementRiskReason}</Descriptions.Item>
-              )}
-              {detailImage.infringementErrorMessage && (
-                <Descriptions.Item label="检测错误" span={2}>{detailImage.infringementErrorMessage}</Descriptions.Item>
               )}
             </Descriptions>
           </Space>

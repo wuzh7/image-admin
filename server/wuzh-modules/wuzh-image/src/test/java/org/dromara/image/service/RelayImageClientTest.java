@@ -96,6 +96,10 @@ class RelayImageClientTest {
         assertEquals("A red flower.", RelayImageClient.parseDescription("""
             {"descriptionKeywords":"A red flower.","subjects":["花卉"],"scenes":[],"themes":[],"visualStyles":[],"colors":["红色"]}
             """));
+        String longDescription = "A painting of " + "colorful flowers ".repeat(7) + "in a garden.";
+        assertEquals(longDescription, RelayImageClient.parseDescription("""
+            {"descriptionKeywords":"%s","subjects":[],"scenes":[],"themes":[],"visualStyles":[],"colors":[]}
+            """.formatted(longDescription)));
         assertEquals("UNPARSABLE_AI_RESPONSE", code("""
             {"descriptionKeywords":"Flower","subjects":[],"scenes":[],"themes":[],"visualStyles":[],"colors":[],"riskLevel":"LOW"}
             """));

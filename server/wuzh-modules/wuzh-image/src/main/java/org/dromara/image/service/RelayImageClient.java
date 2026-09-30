@@ -111,10 +111,10 @@ public class RelayImageClient {
             throw new RelayException("UNPARSABLE_AI_RESPONSE", "AI 返回字段不符合图片分析格式", true);
         }
         JsonNode description = result.path("descriptionKeywords");
-        if (!description.isTextual() || description.asText().isBlank() || description.asText().length() > 100
+        if (!description.isTextual() || description.asText().isBlank()
             || !description.asText().chars().allMatch(character -> character <= 127)
             || !description.asText().matches(".*[A-Za-z].*")) {
-            throw new RelayException("INVALID_IMAGE_DESCRIPTION", "图片描述必须为不超过100字符的英文句子", true);
+            throw new RelayException("INVALID_IMAGE_DESCRIPTION", "图片描述必须为英文句子", true);
         }
         for (String field : FIELDS) {
             if ("descriptionKeywords".equals(field)) continue;

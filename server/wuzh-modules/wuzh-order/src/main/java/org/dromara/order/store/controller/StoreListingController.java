@@ -1,6 +1,7 @@
 package org.dromara.order.store.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaMode;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.domain.R;
@@ -23,7 +24,7 @@ public class StoreListingController {
     private final StoreListingService service;
 
     @GetMapping
-    @SaCheckPermission("store:listing-export:list")
+    @SaCheckPermission(value = {"store:listing-export:list", "store:listing-export:add"}, mode = SaMode.OR)
     public R<List<StoreListingService.ExportView>> list(@RequestParam(required = false) Long batchId,
                                                          @RequestParam(required = false) Long shopId,
                                                          @RequestParam(required = false) Long categoryId) {
@@ -34,6 +35,12 @@ public class StoreListingController {
     @SaCheckPermission("store:listing-export:add")
     public R<StoreListingService.ExportView> create(@Valid @RequestBody StoreListingService.GenerateRequest request) {
         return R.ok(service.create(request));
+    }
+
+    @PostMapping("/from-images")
+    @SaCheckPermission("store:listing-export:add")
+    public R<List<StoreListingService.ExportView>> createFromImages(@Valid @RequestBody StoreListingService.ImageGenerateRequest request) {
+        return R.ok(service.createFromImages(request));
     }
 
     @PostMapping("/{id}/retry")

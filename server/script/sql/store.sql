@@ -176,10 +176,10 @@ PREPARE store_listing_code_key_stmt FROM @store_listing_add_code_key;
 EXECUTE store_listing_code_key_stmt;
 DEALLOCATE PREPARE store_listing_code_key_stmt;
 CREATE TABLE IF NOT EXISTS store_listing_export (
- id BIGINT NOT NULL, owner_id BIGINT NOT NULL, batch_id BIGINT NOT NULL, shop_id BIGINT DEFAULT NULL, listing_template_id BIGINT DEFAULT NULL,
- listing_profile_json JSON DEFAULT NULL, listing_keywords_json JSON DEFAULT NULL, status VARCHAR(24) NOT NULL, oss_key VARCHAR(500) DEFAULT NULL, error_message VARCHAR(2000) DEFAULT NULL,
+ id BIGINT NOT NULL, owner_id BIGINT NOT NULL, batch_id BIGINT DEFAULT NULL, shop_id BIGINT DEFAULT NULL, listing_template_id BIGINT DEFAULT NULL,
+ listing_profile_json JSON DEFAULT NULL, listing_keywords_json JSON DEFAULT NULL, image_ids_json JSON DEFAULT NULL, idempotency_key VARCHAR(128) DEFAULT NULL, status VARCHAR(24) NOT NULL, oss_key VARCHAR(500) DEFAULT NULL, error_message VARCHAR(2000) DEFAULT NULL,
  create_dept BIGINT DEFAULT NULL, create_by BIGINT DEFAULT NULL, create_time DATETIME DEFAULT NULL, update_by BIGINT DEFAULT NULL, update_time DATETIME DEFAULT NULL,
- PRIMARY KEY(id), UNIQUE KEY uk_store_export_batch_shop(batch_id,shop_id), KEY idx_store_export_owner(owner_id,create_time)
+ PRIMARY KEY(id), UNIQUE KEY uk_store_export_batch_shop(batch_id,shop_id), UNIQUE KEY uk_store_export_request(owner_id,idempotency_key,shop_id), KEY idx_store_export_owner(owner_id,create_time)
 ) ENGINE=InnoDB COMMENT='上架表格导出记录';
 SET @store_export_add_profile = IF(
  EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='store_listing_export' AND column_name='listing_profile_json'),
@@ -193,6 +193,13 @@ SET @store_export_add_keywords = IF(
 PREPARE store_export_keywords_stmt FROM @store_export_add_keywords;
 EXECUTE store_export_keywords_stmt;
 DEALLOCATE PREPARE store_export_keywords_stmt;
+-- 独立表格任务保存原图 ID 和提交标识，无需创建渲染批次；旧批次关联保持不变。
+SET @store_export_independent = IF(
+ EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='store_listing_export' AND column_name='image_ids_json'),
+ 'SELECT 1', 'ALTER TABLE store_listing_export MODIFY COLUMN batch_id BIGINT DEFAULT NULL, ADD COLUMN image_ids_json JSON DEFAULT NULL AFTER listing_keywords_json, ADD COLUMN idempotency_key VARCHAR(128) DEFAULT NULL AFTER image_ids_json, ADD UNIQUE KEY uk_store_export_request(owner_id,idempotency_key,shop_id)');
+PREPARE store_export_independent_stmt FROM @store_export_independent;
+EXECUTE store_export_independent_stmt;
+DEALLOCATE PREPARE store_export_independent_stmt;
 SET @store_export_add_unique = IF(
  EXISTS(SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='store_listing_export' AND index_name='uk_store_export_batch_shop'),
  'SELECT 1', 'ALTER TABLE store_listing_export ADD UNIQUE KEY uk_store_export_batch_shop(batch_id,shop_id)');

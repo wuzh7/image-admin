@@ -461,7 +461,7 @@ public class StoreWorkflowService {
         return batchView(batch);
     }
 
-    private String listingProfile(String configJson, Map<String, Integer> overrides) {
+    static String listingProfile(String configJson, Map<String, Integer> overrides) {
         if (overrides == null || overrides.isEmpty()) return configJson;
         Map<?, ?> parsed = JsonUtils.parseObject(configJson, Map.class);
         if (parsed == null || !(parsed.get("words") instanceof Map<?, ?> words)) throw new ServiceException("上架表标题词库无效");
@@ -527,7 +527,7 @@ public class StoreWorkflowService {
         var q = Wrappers.<StoreRenderBatch>lambdaQuery().eq(StoreRenderBatch::getOwnerId, owner()).ne(StoreRenderBatch::getStatus, "DELETED");
         if (status != null && !status.isBlank()) q.in(StoreRenderBatch::getStatus, Arrays.asList(status.split(",")));
         if (shopId != null) q.and(condition -> condition.eq(StoreRenderBatch::getShopId, shopId)
-            .or().apply("id IN (SELECT batch_id FROM store_listing_export WHERE shop_id={0})", shopId));
+            .or().isNull(StoreRenderBatch::getListingTemplateId).or().apply("id IN (SELECT batch_id FROM store_listing_export WHERE shop_id={0})", shopId));
         if (categoryId != null) q.eq(StoreRenderBatch::getCategoryId, categoryId);
         Page<StoreRenderBatch> page = batchMapper.selectPage(new Page<>(Math.max(1, pageNum), Math.max(1, Math.min(100, pageSize))), q.orderByDesc(StoreRenderBatch::getId));
         return new StoreDtos.PageView<>(page.getRecords().stream().map(this::batchView).toList(), page.getTotal());

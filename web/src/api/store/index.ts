@@ -85,7 +85,7 @@ export interface StoreListingTemplate {
   templateCode: string;
   createTime?: string;
 }
-export interface StoreListingExport { id: StoreId; batchId: StoreId; shopId: StoreId; listingTemplateId: StoreId; status: string; errorMessage?: string; filename: string; }
+export interface StoreListingExport { id: StoreId; batchId?: StoreId; shopId: StoreId; listingTemplateId: StoreId; status: string; errorMessage?: string; filename: string; }
 export interface StorePageData<T> { records: T[]; total: number; }
 
 export const listShops = () => request<R<StoreShop[]>>({ url: '/store/shops', method: 'get' });
@@ -130,5 +130,10 @@ export const deleteListingTemplate = (id: StoreId) => request<R>({ url: `/store/
 export const saveListingProfile = (templateId: StoreId, configJson: string) => request<R<StoreListingTemplate>>({ url: `/store/listing-templates/${templateId}/profile`, method: 'put', data: { configJson } });
 export const listListingExports = (params: { batchId?: StoreId; shopId?: StoreId; categoryId?: StoreId } = {}) => request<R<StoreListingExport[]>>({ url: '/store/listing-exports', method: 'get', params });
 export const createListingExport = (batchId: StoreId, shopId: StoreId, listingTemplateId: StoreId) => request<R<StoreListingExport>>({ url: '/store/listing-exports', method: 'post', data: { batchId, shopId, listingTemplateId }, headers: { repeatSubmit: false } });
+export const createListingExportsFromImages = (data: {
+  categoryId: StoreId; imageIds: StoreId[];
+  destinations: Array<{ shopId: StoreId; listingTemplateId: StoreId }>;
+  idempotencyKey: string;
+}) => request<R<StoreListingExport[]>>({ url: '/store/listing-exports/from-images', method: 'post', data, headers: { repeatSubmit: false } });
 export const retryListingExport = (id: StoreId) => request<R<StoreListingExport>>({ url: `/store/listing-exports/${id}/retry`, method: 'post', headers: { repeatSubmit: false } });
 export const downloadListingExport = (id: StoreId) => request<Blob>({ url: `/store/listing-exports/${id}/download`, method: 'get', responseType: 'blob' });

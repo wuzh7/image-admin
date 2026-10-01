@@ -19,6 +19,8 @@ public class StoreListingExport extends BaseEntity {
     private Long listingTemplateId;
     private String listingProfileJson;
     private String listingKeywordsJson;
+    private String imageIdsJson;
+    private String idempotencyKey;
     private String status;
     private String ossKey;
     private String errorMessage;

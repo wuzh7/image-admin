@@ -33,9 +33,9 @@ public class StoreWorkflowController {
     private String workerToken;
     private void checkWorkerToken(String token) { if (workerToken.isBlank() || token == null || !java.security.MessageDigest.isEqual(workerToken.getBytes(java.nio.charset.StandardCharsets.UTF_8), token.getBytes(java.nio.charset.StandardCharsets.UTF_8))) throw new org.dromara.common.core.exception.ServiceException("渲染 Worker 未授权"); }
 
-    @SaCheckPermission(value = {"store:shop:list", "store:calibration:list", "store:template-group:list", "store:listing-template:list", "store:render:list", "store:render:add", "store:listing-export:list"}, mode = SaMode.OR)
+    @SaCheckPermission(value = {"store:shop:list", "store:calibration:list", "store:template-group:list", "store:listing-template:list", "store:render:list", "store:render:add", "store:listing-export:list", "store:listing-export:add"}, mode = SaMode.OR)
     @GetMapping("/catalog") public R<List<StoreDtos.CategoryView>> catalog() { return R.ok(service.catalog()); }
-    @SaCheckPermission(value = {"store:shop:list", "store:calibration:list", "store:template-group:list", "store:listing-template:list", "store:render:list", "store:render:add", "store:listing-export:list"}, mode = SaMode.OR)
+    @SaCheckPermission(value = {"store:shop:list", "store:calibration:list", "store:template-group:list", "store:listing-template:list", "store:render:list", "store:render:add", "store:listing-export:list", "store:listing-export:add"}, mode = SaMode.OR)
     @GetMapping("/shops") public R<List<StoreDtos.ShopView>> shops() { return R.ok(service.shops()); }
     @GetMapping("/references/{kind}/options") public R<List<StoreReferenceService.Option>> referenceOptions(@PathVariable String kind) { return R.ok(references.options(kind, true)); }
     @SaCheckPermission("store:reference:list")
@@ -85,7 +85,7 @@ public class StoreWorkflowController {
     @SaCheckPermission("store:listing-template:upload")
     @PostMapping(value = "/listing-templates/files", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) public R<StoreDtos.UploadView> uploadListing(@RequestPart("file") MultipartFile file) { return R.ok(service.uploadListing(file)); }
     @GetMapping("/files") public ResponseEntity<StreamingResponseBody> ownedFile(@RequestParam String key) { return ResponseEntity.ok().header("X-Accel-Buffering", "no").contentType(MediaType.APPLICATION_OCTET_STREAM).body(service.ownedFile(key)::accept); }
-    @SaCheckPermission(value = {"store:listing-template:list", "store:render:add"}, mode = SaMode.OR)
+    @SaCheckPermission(value = {"store:listing-template:list", "store:render:add", "store:listing-export:add"}, mode = SaMode.OR)
     @GetMapping("/listing-templates") public R<List<StoreDtos.ListingTemplateView>> listingTemplates(@RequestParam(required=false) Long shopId, @RequestParam(required=false) Long categoryId) { return R.ok(service.listingTemplates(shopId, categoryId)); }
     @SaCheckPermission("store:listing-template:add")
     @PostMapping("/listing-templates") public R<StoreDtos.ListingTemplateView> addListingTemplate(@Valid @RequestBody StoreDtos.ListingTemplateRequest request) { return R.ok(service.saveListingTemplate(request, null)); }
@@ -95,8 +95,12 @@ public class StoreWorkflowController {
     @DeleteMapping("/listing-templates/{id}") public R<Void> deleteListingTemplate(@PathVariable long id) { service.deleteListingTemplate(id); return R.ok(); }
 
     @SaCheckPermission("store:render:add")
-    @PostMapping("/render-batches") public R<StoreDtos.RenderBatchView> createBatch(@Valid @RequestBody StoreDtos.RenderBatchRequest request) { return R.ok(service.createBatch(request)); }
-    @SaCheckPermission(value = {"store:render:list", "store:render:add", "store:listing-export:list"}, mode = SaMode.OR)
+    @PostMapping("/render-batches") public R<StoreDtos.RenderBatchView> createBatch(@Valid @RequestBody StoreDtos.RenderBatchRequest request) {
+        if (request.listingTemplateId() != null || (request.destinations() != null && !request.destinations().isEmpty()))
+            cn.dev33.satoken.stp.StpUtil.checkPermission("store:listing-export:add");
+        return R.ok(service.createBatch(request));
+    }
+    @SaCheckPermission(value = {"store:render:list", "store:render:add", "store:listing-export:list", "store:listing-export:add"}, mode = SaMode.OR)
     @GetMapping("/render-batches") public R<StoreDtos.PageView<StoreDtos.RenderBatchView>> batches(@RequestParam(required = false) String status, @RequestParam(required = false) Long shopId, @RequestParam(required = false) Long categoryId, @RequestParam(defaultValue="1") int pageNum, @RequestParam(defaultValue="20") int pageSize) { return R.ok(service.batches(status, shopId, categoryId, pageNum, pageSize)); }
     @SaCheckPermission(value = {"store:render:query", "store:render:add"}, mode = SaMode.OR)
     @GetMapping("/render-batches/{id}") public R<StoreDtos.RenderBatchView> batch(@PathVariable long id) { return R.ok(service.batch(id)); }

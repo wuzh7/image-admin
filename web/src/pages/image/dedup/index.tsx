@@ -28,6 +28,7 @@ import {
   Pagination,
   Popconfirm,
   Progress,
+  Radio,
   Select,
   Space,
   Table,
@@ -73,7 +74,7 @@ import { useTableExport } from '@/hooks/useTableExport';
 import AuthorizedImage from '@/components/common/AuthorizedImage';
 import { isHandledRequestError, userErrorMessage } from '@/api/request';
 import { createLatestRequestGate } from './requestGate';
-import { createRenderBatch, getRenderBatch, listListingTemplates, listRenderBatches, listShops, listTemplateGroups, stopRenderBatch, type StoreListingTemplate, type StoreRenderBatch, type StoreShop, type StoreTemplateGroup } from '@/api/store';
+import { createListingExportsFromImages, createRenderBatch, getRenderBatch, listListingTemplates, listRenderBatches, listShops, listTemplateGroups, stopRenderBatch, type StoreListingTemplate, type StoreRenderBatch, type StoreShop, type StoreTemplateGroup } from '@/api/store';
 import StoreImage from '../../store/StoreImage';
 
 const currentBatchKey = 'image-dedup-current-batch';
@@ -289,6 +290,7 @@ export default function ImageDedupPage() {
   const canConfirm = hasPermi(userInfo, ['image:dedup:confirm']);
   const canRetry = hasPermi(userInfo, ['image:dedup:retry']);
   const canRender = hasPermi(userInfo, ['store:render:add']);
+  const canGenerateListing = hasPermi(userInfo, ['store:listing-export:add']);
   const canRemove = hasRole(userInfo, ['superadmin']);
   const { exportFile } = useTableExport();
   const [files, setFiles] = useState<UploadFile[]>([]);
@@ -347,7 +349,9 @@ export default function ImageDedupPage() {
   const [storeListingTemplates, setStoreListingTemplates] = useState<Record<string, StoreListingTemplate[]>>({});
   const [storeCategoryId, setStoreCategoryId] = useState<ImageId | undefined>(() => new URLSearchParams(location.search).get('storeCategoryId') || undefined);
   const [storeGroupId, setStoreGroupId] = useState<ImageId | undefined>(() => new URLSearchParams(location.search).get('storeGroupId') || undefined);
-  const [storeGenerateListing, setStoreGenerateListing] = useState(true);
+  const [storeTaskMode, setStoreTaskMode] = useState<'RENDER' | 'LISTING' | 'BOTH'>(() => canRender ? canGenerateListing ? 'BOTH' : 'RENDER' : 'LISTING');
+  const storeNeedsRender = storeTaskMode !== 'LISTING';
+  const storeGenerateListing = storeTaskMode !== 'RENDER';
   const [storeShopIds, setStoreShopIds] = useState<ImageId[]>([]);
   const [storeListingByShop, setStoreListingByShop] = useState<Record<string, ImageId>>({});
   const [storeFormat, setStoreFormat] = useState<'JPEG' | 'PNG'>('JPEG');
@@ -394,6 +398,7 @@ export default function ImageDedupPage() {
     : availableWorkflowTabs[0]?.key ?? requestedPageKey;
   const pageTitle = pageKey === 'library' ? '正式图库' : '上传与人工复核';
   const storeRendering = storeBatch?.status === 'CREATED' || storeBatch?.status === 'RUNNING';
+  const storeBusy = storeRendering || storeSubmitting;
   const storeGroup = storeGroups.find(group => String(group.id) === String(storeGroupId));
   const storeEligibleShops = storeShops.filter(shop => shopConfig(shop).categoryIds?.some(id => String(id) === String(storeCategoryId)));
   const storeMissingListing = storeGenerateListing && (!storeShopIds.length || storeShopIds.some(shopId =>
@@ -423,7 +428,7 @@ export default function ImageDedupPage() {
   const currentPageSelectedCount = library.filter(image => selectedLibraryIdSet.has(String(image.id))).length;
   const currentPageFullySelected = library.length > 0 && currentPageSelectedCount === library.length;
   const toggleCurrentPageSelection = (checked: boolean) => {
-    if (storeRendering) return;
+    if (storeBusy) return;
     if (checked) {
       const category = storeCategoryId ?? library.find(image => image.categoryId != null)?.categoryId;
       if (category != null && storeCategoryId == null) setStoreCategoryId(category);
@@ -435,7 +440,7 @@ export default function ImageDedupPage() {
     const pageIds = new Set(library.map(image => String(image.id)));
     setSelectedLibraryIds(current => current.filter(id => !pageIds.has(String(id))));
   };
-  const selectedRiskImages = userInfo?.user?.renderAllRisksEnabled === false ? library.filter(image => selectedLibraryIdSet.has(String(image.id))
+  const selectedRiskImages = storeNeedsRender && userInfo?.user?.renderAllRisksEnabled === false ? library.filter(image => selectedLibraryIdSet.has(String(image.id))
     && !(image.infringementRiskLevel === 'LOW' && image.infringementStatus === 'SUCCESS')) : [];
   const selectedListingRiskImages = storeGenerateListing && userInfo?.user?.listingAllRisksEnabled === false ? library.filter(image => selectedLibraryIdSet.has(String(image.id))
     && !(image.infringementRiskLevel === 'LOW' && image.infringementStatus === 'SUCCESS')) : [];
@@ -624,13 +629,11 @@ export default function ImageDedupPage() {
     if (pageKey === 'library') {
       void loadLibrary(1, libraryPageSize, '', storeCategoryId, undefined, undefined);
       void loadAspectRatios();
-      if (canRender) {
-        void listTemplateGroups().then(response => setStoreGroups((response.data || []).filter(group => group.status === 'ACTIVE')));
-        void listShops().then(response => setStoreShops(response.data || []));
-      }
+      if (canRender) void listTemplateGroups().then(response => setStoreGroups((response.data || []).filter(group => group.status === 'ACTIVE')));
+      if (canRender || canGenerateListing) void listShops().then(response => setStoreShops(response.data || []));
     }
     if (pageKey === 'tasks') void loadTasks(1, taskPageSize);
-  }, [canUpload, canRemove, canRender, libraryPageSize, loadAspectRatios, loadCategoryOptions, loadHealth, loadLibrary, loadTasks, pageKey, taskPageSize]);
+  }, [canUpload, canRemove, canRender, canGenerateListing, libraryPageSize, loadAspectRatios, loadCategoryOptions, loadHealth, loadLibrary, loadTasks, pageKey, taskPageSize]);
 
   useEffect(() => {
     if (pageKey !== 'library' || !canRender || !userInfo?.user.userId) return;
@@ -667,7 +670,7 @@ export default function ImageDedupPage() {
   }, [keyword, libraryAspectRatio, libraryBatchId, libraryCategoryId, libraryPage, libraryPageSize, loadLibrary, pageKey, storeBatch?.id, storeRendering, storePollFailed]);
 
   useEffect(() => {
-    if (pageKey !== 'library' || !canRender || storeCategoryId == null) { setStoreListingTemplates({}); return; }
+    if (pageKey !== 'library' || !canGenerateListing || storeCategoryId == null) { setStoreListingTemplates({}); return; }
     let cancelled = false;
     const available = storeShops.filter(shop => shopConfig(shop).categoryIds?.some(id => String(id) === String(storeCategoryId)));
     setStoreShopIds(current => current.filter(id => available.some(shop => String(shop.id) === String(id))));
@@ -676,12 +679,14 @@ export default function ImageDedupPage() {
       .then(entries => { if (!cancelled) setStoreListingTemplates(Object.fromEntries(entries)); })
       .catch(() => { if (!cancelled) message.error('加载店铺上架表格失败，请刷新页面重试'); });
     return () => { cancelled = true; };
-  }, [pageKey, canRender, storeCategoryId, storeShops]);
+  }, [pageKey, canGenerateListing, storeCategoryId, storeShops]);
 
   const startStoreRender = async () => {
-    if (storeCategoryId == null || storeGroupId == null || !selectedLibraryIds.length) { message.warning('请选择类目、模板组和正式图库图片'); return; }
+    if (storeSubmitting || storeRendering) return;
+    if ((storeNeedsRender && !canRender) || (storeGenerateListing && !canGenerateListing)) return;
+    if (storeCategoryId == null || !selectedLibraryIds.length) { message.warning('请选择类目和正式图库图片'); return; }
     const group = storeGroups.find(item => String(item.id) === String(storeGroupId));
-    if (!group || String(group.categoryId) !== String(storeCategoryId)) { message.warning('模板组与图片类目不一致'); return; }
+    if (storeNeedsRender && (!group || !group.templates.length || String(group.categoryId) !== String(storeCategoryId))) { message.warning('模板组与图片类目不一致'); return; }
     if (selectedRiskImages.length) { message.warning('仅低风险且分析完成的图片可以渲染'); return; }
     if (selectedListingRiskImages.length) { message.warning('仅低风险且分析完成的图片可以生成上架表格'); return; }
     if (storeMissingListing) { message.warning('请选择目标店铺及各店铺已配置的上架表格'); return; }
@@ -692,18 +697,24 @@ export default function ImageDedupPage() {
     setStoreSubmitting(true);
     try {
       const identity = JSON.stringify({
-        categoryId: String(storeCategoryId), groupId: String(group.id), groupConfig: group.calibrationConfigJson,
-        templates: group.templates.map(template => [String(template.id), template.ossKey, template.templateConfigJson]),
+        mode: storeTaskMode, categoryId: String(storeCategoryId), groupId: storeNeedsRender ? String(group?.id) : undefined, groupConfig: storeNeedsRender ? group?.calibrationConfigJson : undefined,
+        templates: storeNeedsRender ? group?.templates.map(template => [String(template.id), template.ossKey, template.templateConfigJson]) : undefined,
         imageIds: selectedLibraryIds.map(String).sort(),
         destinations: destinations.map(destination => [String(destination.shopId), String(destination.listingTemplateId),
           storeListingTemplates[String(destination.shopId)]?.find(item => String(item.id) === String(destination.listingTemplateId))?.configJson]),
-        format: storeFormat, quality: storeQuality
+        format: storeNeedsRender ? storeFormat : undefined, quality: storeNeedsRender ? storeQuality : undefined
       });
       const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity));
       const idempotencyKey = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+      if (!storeNeedsRender) {
+        const response = await createListingExportsFromImages({ categoryId: storeCategoryId, imageIds: selectedLibraryIds, destinations, idempotencyKey });
+        message.success(`${response.data.length} 份原图表格任务已提交，可在“上架表格”查看进度与下载`);
+        setSelectedLibraryIds([]);
+        return;
+      }
       const response = await createRenderBatch({
         categoryId: storeCategoryId,
-        templateGroupId: group.id,
+        templateGroupId: group!.id,
         imageIds: selectedLibraryIds,
         destinations,
         format: storeFormat,
@@ -1449,7 +1460,7 @@ export default function ImageDedupPage() {
             <Checkbox
               checked={currentPageFullySelected}
               indeterminate={currentPageSelectedCount > 0 && !currentPageFullySelected}
-              disabled={storeRendering}
+              disabled={storeBusy}
               onChange={event => toggleCurrentPageSelection(event.target.checked)}
             >全选当前页</Checkbox>
             <Typography.Text type="secondary">已跨页选择 {selectedLibraryIds.length} 张</Typography.Text>
@@ -1485,7 +1496,7 @@ export default function ImageDedupPage() {
                       style={{ aspectRatio: image.width > 0 && image.height > 0 ? `${image.width} / ${image.height}` : '1' }}
                     >
                       <Checkbox
-                        disabled={storeRendering}
+                        disabled={storeBusy}
                         checked={selectedLibraryIdSet.has(String(image.id))}
                         onChange={event => {
                           if (event.target.checked) {
@@ -1584,57 +1595,63 @@ export default function ImageDedupPage() {
         {pageKey === 'library' && (
           <div className="store-library-workflow">
             <div style={{ minWidth: 0 }}>{libraryPanel}</div>
-            {canRender && <ProCard className="store-task-panel" title={<div><strong>配置本次任务</strong><Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>套图结果可供多家店铺复用</Typography.Text></div>} extra={<Typography.Text type="secondary">01—04</Typography.Text>}>
+            {(canRender || canGenerateListing) && <ProCard className="store-task-panel" title={<div><strong>配置本次任务</strong><Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>套图结果可供多家店铺复用</Typography.Text></div>} extra={<Typography.Text type="secondary">01—05</Typography.Text>}>
               <Space direction="vertical" size={16} style={{ width: '100%' }}>
                 <div className="store-task-field"><Typography.Text strong>商品类目</Typography.Text>
-                  <Select aria-label="任务类目" placeholder="选择商品类目" value={storeCategoryId} disabled={storeRendering} options={categories.map(category => ({ value: category.id, label: category.name }))} onChange={value => { setStoreCategoryId(value); setStoreGroupId(undefined); setSelectedLibraryIds([]); setLibraryCategoryId(value); void loadLibrary(1, libraryPageSize, keyword, value, libraryBatchId, libraryAspectRatio); }} />
+                  <Select aria-label="任务类目" placeholder="选择商品类目" value={storeCategoryId} disabled={storeBusy} options={categories.map(category => ({ value: category.id, label: category.name }))} onChange={value => { setStoreCategoryId(value); setStoreGroupId(undefined); setSelectedLibraryIds([]); setLibraryCategoryId(value); void loadLibrary(1, libraryPageSize, keyword, value, libraryBatchId, libraryAspectRatio); }} />
                 </div>
-                <div className="store-task-field"><Flex justify="space-between"><Typography.Text strong>套图模板组</Typography.Text><Button type="link" size="small" onClick={() => history.push('/store-management/template-group')}>浏览模板 ↗</Button></Flex>
-                  <Select aria-label="套图模板组" placeholder="选择套图模板组" value={storeGroupId} disabled={storeRendering || storeCategoryId == null} options={storeGroups.filter(group => String(group.categoryId) === String(storeCategoryId)).map(group => ({ value: group.id, label: group.name }))} onChange={setStoreGroupId} />
+                <div className="store-task-field"><Typography.Text strong>任务方式</Typography.Text>
+                  <Radio.Group aria-label="任务方式" value={storeTaskMode} disabled={storeBusy} onChange={event => setStoreTaskMode(event.target.value)} options={[
+                    { value: 'RENDER', label: '仅渲染', disabled: !canRender },
+                    { value: 'LISTING', label: '仅生成表格', disabled: !canGenerateListing },
+                    { value: 'BOTH', label: '渲染＋表格', disabled: !canRender || !canGenerateListing },
+                  ]} />
+                </div>
+                {storeNeedsRender && <div className="store-task-field"><Flex justify="space-between"><Typography.Text strong>套图模板组</Typography.Text><Button type="link" size="small" onClick={() => history.push('/store-management/template-group')}>浏览模板 ↗</Button></Flex>
+                  <Select aria-label="套图模板组" placeholder="选择套图模板组" value={storeGroupId} disabled={storeBusy || storeCategoryId == null} options={storeGroups.filter(group => String(group.categoryId) === String(storeCategoryId)).map(group => ({ value: group.id, label: group.name }))} onChange={setStoreGroupId} />
                   {storeGroup && <div className="store-task-group-preview">
                     <div className="store-task-group-images">{storeGroup.templates.slice(0, 3).map(template => <StoreImage key={String(template.id)} url={template.imageUrl} alt={template.name} style={{ width: 48, height: 60, objectFit: 'cover', borderRadius: 4 }} />)}</div>
                     <div><Typography.Text strong>{storeGroup.name}</Typography.Text><br /><Typography.Text type="secondary">{storeGroup.templates.length} 个背景</Typography.Text></div>
                   </div>}
-                </div>
-                <div><Checkbox checked={storeGenerateListing} disabled={storeRendering} onChange={event => setStoreGenerateListing(event.target.checked)}>同时生成上架表格</Checkbox><br />
-                  <Typography.Text type="secondary">关闭后仅渲染并保存成品，仍可在“渲染结果”按批次查看与下载。</Typography.Text>
-                </div>
+                </div>}
+                {!storeNeedsRender && <Typography.Text type="secondary">表格使用所选原图；每张原图生成一个商品，预览图、轮播图和详情图均使用该原图。</Typography.Text>}
                 {storeGenerateListing && <div className="store-task-field"><Typography.Text strong>目标店铺与上架表格</Typography.Text>
                   {storeEligibleShops.length ? storeEligibleShops.map(shop => {
                     const key = String(shop.id); const checked = storeShopIds.some(id => String(id) === key);
                     const templates = storeListingTemplates[key] || [];
                     return <div className="store-task-shop" key={key}>
-                      <Checkbox checked={checked} disabled={storeRendering} onChange={event => setStoreShopIds(current => event.target.checked ? [...current, shop.id] : current.filter(id => String(id) !== key))}>
+                      <Checkbox checked={checked} disabled={storeBusy} onChange={event => setStoreShopIds(current => event.target.checked ? [...current, shop.id] : current.filter(id => String(id) !== key))}>
                         <strong>{shop.name}</strong> <Typography.Text type="secondary">{shopConfig(shop).sites?.[0] || ''}</Typography.Text>
                       </Checkbox>
                       {checked && <>
-                        <Select aria-label={`${shop.name}的上架表格`} placeholder="选择上架表格" value={storeListingByShop[key]} disabled={storeRendering} options={templates.map(template => ({ value: template.id, label: `${template.templateCode || template.originalFilename}${template.configJson ? '' : ' · 未保存生成配置'}`, disabled: !template.configJson }))} onChange={value => setStoreListingByShop(current => ({ ...current, [key]: value }))} />
+                        <Select aria-label={`${shop.name}的上架表格`} placeholder="选择上架表格" value={storeListingByShop[key]} disabled={storeBusy} options={templates.map(template => ({ value: template.id, label: `${template.templateCode || template.originalFilename}${template.configJson ? '' : ' · 未保存生成配置'}`, disabled: !template.configJson }))} onChange={value => setStoreListingByShop(current => ({ ...current, [key]: value }))} />
                         {!templates.length && <Typography.Text type="warning">暂无已保存的表格，请先到“上架表格配置”维护。</Typography.Text>}
                         {templates.some(template => !template.configJson) && <Typography.Text type="warning">灰色表格尚未保存独立的生成配置。<Button type="link" size="small" onClick={() => history.push('/store-management/listing-config')}>前往配置</Button></Typography.Text>}
                       </>}
                     </div>;
                   }) : <Typography.Text type="secondary">当前类目暂无关联店铺，请先到“店铺运营”新增店铺。</Typography.Text>}
                 </div>}
-                <div className="store-task-field"><Typography.Text strong>成品格式</Typography.Text>
-                  <Select aria-label="成品格式" value={storeFormat} disabled={storeRendering} options={[{ value: 'JPEG', label: 'JPG · 推荐，文件更小' }, { value: 'PNG', label: 'PNG · 无损' }]} onChange={setStoreFormat} />
-                </div>
-                {storeFormat === 'JPEG' && <div className="store-task-field"><Typography.Text strong>JPG 质量</Typography.Text>
-                  <Select aria-label="JPG 质量" value={storeQuality} disabled={storeRendering} options={[{ value: 82, label: '82% · 较小' }, { value: 90, label: '90% · 推荐' }, { value: 96, label: '96% · 更清晰' }]} onChange={setStoreQuality} />
+                {storeNeedsRender && <div className="store-task-field"><Typography.Text strong>成品格式</Typography.Text>
+                  <Select aria-label="成品格式" value={storeFormat} disabled={storeBusy} options={[{ value: 'JPEG', label: 'JPG · 推荐，文件更小' }, { value: 'PNG', label: 'PNG · 无损' }]} onChange={setStoreFormat} />
                 </div>}
-                <div className="store-task-estimate"><div><Typography.Text type="secondary">已选原图</Typography.Text><strong>{selectedLibraryIds.length} 张</strong></div><span>×</span><div><Typography.Text type="secondary">背景模板</Typography.Text><strong>{storeGroup?.templates.length || 0} 个</strong></div><span>=</span><div><Typography.Text type="secondary">预计成品</Typography.Text><strong>{selectedLibraryIds.length * (storeGroup?.templates.length || 0)} 张</strong></div></div>
-                <Typography.Text type="secondary">{storeGenerateListing ? `${storeShopIds.length} 家店铺 · ${storeShopIds.length} 份表格 · 成品无需按店铺重复渲染` : '仅生成成品 · 不需要选择店铺或上架表格'}</Typography.Text>
+                {storeNeedsRender && storeFormat === 'JPEG' && <div className="store-task-field"><Typography.Text strong>JPG 质量</Typography.Text>
+                  <Select aria-label="JPG 质量" value={storeQuality} disabled={storeBusy} options={[{ value: 82, label: '82% · 较小' }, { value: 90, label: '90% · 推荐' }, { value: 96, label: '96% · 更清晰' }]} onChange={setStoreQuality} />
+                </div>}
+                {storeNeedsRender && <div className="store-task-estimate"><div><Typography.Text type="secondary">已选原图</Typography.Text><strong>{selectedLibraryIds.length} 张</strong></div><span>×</span><div><Typography.Text type="secondary">背景模板</Typography.Text><strong>{storeGroup?.templates.length || 0} 个</strong></div><span>=</span><div><Typography.Text type="secondary">预计成品</Typography.Text><strong>{selectedLibraryIds.length * (storeGroup?.templates.length || 0)} 张</strong></div></div>}
+                <Typography.Text type="secondary">{storeGenerateListing ? `${selectedLibraryIds.length} 张原图 · ${storeShopIds.length} 家店铺 · ${storeShopIds.length} 份表格${storeNeedsRender ? ' · 成品无需按店铺重复渲染' : ''}` : '仅生成成品 · 不需要选择店铺或上架表格'}</Typography.Text>
                 {storeMissingKeywords && <Alert type="warning" showIcon message="选中的图片缺少可用的 AI 关键词和原文件名" />}
                 {selectedRiskImages.length > 0 && <Alert type="warning" showIcon message="仅低风险且分析完成的图片可以渲染" />}
                 {selectedListingRiskImages.length > 0 && <Alert type="warning" showIcon message="仅低风险且分析完成的图片可以生成上架表格" />}
-                {storeBatch && <>
+                {storeNeedsRender && storeBatch && <>
                   <Typography.Text strong>批次 {String(storeBatch.id)} · {storeBatch.status === 'COMPLETED' ? '已完成' : storeBatch.status === 'PARTIAL_FAILURE' ? '部分失败' : storeBatch.status === 'FAILED' ? '失败' : storeBatch.status === 'STOPPING' ? '停止中' : storeBatch.status === 'STOPPED' ? '已停止' : '渲染中'}</Typography.Text>
                   <Progress percent={storeBatch.totalCount ? Math.round((storeBatch.completedCount + storeBatch.skippedCount + storeBatch.failedCount) / storeBatch.totalCount * 100) : 0} status={storeRendering ? 'active' : storeBatch.failedCount ? 'exception' : 'success'} />
                   <Typography.Text type="secondary">完成 {storeBatch.completedCount} · 跳过重复 {storeBatch.skippedCount} · 失败 {storeBatch.failedCount}</Typography.Text>
                   {storeRendering ? <Button block danger onClick={() => Modal.confirm({ title: '停止当前渲染批次？', content: '正在渲染的图片完成后停止，其余图片不再开始。', onOk: async () => { const response = await stopRenderBatch(storeBatch.id); setStoreBatch(response.data); } })}>停止当前批次</Button> : <Button block onClick={() => history.push('/store-management/render-result')}>查看渲染结果</Button>}
                   {storePollFailed && <Button block onClick={async () => { const response = await getRenderBatch(storeBatch.id); setStoreBatch(response.data); setStorePollFailed(false); }}>重新获取进度</Button>}
                 </>}
-                <Button type="primary" block loading={storeSubmitting} disabled={storeRendering || !selectedLibraryIds.length || !storeGroup?.templates.length || storeMissingListing || storeMissingKeywords || !!selectedRiskImages.length || !!selectedListingRiskImages.length} onClick={() => void startStoreRender()}>{storeGenerateListing ? '开始渲染并生成表格' : '开始渲染成品'} →</Button>
-                <Typography.Text type="secondary">任务由后台处理，离开页面后仍可在“渲染结果”查看进度与下载。</Typography.Text>
+                <Button type="primary" block loading={storeSubmitting} disabled={storeBusy || !selectedLibraryIds.length || storeCategoryId == null || (storeNeedsRender && !storeGroup?.templates.length) || storeMissingListing || storeMissingKeywords || !!selectedRiskImages.length || !!selectedListingRiskImages.length} onClick={() => void startStoreRender()}>{storeTaskMode === 'BOTH' ? '开始渲染并生成表格' : storeNeedsRender ? '开始渲染成品' : '开始生成表格'} →</Button>
+                {storeGenerateListing && <Button block onClick={() => history.push('/store-management/listing')}>查看上架表格</Button>}
+                <Typography.Text type="secondary">任务由后台处理，离开页面后仍可在“{storeNeedsRender ? '渲染结果' : '上架表格'}”查看进度与下载。</Typography.Text>
               </Space>
             </ProCard>}
           </div>

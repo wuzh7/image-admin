@@ -158,6 +158,22 @@ class StoreListingProfileServiceTest {
         verify(batchMapper, times(1)).insert(any(StoreRenderBatch.class));
     }
 
+    @Test void renderOnlyDoesNotReadListingPolicyOrCreateTables() {
+        StoreTemplateGroup group = new StoreTemplateGroup(); group.setId(9L); group.setOwnerId(42L); group.setCategoryId(4L); group.setStatus("ACTIVE");
+        when(groupMapper.selectById(9L)).thenReturn(group);
+        StoreTemplate template = new StoreTemplate(); template.setId(10L); template.setGroupId(9L); template.setStatus("ACTIVE"); template.setOssKey("store/templates/42/a.png");
+        when(storeTemplateMapper.selectList(any())).thenReturn(List.of(template));
+        UserDTO policy = new UserDTO(); policy.setRenderAllRisksEnabled(true); policy.setListingAllRisksEnabled(false);
+        when(users.selectById(42L)).thenReturn(policy);
+        when(imageMapper.selectCount(any())).thenReturn(1L);
+        try (MockedStatic<LoginHelper> login = mockStatic(LoginHelper.class)) {
+            login.when(LoginHelper::getUserIdStr).thenReturn("42");
+            service.createBatch(new StoreDtos.RenderBatchRequest(4L, 9L, List.of(11L), null, null, List.of(), "jpg", 90, "render-only"));
+        }
+        verifyNoInteractions(listingService, exportMapper, templateMapper, shopMapper);
+        verify(batchMapper).insert(any(StoreRenderBatch.class));
+    }
+
     @Test void renderRestrictionRejectsImageWithoutCompletedLowRiskAnalysis() {
         UserDTO policy = new UserDTO(); policy.setRenderAllRisksEnabled(false);
         when(users.selectById(42L)).thenReturn(policy);

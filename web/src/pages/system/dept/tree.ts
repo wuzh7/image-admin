@@ -1,4 +1,5 @@
 import type { DeptTreeOption, DeptVO } from '@/api/system/dept/types';
+import type { MenuTreeOption } from '@/api/system/menu/types';
 
 export function buildDeptTree(rows: DeptVO[]): DeptVO[] {
   const items = rows.map(({ children: _children, ...row }) => ({ ...row } as DeptVO));
@@ -25,4 +26,17 @@ export function disableCurrentDept(nodes: DeptTreeOption[], currentId?: string |
     const disabled = parentDisabled || node.disabled || (currentId != null && String(node.id) === String(currentId));
     return { ...node, disabled, children: disableCurrentDept(node.children || [], currentId, disabled) };
   });
+}
+
+export function togglePermissionBranch(nodes: MenuTreeOption[], selected: Array<string | number>, id: string | number, checked: boolean): string[] {
+  const keys = new Set(selected.map(String));
+  const visit = (items: MenuTreeOption[], withinBranch = false) => {
+    for (const node of items) {
+      const included = withinBranch || String(node.id) === String(id);
+      if (included) checked ? keys.add(String(node.id)) : keys.delete(String(node.id));
+      visit(node.children || [], included);
+    }
+  };
+  visit(nodes);
+  return [...keys];
 }

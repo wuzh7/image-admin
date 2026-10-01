@@ -26,6 +26,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * 菜单信息
@@ -37,6 +38,10 @@ import java.util.List;
 @RestController
 @RequestMapping("/system/menu")
 public class SysMenuController extends BaseController {
+
+    private static final Set<String> SUPER_ADMIN_COMPONENTS = Set.of(
+        "system/role/index", "system/menu/index", "system/dept/index", "system/store-probe/index",
+        "image/category/index", "store/reference/index");
 
     private final ISysMenuService menuService;
     private final SysRoleMenuMapper roleMenuMapper;
@@ -55,7 +60,7 @@ public class SysMenuController extends BaseController {
     }
 
     private void hideAdminMenus(List<SysMenu> menus) {
-        menus.removeIf(menu -> "image/category/index".equals(menu.getComponent()));
+        menus.removeIf(menu -> SUPER_ADMIN_COMPONENTS.contains(String.valueOf(menu.getComponent())));
         for (SysMenu menu : menus) {
             if (menu.getChildren() != null) hideAdminMenus(menu.getChildren());
         }
@@ -98,6 +103,7 @@ public class SysMenuController extends BaseController {
      * @param menu 查询条件
      * @return 菜单树
      */
+    @SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("system:menu:query")
     @GetMapping("/treeselect")
     public R<List<Tree<Long>>> treeselect(SysMenuBo menu) {
@@ -111,6 +117,7 @@ public class SysMenuController extends BaseController {
      * @param roleId 角色ID
      * @return 角色菜单树及选中节点
      */
+    @SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("system:menu:query")
     @GetMapping(value = "/roleMenuTreeselect/{roleId}")
     public R<MenuTreeSelectVo> roleMenuTreeselect(@PathVariable("roleId") Long roleId) {

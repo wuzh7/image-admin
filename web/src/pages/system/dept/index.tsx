@@ -10,7 +10,7 @@ import type { RoleVO } from '@/api/system/role/types';
 import RowActions from '@/components/common/RowActions';
 import { useUserStore } from '@/stores/userStore';
 import { hasPermi, hasRole } from '@/utils/permission';
-import { buildDeptTree, disableCurrentDept, filterDeptTree } from './tree';
+import { buildDeptTree, disableCurrentDept, filterDeptTree, togglePermissionBranch } from './tree';
 
 const defaultForm: DeptForm = { status: '0', roleIds: [] };
 
@@ -183,10 +183,10 @@ export default function SystemDeptPage() {
         message.success('部门权限已更新，部门用户需要重新登录');
         setPermissionDept(undefined);
       }}>
-      <Typography.Paragraph type="secondary">部门权限是上限；用户还需拥有对应角色。勾选父目录只开放目录，菜单和按钮需分别勾选。</Typography.Paragraph>
+      <Typography.Paragraph type="secondary">部门权限是上限；用户还需拥有对应角色。勾选父目录会同时勾选下级菜单和按钮。</Typography.Paragraph>
       <Tree checkable checkStrictly defaultExpandAll fieldNames={{ title: 'label', key: 'id', children: 'children' }}
         treeData={permissionTree} checkedKeys={permissionIds}
-        onCheck={keys => setPermissionIds((Array.isArray(keys) ? keys : keys.checked).map(String))} />
+        onCheck={(_, info) => setPermissionIds(ids => togglePermissionBranch(permissionTree, ids, String(info.node.key), info.checked))} />
     </Modal>
   </PageContainer>;
 }

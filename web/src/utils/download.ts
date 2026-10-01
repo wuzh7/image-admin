@@ -15,7 +15,8 @@ export async function download(url: string, params: Record<string, unknown>, fil
         }
       ],
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      responseType: 'blob'
+      responseType: 'blob',
+      timeout: 0
     });
     if (await blobValidate(blob)) {
       saveBlob(blob, fileName);

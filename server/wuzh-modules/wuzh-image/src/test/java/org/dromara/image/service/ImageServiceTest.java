@@ -62,6 +62,28 @@ import static org.mockito.Mockito.when;
 class ImageServiceTest {
 
     @Test
+    void categoryManagementDoesNotRequireSuperAdminIdentity() {
+        ImageCategoryMapper categories = mock(ImageCategoryMapper.class);
+        ImageAssetMapper assets = mock(ImageAssetMapper.class);
+        ImageCategory category = new ImageCategory();
+        category.setId(3L);
+        category.setName("类目");
+        category.setStatus("0");
+        when(categories.selectList(any())).thenReturn(List.of(category));
+        when(categories.selectById(3L)).thenReturn(category);
+        ImageService service = new ImageService(new ImageProperties(), mock(ImageBatchMapper.class), assets,
+            categories, mock(LocalImageStorage.class), mock(QdrantVectorStore.class), mock(ImageTaskRunner.class),
+            mock(UserService.class), mock(InfringementService.class), mock(ImageRecordMapper.class));
+        try (MockedStatic<LoginHelper> login = loginAs(200L, false)) {
+            assertEquals(1, service.listCategories().size());
+            assertEquals("新增", service.createCategory(new ImageDtos.SaveCategoryRequest("新增", 0, "0")).name());
+            assertEquals("修改", service.updateCategory(3L, new ImageDtos.SaveCategoryRequest("修改", 0, "0")).name());
+            service.deleteCategory(3L);
+        }
+        verify(categories).deleteById(3L);
+    }
+
+    @Test
     void previewReducesLargeStoredImage() throws Exception {
         Path source = Files.createTempFile("large-preview-", ".png");
         try {

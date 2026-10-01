@@ -545,14 +545,12 @@ public class ImageService {
     }
 
     public List<ImageDtos.CategoryView> listCategories() {
-        requireAdmin();
         return categoryMapper.selectList(Wrappers.<ImageCategory>lambdaQuery()
                 .orderByAsc(ImageCategory::getId))
             .stream().map(this::toCategoryView).toList();
     }
 
     public ImageDtos.CategoryView createCategory(ImageDtos.SaveCategoryRequest request) {
-        requireAdmin();
         String name = request.name().trim();
         ensureCategoryNameAvailable(name, null);
         ImageCategory category = new ImageCategory();
@@ -564,7 +562,6 @@ public class ImageService {
     }
 
     public ImageDtos.CategoryView updateCategory(long id, ImageDtos.SaveCategoryRequest request) {
-        requireAdmin();
         ImageCategory category = requireCategory(id);
         String name = request.name().trim();
         ensureCategoryNameAvailable(name, id);
@@ -575,7 +572,6 @@ public class ImageService {
     }
 
     public void deleteCategory(long id) {
-        requireAdmin();
         requireCategory(id);
         boolean used = assetMapper.selectCount(Wrappers.<ImageAsset>lambdaQuery()
             .eq(ImageAsset::getCategoryId, id)) > 0;

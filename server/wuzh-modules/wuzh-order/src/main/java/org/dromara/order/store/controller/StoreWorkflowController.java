@@ -1,9 +1,7 @@
 package org.dromara.order.store.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
-import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.dev33.satoken.annotation.SaMode;
-import org.dromara.common.core.constant.SystemConstants;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.domain.R;
@@ -40,16 +38,12 @@ public class StoreWorkflowController {
     @SaCheckPermission(value = {"store:shop:list", "store:calibration:list", "store:template-group:list", "store:listing-template:list", "store:render:list", "store:render:add", "store:listing-export:list"}, mode = SaMode.OR)
     @GetMapping("/shops") public R<List<StoreDtos.ShopView>> shops() { return R.ok(service.shops()); }
     @GetMapping("/references/{kind}/options") public R<List<StoreReferenceService.Option>> referenceOptions(@PathVariable String kind) { return R.ok(references.options(kind, true)); }
-    @SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("store:reference:list")
     @GetMapping("/references/{kind}") public R<List<StoreReferenceService.Option>> references(@PathVariable String kind) { return R.ok(references.options(kind, false)); }
-    @SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("store:reference:add")
     @PostMapping("/references/{kind}") public R<StoreReferenceService.Option> addReference(@PathVariable String kind, @RequestBody StoreReferenceService.SaveOption request) { return R.ok(references.save(kind, null, request)); }
-    @SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("store:reference:edit")
     @PutMapping("/references/{kind}/{id}") public R<StoreReferenceService.Option> editReference(@PathVariable String kind, @PathVariable long id, @RequestBody StoreReferenceService.SaveOption request) { return R.ok(references.save(kind, id, request)); }
-    @SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("store:reference:remove")
     @DeleteMapping("/references/{kind}/{id}") public R<Void> deleteReference(@PathVariable String kind, @PathVariable long id) { references.delete(kind, id); return R.ok(); }
     @SaCheckPermission("store:shop:list")

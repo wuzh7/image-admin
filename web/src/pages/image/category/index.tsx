@@ -9,7 +9,7 @@ import {
 } from '@/api/image';
 import type { ImageCategory } from '@/api/image/types';
 import { useUserStore } from '@/stores/userStore';
-import { hasRole } from '@/utils/permission';
+import { hasPermi } from '@/utils/permission';
 
 interface CategoryForm {
   name: string;
@@ -22,7 +22,7 @@ export default function ImageCategoryPage() {
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const userInfo = useUserStore(state => state.userInfo);
-  const canAdd = hasRole(userInfo, ['superadmin']);
+  const canAdd = hasPermi(userInfo, ['image:category:add']);
 
   const load = useCallback(async () => {
     setLoading(true);

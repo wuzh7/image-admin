@@ -67,7 +67,7 @@ export default function DynamicPage() {
   const MigratedPage =
     migratedPages[componentKey] || migratedPathPrefixes.find(([prefix]) => location.pathname.startsWith(prefix))?.[1];
   const userInfo = useUserStore(state => state.userInfo);
-  if ((componentKey === 'image/category/index' || componentKey === 'tro/index' || componentKey === 'order/detail/index')
+  if ((componentKey === 'tro/index' || componentKey === 'order/detail/index')
     && !hasRole(userInfo, ['superadmin'])) return null;
   if (MigratedPage) {
     return <MigratedPage />;

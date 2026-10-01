@@ -28,11 +28,7 @@ INSERT IGNORE INTO sys_menu VALUES
 (1761400000000001015,'菜单删除',1761400000000000102,4,'','','','N','Y','F','0','0','system:menu:remove','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,''),
 (1761400000000001024,'设置部门权限',1761400000000000103,5,'','','','N','Y','F','0','0','system:dept:permission','#','','',1761000000000000103,1761100000000000001,SYSDATE(),NULL,NULL,'');
 
--- 角色定义与权限仅由超级管理员维护；部门管理员仍可分配本部门已开放的角色。
-DELETE rm FROM sys_role_menu rm JOIN sys_role r ON r.role_id=rm.role_id
-WHERE r.role_key<>'superadmin' AND rm.menu_id IN
-(1761400000000000101,1761400000000001008,1761400000000001009,1761400000000001010,1761400000000001011,1761400000000001017,
- 1761400000000000102,1761400000000001012,1761400000000001013,1761400000000001014,1761400000000001015,1761400000000001016);
+-- 系统管理菜单由权限点控制，保留普通角色已配置的授权。
 
 -- 目录不使用通配权限；旧版已获店铺页面的角色，一次性继承该页面现有操作能力。
 UPDATE sys_menu SET perms='' WHERE menu_id=1990000000000000020;
@@ -63,9 +59,7 @@ WHERE u.dept_id IS NOT NULL AND u.del_flag='0' AND ur.role_id<>17613000000000000
 INSERT IGNORE INTO sys_dept_menu(dept_id,menu_id)
 SELECT DISTINCT dr.dept_id,rm.menu_id FROM sys_dept_role dr
 JOIN sys_role_menu rm ON rm.role_id=dr.role_id JOIN sys_menu m ON m.menu_id=rm.menu_id
-WHERE m.perms NOT LIKE 'system:role:%' AND m.perms NOT LIKE 'system:menu:%'
- AND m.perms NOT LIKE 'system:store-probe:%' AND m.perms NOT LIKE 'image:category:%'
- AND m.perms NOT LIKE 'tro:%' AND m.perms NOT LIKE 'store:reference:%'
- AND m.perms NOT IN ('system:dept:add','system:dept:edit','system:dept:remove','system:dept:permission','order:detail:assign','image:dedup:remove')
+WHERE m.perms NOT LIKE 'tro:%'
+ AND m.perms NOT IN ('order:detail:assign','image:dedup:remove')
  AND @seed_access_control=1;
 INSERT IGNORE INTO sys_access_migration(version) VALUES ('20260928');

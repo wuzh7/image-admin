@@ -9,7 +9,7 @@ import { listRole } from '@/api/system/role';
 import type { RoleVO } from '@/api/system/role/types';
 import RowActions from '@/components/common/RowActions';
 import { useUserStore } from '@/stores/userStore';
-import { hasPermi, hasRole } from '@/utils/permission';
+import { hasPermi } from '@/utils/permission';
 import { buildDeptTree, disableCurrentDept, filterDeptTree, togglePermissionBranch } from './tree';
 
 const defaultForm: DeptForm = { status: '0', roleIds: [] };
@@ -29,11 +29,10 @@ export default function SystemDeptPage() {
   const [permissionDept, setPermissionDept] = useState<DeptVO>();
   const [permissionTree, setPermissionTree] = useState<MenuTreeOption[]>([]);
   const [permissionIds, setPermissionIds] = useState<Array<string | number>>([]);
-  const canManage = hasRole(userInfo, ['superadmin']);
-  const canAdd = canManage && hasPermi(userInfo, ['system:dept:add']);
-  const canEdit = canManage && hasPermi(userInfo, ['system:dept:edit']);
-  const canRemove = canManage && hasPermi(userInfo, ['system:dept:remove']);
-  const canPermission = canManage && hasPermi(userInfo, ['system:dept:permission']);
+  const canAdd = hasPermi(userInfo, ['system:dept:add']);
+  const canEdit = hasPermi(userInfo, ['system:dept:edit']);
+  const canRemove = hasPermi(userInfo, ['system:dept:remove']);
+  const canPermission = hasPermi(userInfo, ['system:dept:permission']);
 
   const loadOptions = async () => {
     const [treeResult, roleResult] = await Promise.all([deptTree(), listRole({ pageNum: 1, pageSize: 1000, status: '0' })]);

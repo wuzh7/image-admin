@@ -102,12 +102,8 @@ public class SysDeptPermissionService {
 
     private boolean reserved(String perms) {
         if (perms == null) return false;
-        return perms.startsWith("system:role:") || perms.startsWith("system:menu:")
-            || perms.startsWith("system:store-probe:") || perms.startsWith("image:category:")
-            || perms.startsWith("tro:") || perms.startsWith("store:reference:")
+        return perms.startsWith("tro:")
             || perms.equals("image:dedup:remove")
-            || perms.equals("system:dept:add") || perms.equals("system:dept:edit")
-            || perms.equals("system:dept:remove") || perms.equals("system:dept:permission")
             || perms.equals("order:detail:assign");
     }
 }

@@ -276,14 +276,14 @@ public class ImageController {
         return R.ok(imageService.categoryOptions());
     }
 
-    @SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
+    @SaCheckPermission("image:category:list")
     @GetMapping("/image/categories")
     public R<List<ImageDtos.CategoryView>> categories() {
         return R.ok(imageService.listCategories());
     }
 
     @Log(title = "图片类目新增", businessType = BusinessType.INSERT)
-    @SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
+    @SaCheckPermission("image:category:add")
     @PostMapping("/image/categories")
     public R<ImageDtos.CategoryView> createCategory(
         @Valid @RequestBody ImageDtos.SaveCategoryRequest request
@@ -292,7 +292,7 @@ public class ImageController {
     }
 
     @Log(title = "图片类目修改", businessType = BusinessType.UPDATE)
-    @SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
+    @SaCheckPermission("image:category:edit")
     @PutMapping("/image/categories/{id}")
     public R<ImageDtos.CategoryView> updateCategory(
         @PathVariable long id,
@@ -302,7 +302,7 @@ public class ImageController {
     }
 
     @Log(title = "图片类目删除", businessType = BusinessType.DELETE)
-    @SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
+    @SaCheckPermission("image:category:remove")
     @DeleteMapping("/image/categories/{id}")
     public R<Void> deleteCategory(@PathVariable long id) {
         imageDataLock.read(() -> libraryLock.run(() -> { imageService.deleteCategory(id); return null; }));

@@ -1,8 +1,6 @@
 package org.dromara.system.controller.system;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
-import cn.dev33.satoken.annotation.SaCheckRole;
-import cn.dev33.satoken.annotation.SaMode;
 import cn.hutool.core.lang.tree.Tree;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.constant.SystemConstants;
@@ -26,7 +24,6 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Set;
 
 /**
  * 菜单信息
@@ -39,10 +36,6 @@ import java.util.Set;
 @RequestMapping("/system/menu")
 public class SysMenuController extends BaseController {
 
-    private static final Set<String> SUPER_ADMIN_COMPONENTS = Set.of(
-        "system/role/index", "system/menu/index", "system/dept/index", "system/store-probe/index",
-        "image/category/index", "store/reference/index");
-
     private final ISysMenuService menuService;
     private final SysRoleMenuMapper roleMenuMapper;
 
@@ -54,16 +47,8 @@ public class SysMenuController extends BaseController {
     @GetMapping("/getRouters")
     public R<List<RouterVo>> getRouters() {
         List<SysMenu> menus = menuService.selectMenuTreeByUserId(LoginHelper.getUserId());
-        if (!LoginHelper.isAdmin()) hideAdminMenus(menus);
         List<RouterVo> routes = menuService.buildMenus(menus);
         return R.ok(routes);
-    }
-
-    private void hideAdminMenus(List<SysMenu> menus) {
-        menus.removeIf(menu -> SUPER_ADMIN_COMPONENTS.contains(String.valueOf(menu.getComponent())));
-        for (SysMenu menu : menus) {
-            if (menu.getChildren() != null) hideAdminMenus(menu.getChildren());
-        }
     }
 
     /**
@@ -72,9 +57,6 @@ public class SysMenuController extends BaseController {
      * @param menu 查询条件
      * @return 菜单列表
      */
-    @SaCheckRole(value = {
-        SystemConstants.SUPER_ADMIN_ROLE_KEY,
-    }, mode = SaMode.OR)
     @SaCheckPermission("system:menu:list")
     @GetMapping("/list")
     public R<List<SysMenuVo>> list(SysMenuBo menu) {
@@ -88,9 +70,6 @@ public class SysMenuController extends BaseController {
      * @param menuId 菜单ID
      * @return 菜单详情
      */
-    @SaCheckRole(value = {
-        SystemConstants.SUPER_ADMIN_ROLE_KEY,
-    }, mode = SaMode.OR)
     @SaCheckPermission("system:menu:query")
     @GetMapping(value = "/{menuId}")
     public R<SysMenuVo> getInfo(@PathVariable Long menuId) {
@@ -103,7 +82,6 @@ public class SysMenuController extends BaseController {
      * @param menu 查询条件
      * @return 菜单树
      */
-    @SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("system:menu:query")
     @GetMapping("/treeselect")
     public R<List<Tree<Long>>> treeselect(SysMenuBo menu) {
@@ -117,7 +95,6 @@ public class SysMenuController extends BaseController {
      * @param roleId 角色ID
      * @return 角色菜单树及选中节点
      */
-    @SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("system:menu:query")
     @GetMapping(value = "/roleMenuTreeselect/{roleId}")
     public R<MenuTreeSelectVo> roleMenuTreeselect(@PathVariable("roleId") Long roleId) {
@@ -134,7 +111,6 @@ public class SysMenuController extends BaseController {
      * @param menu 菜单参数
      * @return 操作结果
      */
-    @SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("system:menu:add")
     @Log(title = "菜单管理", businessType = BusinessType.INSERT)
     @RepeatSubmit()
@@ -156,7 +132,6 @@ public class SysMenuController extends BaseController {
      * @param menu 菜单参数
      * @return 操作结果
      */
-    @SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("system:menu:edit")
     @Log(title = "菜单管理", businessType = BusinessType.UPDATE)
     @RepeatSubmit()
@@ -184,7 +159,6 @@ public class SysMenuController extends BaseController {
      * @param menuId 菜单ID
      * @return 操作结果
      */
-    @SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("system:menu:remove")
     @Log(title = "菜单管理", businessType = BusinessType.DELETE)
     @DeleteMapping("/{menuId}")
@@ -213,7 +187,6 @@ public class SysMenuController extends BaseController {
      * @param menuIds 菜单ID串
      * @return 操作结果
      */
-    @SaCheckRole(SystemConstants.SUPER_ADMIN_ROLE_KEY)
     @SaCheckPermission("system:menu:remove")
     @Log(title = "菜单管理", businessType = BusinessType.DELETE)
     @DeleteMapping("/cascade/{menuIds}")

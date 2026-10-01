@@ -1,7 +1,6 @@
 package org.dromara.system.controller.system;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
-import cn.dev33.satoken.annotation.SaCheckRole;
 import cn.hutool.core.lang.tree.Tree;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.domain.R;
@@ -32,26 +31,25 @@ public class SysDeptController extends BaseController {
     private final ISysMenuService menuService;
     private final SysDeptPermissionService deptPermissionService;
 
-    @SaCheckRole("superadmin")
     @SaCheckPermission("system:dept:permission")
     @GetMapping("/permissionTree")
     public R<List<Tree<Long>>> permissionTree() {
         return R.ok(menuService.buildMenuTreeSelect(deptPermissionService.selectableMenus()));
     }
 
-    @SaCheckRole("superadmin")
     @SaCheckPermission("system:dept:permission")
     @GetMapping("/{deptId}/permissions")
     public R<List<Long>> permissions(@PathVariable Long deptId) {
+        deptService.checkDeptDataScope(deptId);
         if (deptService.selectDeptById(deptId) == null) return R.fail("部门不存在");
         return R.ok(deptPermissionService.menuIds(deptId));
     }
 
-    @SaCheckRole("superadmin")
     @SaCheckPermission("system:dept:permission")
     @Log(title = "部门权限", businessType = BusinessType.GRANT)
     @PutMapping("/{deptId}/permissions")
     public R<Void> updatePermissions(@PathVariable Long deptId, @RequestBody List<Long> menuIds) {
+        deptService.checkDeptDataScope(deptId);
         if (deptService.selectDeptById(deptId) == null) return R.fail("部门不存在");
         deptPermissionService.replace(deptId, menuIds);
         return R.ok();
@@ -94,17 +92,16 @@ public class SysDeptController extends BaseController {
     }
 
     @SaCheckPermission("system:dept:add")
-    @SaCheckRole("superadmin")
     @Log(title = "部门管理", businessType = BusinessType.INSERT)
     @RepeatSubmit
     @PostMapping
     public R<Void> add(@Validated @RequestBody SysDeptBo bo) {
+        if (bo.getParentId() != null && bo.getParentId() != 0) deptService.checkDeptDataScope(bo.getParentId());
         bo.setDeptName(bo.getDeptName().trim());
         return toAjax(deptService.insertDept(bo));
     }
 
     @SaCheckPermission("system:dept:edit")
-    @SaCheckRole("superadmin")
     @Log(title = "部门管理", businessType = BusinessType.UPDATE)
     @RepeatSubmit
     @PutMapping
@@ -113,15 +110,16 @@ public class SysDeptController extends BaseController {
         if (bo.getParentId() == null) return R.fail("修改部门时请选择已有的上级部门");
         if (bo.getDeptId().equals(bo.getParentId())) return R.fail("上级部门不能选择自己");
         bo.setDeptName(bo.getDeptName().trim());
+        deptService.checkDeptDataScope(bo.getDeptId());
         if (!deptService.checkDeptNameUnique(bo)) return R.fail("修改部门失败，部门名称已存在");
         return toAjax(deptService.updateDept(bo));
     }
 
     @SaCheckPermission("system:dept:remove")
-    @SaCheckRole("superadmin")
     @Log(title = "部门管理", businessType = BusinessType.DELETE)
     @DeleteMapping("/{deptId}")
     public R<Void> remove(@PathVariable Long deptId) {
+        deptService.checkDeptDataScope(deptId);
         if (deptService.hasChildByDeptId(deptId)) return R.fail("存在下级部门，不允许删除");
         if (deptService.checkDeptExistUser(deptId)) return R.fail("部门存在用户，不允许删除");
         return toAjax(deptService.deleteDeptById(deptId));

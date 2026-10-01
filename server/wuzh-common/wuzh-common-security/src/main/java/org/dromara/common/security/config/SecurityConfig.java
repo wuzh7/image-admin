@@ -109,10 +109,8 @@ public class SecurityConfig implements WebMvcConfigurer {
                         if (path.startsWith("/system/user/profile")) {
                             throw new NotPermissionException("个人中心已关闭，请联系管理员");
                         }
-                        if ((path.startsWith("/system/")
-                            && !path.equals("/system/user/getInfo") && !path.equals("/system/menu/getRouters")
-                            || path.startsWith("/monitor/operlog")) && !LoginHelper.isAdmin()) {
-                            throw new NotPermissionException("只有管理员可以访问系统管理和操作日志");
+                        if (path.startsWith("/monitor/operlog") && !LoginHelper.isAdmin()) {
+                            throw new NotPermissionException("只有管理员可以访问操作日志");
                         }
 
                         // 有效率影响 用于临时测试

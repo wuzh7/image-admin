@@ -1,7 +1,6 @@
 package org.dromara.system.controller.system;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
-import cn.dev33.satoken.annotation.SaCheckRole;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.domain.PageResult;
 import org.dromara.common.core.domain.R;
@@ -29,7 +28,6 @@ import java.util.List;
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/system/role")
-@SaCheckRole("superadmin")
 public class SysRoleController extends BaseController {
 
     private final ISysRoleService roleService;

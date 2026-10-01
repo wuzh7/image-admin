@@ -58,6 +58,7 @@ IFS= read -r -d '' preflight <<'BASH' || true
 set -eu
 cd /data/app/image-admin
 test -f .env && test -f compose.yml
+test -s config/image_analysis_prompt.txt || { echo 'Image analysis prompt is missing: /data/app/image-admin/config/image_analysis_prompt.txt' >&2; exit 1; }
 command -v flock >/dev/null
 docker info >/dev/null
 docker compose --env-file .env -f compose.yml config --images | grep -Fx 'image-admin-backend:latest' >/dev/null

@@ -28,7 +28,7 @@ services:
       IMAGE_UPLOAD_CONCURRENCY: ${IMAGE_UPLOAD_CONCURRENCY:-16}
       IMAGE_UPLOAD_POLICY_MINUTES: ${IMAGE_UPLOAD_POLICY_MINUTES:-30}
       IMAGE_UPLOAD_SESSION_MAX_FILES: ${IMAGE_UPLOAD_SESSION_MAX_FILES:-1000}
-      # 主服务直接请求火山方舟；在生产 .env 配置 API Key，提示词随镜像打包。
+      # 主服务直接请求火山方舟；在生产 .env 配置 API Key。
       ARK_BASE_URL: ${ARK_BASE_URL:-https://ark.cn-beijing.volces.com}
       ARK_API_KEY: ${ARK_API_KEY:?Set ARK_API_KEY}
       ARK_TIMEOUT_SECONDS: ${ARK_TIMEOUT_SECONDS:-900}
@@ -47,6 +47,8 @@ services:
       STORE_LISTING_PUBLIC_BASE_URL: ${STORE_LISTING_PUBLIC_BASE_URL:-}
     volumes:
       - ${SSCD_MODEL_HOST_PATH:?}:/models/sscd_disc_mixup.torchscript.pt:ro
+      # 从宿主机读取图片分析提示词，编辑 config 目录内文件后供后续请求使用。
+      - /data/app/image-admin/config:/app/config:ro
     networks: [image-admin-net]
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS -u \"$${MANAGEMENT_USERNAME}:$${MANAGEMENT_PASSWORD}\" http://127.0.0.1:8080/actuator/health | grep -q '\"status\":\"UP\"'"]

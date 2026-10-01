@@ -344,6 +344,15 @@ public class ImageService {
     }
 
     public void exportApproved(ImageDtos.ImageQuery query, HttpServletResponse response) {
+        exportApproved(query, response, false);
+    }
+
+    public String exportApprovedLink(ImageDtos.ImageQuery query) {
+        if (!storage.directUpload()) throw new ServiceException("当前环境不支持 OSS 下载");
+        return exportApproved(query, null, true);
+    }
+
+    private String exportApproved(ImageDtos.ImageQuery query, HttpServletResponse response, boolean directDownload) {
         long userId = requireCurrentUserId();
         boolean admin = LoginHelper.isAdmin();
         var selection = approvedQuery(query);
@@ -381,12 +390,19 @@ public class ImageService {
                     zip.closeEntry();
                 }
             }
-            response.setContentType("application/zip");
-            response.setHeader("Content-Disposition", "attachment; filename=library_" + DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss").format(LocalDateTime.now()) + ".zip");
-            response.setContentLengthLong(Files.size(archive));
-            try (InputStream input = Files.newInputStream(archive)) { input.transferTo(response.getOutputStream()); }
-            response.getOutputStream().flush();
+            String name = "library_" + DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss").format(LocalDateTime.now()) + ".zip";
+            String link = null;
+            if (directDownload) {
+                link = storage.publishArchive(archive, name);
+            } else {
+                response.setContentType("application/zip");
+                response.setHeader("Content-Disposition", "attachment; filename=" + name);
+                response.setContentLengthLong(Files.size(archive));
+                try (InputStream input = Files.newInputStream(archive)) { input.transferTo(response.getOutputStream()); }
+                response.getOutputStream().flush();
+            }
             if (!admin) records.completeExport(requestId);
+            return link;
         } catch (IOException | RuntimeException exception) {
             if (!admin) records.releaseExport(requestId);
             if (exception instanceof ServiceException serviceException) throw serviceException;

@@ -51,7 +51,7 @@ public class ImageController {
     private final ImageResetService imageResetService;
     private final org.dromara.image.service.ImageLibraryLock libraryLock;
 
-    @SaCheckPermission("image:dedup:upload")
+    @SaCheckPermission(value = {"image:dedup:upload", "image:dedup:export"}, mode = SaMode.OR)
     @GetMapping("/image/storage")
     public R<org.dromara.image.service.ImageUploadService.StorageMode> storageMode() {
         return R.ok(uploadService.storageMode());
@@ -162,6 +162,13 @@ public class ImageController {
     @PostMapping("/images/export")
     public void exportImages(@Valid ImageDtos.ImageQuery query, HttpServletResponse response) {
         imageDataLock.read(() -> imageService.exportApproved(query, response));
+    }
+
+    @Log(title = "正式图库导出", businessType = BusinessType.EXPORT)
+    @SaCheckPermission("image:dedup:export")
+    @PostMapping("/images/export-link")
+    public R<String> exportImageLink(@Valid ImageDtos.ImageQuery query) {
+        return R.data(imageDataLock.read(() -> imageService.exportApprovedLink(query)));
     }
 
     @SaCheckPermission(value = {"image:dedup:list", "image:dedup:query"}, mode = SaMode.OR)

@@ -20,15 +20,49 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
 @Tag("local")
 class ImagePageAuthorizationTest {
+
+    @Test
+    void exporterReceivesSignedArchiveLinkWithoutProxyingZip() throws Exception {
+        StpInterface original = SaManager.getStpInterface();
+        try {
+            SaManager.setStpInterface(new StpInterface() {
+                @Override public List<String> getPermissionList(Object loginId, String loginType) {
+                    return List.of("image:dedup:export");
+                }
+                @Override public List<String> getRoleList(Object loginId, String loginType) {
+                    return List.of();
+                }
+            });
+            ImageService service = mock(ImageService.class);
+            when(service.exportApprovedLink(any())).thenReturn("https://oss.example/exports/library.zip?signature=short");
+            var controller = new ImageController(service, mock(ImageUploadService.class),
+                new ImageDataLock(), mock(ImageResetService.class), mock(ImageLibraryLock.class));
+            var mvc = standaloneSetup(controller, new TestLoginController()).addInterceptors(new SaInterceptor())
+                .addFilters(new SaTokenContextFilterForJakartaServlet()).build();
+            String token = mvc.perform(post("/test-login")).andReturn().getResponse().getContentAsString();
+
+            mvc.perform(get("/image/storage").header(SaManager.getConfig().getTokenName(), token))
+                .andExpect(status().isOk());
+            mvc.perform(post("/images/export-link").header(SaManager.getConfig().getTokenName(), token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").value("https://oss.example/exports/library.zip?signature=short"));
+        } finally {
+            SaManager.setStpInterface(original);
+        }
+    }
 
     @Test
     void libraryReaderCanLoadPageWithItsMenuPermission() throws Exception {
@@ -57,6 +91,9 @@ class ImagePageAuthorizationTest {
             ServletException denied = assertThrows(ServletException.class,
                 () -> mvc.perform(post("/images/export").header(SaManager.getConfig().getTokenName(), token)));
             assertInstanceOf(NotPermissionException.class, denied.getCause());
+            ServletException linkDenied = assertThrows(ServletException.class,
+                () -> mvc.perform(post("/images/export-link").header(SaManager.getConfig().getTokenName(), token)));
+            assertInstanceOf(NotPermissionException.class, linkDenied.getCause());
         } finally {
             SaManager.setStpInterface(original);
         }

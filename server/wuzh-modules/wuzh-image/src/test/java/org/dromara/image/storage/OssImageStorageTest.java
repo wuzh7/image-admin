@@ -7,6 +7,8 @@ import org.dromara.image.config.ImageProperties;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import java.time.Duration;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;
@@ -65,6 +67,31 @@ class OssImageStorageTest {
         when(client.head("library/a.png")).thenReturn(new ObjectInfo(123L, "image/png", "b"));
         assertThrows(ServiceException.class, () -> storage.copy("review/a.png", "library/a.png"));
         verify(client, never()).delete(anyString());
+    }
+
+    @Test void archiveIsSignedForNativeDownloadAndDeletedIfUploadFails() throws Exception {
+        OssClient internal = mock(OssClient.class);
+        OssClient external = mock(OssClient.class);
+        OssImageStorage storage = new OssImageStorage(new ImageProperties(), internal, external);
+        Path archive = Files.createTempFile("export-test-", ".zip");
+        try {
+            when(external.presignGetUrl(anyString(), eq(Duration.ofHours(1)), anyMap()))
+                .thenReturn("https://oss.example/signed.zip");
+            assertEquals("https://oss.example/signed.zip", storage.publishArchive(archive, "library.zip"));
+            var key = org.mockito.ArgumentCaptor.forClass(String.class);
+            verify(internal).upload(key.capture(), eq(archive), any());
+            assertTrue(key.getValue().startsWith("exports/"));
+            verify(external).presignGetUrl(eq(key.getValue()), eq(Duration.ofHours(1)),
+                eq(Map.of("response-content-disposition", "attachment; filename=\"library.zip\"")));
+
+            OssClient failed = mock(OssClient.class);
+            when(failed.upload(anyString(), eq(archive), any())).thenThrow(new IllegalStateException("upload failed"));
+            assertThrows(IllegalStateException.class,
+                () -> new OssImageStorage(new ImageProperties(), failed, external).publishArchive(archive, "library.zip"));
+            verify(failed).delete(anyString());
+        } finally {
+            Files.deleteIfExists(archive);
+        }
     }
 
     @Test void libraryDestinationIsStableAcrossRestarts() {

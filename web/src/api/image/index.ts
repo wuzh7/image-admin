@@ -1,5 +1,6 @@
 import type { PageResult, R } from '@/api/types';
 import request from '@/api/request';
+import { tansParams } from '@/utils/wuzh';
 import type {
   BatchSummary,
   BatchView,
@@ -82,6 +83,15 @@ export function retryImageBatch(batchId: ImageId) {
 
 export function listApprovedImages(params: ImageQuery) {
   return request<R<PageResult<ImageView>>>({ url: '/images', method: 'get', params });
+}
+
+export function createImageExportLink(params: ImageQuery) {
+  return request<R<string>>({
+    url: '/images/export-link', method: 'post', data: params,
+    transformRequest: [data => tansParams(data)],
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    timeout: 0
+  });
 }
 
 export function replaceApprovedImage(imageId: ImageId, file: File) {

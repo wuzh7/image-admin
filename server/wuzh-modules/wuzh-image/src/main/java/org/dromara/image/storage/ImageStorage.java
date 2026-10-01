@@ -20,6 +20,9 @@ public interface ImageStorage {
     default boolean directUpload() { return false; }
     default Optional<String> accessUrl(String key, String contentType, boolean thumbnail) { return Optional.empty(); }
     default Optional<String> signGetUrl(String key, Duration expiry) { return Optional.empty(); }
+    default String publishArchive(Path archive, String fileName) {
+        throw new ServiceException("当前存储不支持导出文件直传");
+    }
     default UploadPolicy signUploadPolicy(String keyPrefix, Duration expiry) {
         throw new ServiceException("当前存储不支持批次直传");
     }

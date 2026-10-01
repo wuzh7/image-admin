@@ -6,27 +6,33 @@ import org.dromara.image.domain.ImageAsset;
 import org.dromara.image.domain.InfringementScanItem;
 import org.dromara.image.mapper.ImageAssetMapper;
 import org.dromara.image.mapper.InfringementScanItemMapper;
+import org.dromara.image.similarity.SscdFeatureExtractor;
 import org.dromara.image.storage.ImageStorage;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Qualifier;
 
-import java.io.IOException;
-import java.nio.file.Files;
+import javax.imageio.ImageIO;
+import java.io.ByteArrayOutputStream;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import java.util.UUID;
 
 @Slf4j
 @Component
 public class InfringementWorker {
+    private static final int AI_IMAGE_MAX_DIMENSION = 1536;
     private final InfringementScanItemMapper items;
     private final ImageAssetMapper assets;
     private final ImageStorage storage;
     private final RelayImageClient relay;
     private final InfringementCallLogger callLogger;
     private final ThreadPoolTaskExecutor imageRelayInfringementExecutor;
+    private final LocalDateTime processStartedAt = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
 
     public InfringementWorker(InfringementScanItemMapper items, ImageAssetMapper assets, ImageStorage storage,
                               RelayImageClient relay, InfringementCallLogger callLogger,
@@ -37,6 +43,19 @@ public class InfringementWorker {
         this.relay = relay;
         this.callLogger = callLogger;
         this.imageRelayInfringementExecutor = relayExecutor;
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void recoverInterrupted() {
+        int recovered = items.update(null, Wrappers.<InfringementScanItem>lambdaUpdate()
+            .eq(InfringementScanItem::getStatus, InfringementService.PROCESSING)
+            .eq(InfringementScanItem::getExecutionMode, "RELAY")
+            .eq(InfringementScanItem::getCallType, "IMAGE_ANALYSIS")
+            .isNull(InfringementScanItem::getProviderJobId)
+            .lt(InfringementScanItem::getStartedAt, processStartedAt)
+            .set(InfringementScanItem::getStatus, InfringementService.PENDING)
+            .set(InfringementScanItem::getStartedAt, null));
+        if (recovered > 0) log.info("重启后恢复图片分析任务 count={}", recovered);
     }
 
     @Scheduled(fixedDelay = 200, scheduler = "imageInfringementScheduler")
@@ -83,9 +102,9 @@ public class InfringementWorker {
             fail(item, "IMAGE_NOT_CURRENT", "图片不存在或检测记录已被替换");
             return;
         }
-        byte[] bytes;
+        AnalysisImage input;
         try {
-            bytes = readWithOneKeyRefresh(image);
+            input = readWithOneKeyRefresh(image);
         } catch (RuntimeException exception) {
             fail(item, "IMAGE_READ_FAILED", "图片读取失败");
             log.warn("侵权检测读取失败 itemId={}", item.getId(), exception);
@@ -95,7 +114,7 @@ public class InfringementWorker {
         RelayImageClient.AnalysisResponse result;
         LocalDateTime callStartedAt = LocalDateTime.now();
         try {
-            result = relay.analyze(bytes, image.getContentType());
+            result = relay.analyze(input.bytes(), input.contentType());
         } catch (RelayImageClient.RelayException exception) {
             callLogger.failure(item, requestId, exception.code(), exception.getMessage(), exception.rawAiResponse(),
                 exception.usage(), exception.rawProviderResponse(), callStartedAt, LocalDateTime.now());
@@ -134,7 +153,7 @@ public class InfringementWorker {
             .set(InfringementScanItem::getFinishedAt, LocalDateTime.now()));
     }
 
-    private byte[] readWithOneKeyRefresh(ImageAsset image) {
+    private AnalysisImage readWithOneKeyRefresh(ImageAsset image) {
         try {
             return read(image.getStorageKey());
         } catch (RuntimeException first) {
@@ -146,14 +165,18 @@ public class InfringementWorker {
         }
     }
 
-    private byte[] read(String key) {
+    private AnalysisImage read(String key) {
         if (key == null || key.isBlank()) throw new IllegalStateException("图片存储地址为空");
         try (ImageStorage.LocalFile file = storage.open(key)) {
-            return Files.readAllBytes(file.path());
-        } catch (IOException exception) {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            ImageIO.write(SscdFeatureExtractor.readOriented(file.path(), AI_IMAGE_MAX_DIMENSION), "jpeg", output);
+            return new AnalysisImage(output.toByteArray(), "image/jpeg");
+        } catch (Exception exception) {
             throw new IllegalStateException("图片读取失败", exception);
         }
     }
+
+    private record AnalysisImage(byte[] bytes, String contentType) { }
 
     private void fail(InfringementScanItem item, String code, String message) {
         fail(item, null, code, message);

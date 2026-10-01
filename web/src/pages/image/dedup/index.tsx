@@ -41,6 +41,7 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   getImageStorageMode,
+  createImageExportLink,
   prepareImageUploads,
   completeImageUploads,
   postImageToOss,
@@ -1361,13 +1362,28 @@ export default function ImageDedupPage() {
         })}>一键清空</Button>}
         {canExport && <Button icon={<DownloadOutlined />}
         disabled={!libraryTotal}
-        onClick={() => void exportFile('/images/export', '正式图库图片.zip', {
-          ...libraryFiltersRef.current,
-          keyword: keyword || undefined,
-          categoryId: libraryCategoryId,
-          batchId: libraryBatchId || undefined,
-          aspectRatio: libraryAspectRatio
-        }).then(() => loadLibrary(libraryPage, libraryPageSize, keyword, libraryCategoryId, libraryBatchId, libraryAspectRatio))}>导出筛选结果</Button>}
+        onClick={() => void (async () => {
+          const params = {
+            ...libraryFiltersRef.current,
+            keyword: keyword || undefined,
+            categoryId: libraryCategoryId,
+            batchId: libraryBatchId || undefined,
+            aspectRatio: libraryAspectRatio
+          };
+          const mode = await getImageStorageMode();
+          if (mode.data.directUpload) {
+            const hide = message.loading('正在生成压缩包，请稍候', 0);
+            try {
+              const result = await createImageExportLink(params);
+              window.location.assign(result.data);
+            } finally {
+              hide();
+            }
+          } else {
+            await exportFile('/images/export', '正式图库图片.zip', params);
+          }
+          await loadLibrary(libraryPage, libraryPageSize, keyword, libraryCategoryId, libraryBatchId, libraryAspectRatio);
+        })()}>导出筛选结果</Button>}
         {canRemove && <Button onClick={async () => { const result = await listImageReplacementLogs(); setReplacementLogs(result.data); setReplacementLogsOpen(true); }}>替换日志</Button>}
         </Space>}
       className="image-workflow-card"

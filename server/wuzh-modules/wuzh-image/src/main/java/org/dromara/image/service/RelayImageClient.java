@@ -58,6 +58,7 @@ public class RelayImageClient {
         }
         if (prompt.isBlank()) throw new RelayException("EMPTY_RELAY_PROMPT", "图片分析提示词为空", false);
         Map<String, Object> payload = Map.of("model", MODEL, "stream", false, "store", false,
+            "thinking", Map.of("type", "disabled"),
             "input", List.of(Map.of("role", "user", "content", List.of(
                 Map.of("type", "input_image", "image_url", "data:" + contentType + ";base64,"
                     + Base64.getEncoder().encodeToString(image)),

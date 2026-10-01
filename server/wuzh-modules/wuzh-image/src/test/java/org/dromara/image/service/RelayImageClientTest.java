@@ -65,6 +65,8 @@ class RelayImageClientTest {
         assertTrue(requests.getFirst().contains("doubao-seed-2-0-lite-260428"));
         assertTrue(requests.getFirst().contains("input_image"));
         assertTrue(requests.getFirst().contains("input_text"));
+        assertEquals("disabled", tools.jackson.databind.json.JsonMapper.builder().build()
+            .readTree(requests.getFirst()).path("thinking").path("type").asText());
         assertFalse(requests.getFirst().contains("googleSearch"));
     }
 

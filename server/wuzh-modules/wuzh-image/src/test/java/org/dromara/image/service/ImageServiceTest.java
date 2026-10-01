@@ -581,6 +581,46 @@ class ImageServiceTest {
     }
 
     @Test
+    void exportsPrivateLibraryZipThroughStorageAndCompletesReservation() throws Exception {
+        ImageAssetMapper assets = mock(ImageAssetMapper.class);
+        ImageStorage storage = mock(ImageStorage.class);
+        ImageRecordMapper records = mock(ImageRecordMapper.class);
+        InfringementService infringement = mock(InfringementService.class);
+        ImageService service = new ImageService(new ImageProperties(), mock(ImageBatchMapper.class), assets,
+            mock(ImageCategoryMapper.class), storage, mock(QdrantVectorStore.class), mock(ImageTaskRunner.class),
+            mock(UserService.class), infringement, records);
+        ImageAsset image = asset(701L, 71L, new byte[0]);
+        image.setStatus(ImageStatus.APPROVED.name());
+        image.setOriginalName("cat.png");
+        image.setStorageKey("library/71/cat.png");
+        when(assets.selectList(any())).thenReturn(List.of(image));
+        when(storage.directUpload()).thenReturn(true);
+        when(records.reserveExport(anyLong(), anyLong(), anyString())).thenReturn(1);
+        when(infringement.currentResults(any())).thenReturn(Map.of());
+        Path source = Files.createTempFile("library-export-source-", ".png");
+        Files.write(source, new byte[]{1, 2, 3});
+        when(storage.open(image.getStorageKey())).thenReturn(new ImageStorage.LocalFile(source, false));
+        when(storage.publishArchive(any(), anyString())).thenAnswer(call -> {
+            Path archive = call.getArgument(0);
+            try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(archive))) {
+                assertEquals("图片清单.xlsx", zip.getNextEntry().getName());
+                assertEquals("images/71/701_cat.png", zip.getNextEntry().getName());
+                assertEquals(1, zip.read());
+            }
+            return "https://oss.example/signed-archive";
+        });
+
+        try (MockedStatic<LoginHelper> login = loginAs(42L, false)) {
+            assertEquals("https://oss.example/signed-archive", service.exportApprovedLink(new ImageDtos.ImageQuery()));
+        } finally {
+            Files.deleteIfExists(source);
+        }
+        verify(storage).publishArchive(any(), anyString());
+        verify(records).completeExport(anyString());
+        verify(records, never()).releaseExport(anyString());
+    }
+
+    @Test
     void uploadAllowsTheOneThousandthImageInABatch() {
         ImageBatchMapper batchMapper = mock(ImageBatchMapper.class);
         ImageAssetMapper assetMapper = mock(ImageAssetMapper.class);

@@ -3,6 +3,7 @@ package org.dromara.image.storage;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.oss.client.OssClient;
 import org.dromara.common.oss.model.ObjectInfo;
+import org.dromara.common.oss.model.Options;
 import org.dromara.image.config.ImageProperties;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -16,12 +17,14 @@ import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -123,6 +126,18 @@ public class OssImageStorage implements ImageStorage {
     @Override public Optional<String> signGetUrl(String key, Duration expiry) {
         if (key == null || key.isBlank()) return Optional.empty();
         return Optional.of(external.presignGetUrl(key, expiry, Map.of()));
+    }
+
+    @Override public String publishArchive(Path archive, String fileName) {
+        String key = "exports/" + LocalDate.now() + "/" + UUID.randomUUID() + ".zip";
+        try {
+            internal.upload(key, archive, Options.create().setContentType("application/zip"));
+            return external.presignGetUrl(key, Duration.ofHours(1),
+                Map.of("response-content-disposition", "attachment; filename=\"" + fileName + "\""));
+        } catch (RuntimeException error) {
+            try { internal.delete(key); } catch (RuntimeException cleanup) { error.addSuppressed(cleanup); }
+            throw error;
+        }
     }
 
     @Override public LocalFile open(String key) {

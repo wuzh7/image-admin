@@ -56,11 +56,11 @@ create table sys_user (
     avatar            bigint(20)                                 comment '头像地址',
     password          varchar(100)    default ''                 comment '密码',
     status            char(1)         default '0'                comment '账号状态（0正常 1停用）',
-    -- 图片处理配置：默认开启，只有超级管理员可在用户管理中修改。
+    -- 图片处理配置：检测与中转站默认开启，所有风险状态放行默认关闭；只有超级管理员可修改。
     risk_scan_enabled       tinyint(1) not null default 1 comment '是否进行侵权风险检测',
     relay_analysis_enabled  tinyint(1) not null default 1 comment '是否调用中转站分析图片',
-    render_all_risks_enabled tinyint(1) not null default 1 comment '所有风险状态的正式图库图片可渲染',
-    listing_all_risks_enabled tinyint(1) not null default 1 comment '所有风险状态的正式图库图片可生成上架表格',
+    render_all_risks_enabled tinyint(1) not null default 0 comment '所有风险状态的正式图库图片可渲染',
+    listing_all_risks_enabled tinyint(1) not null default 0 comment '所有风险状态的正式图库图片可生成上架表格',
     del_flag          char(1)         default '0'                comment '删除标志（0代表存在 1代表删除）',
     login_ip          varchar(128)    default ''                 comment '最后登录IP',
     login_date        datetime                                   comment '最后登录时间',

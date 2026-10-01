@@ -368,8 +368,8 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
         if (adding) {
             user.setRiskScanEnabled(admin && user.getRiskScanEnabled() != null ? user.getRiskScanEnabled() : true);
             user.setRelayAnalysisEnabled(admin && user.getRelayAnalysisEnabled() != null ? user.getRelayAnalysisEnabled() : true);
-            user.setRenderAllRisksEnabled(admin && user.getRenderAllRisksEnabled() != null ? user.getRenderAllRisksEnabled() : true);
-            user.setListingAllRisksEnabled(admin && user.getListingAllRisksEnabled() != null ? user.getListingAllRisksEnabled() : true);
+            user.setRenderAllRisksEnabled(admin && user.getRenderAllRisksEnabled() != null ? user.getRenderAllRisksEnabled() : false);
+            user.setListingAllRisksEnabled(admin && user.getListingAllRisksEnabled() != null ? user.getListingAllRisksEnabled() : false);
         } else if (!admin) {
             user.setRiskScanEnabled(null);
             user.setRelayAnalysisEnabled(null);

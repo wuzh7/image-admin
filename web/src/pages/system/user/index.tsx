@@ -44,8 +44,8 @@ const defaultForm: UserForm = {
   roleIds: [],
   riskScanEnabled: true,
   relayAnalysisEnabled: true,
-  renderAllRisksEnabled: true,
-  listingAllRisksEnabled: true
+  renderAllRisksEnabled: false,
+  listingAllRisksEnabled: false
 };
 const superAdminUserId = '1761100000000000001';
 

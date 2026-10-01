@@ -19,6 +19,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -66,8 +67,8 @@ class SysUserServiceImplTest {
         verify(userMapper).insert(savedUser.capture());
         assertTrue(savedUser.getValue().getRiskScanEnabled());
         assertTrue(savedUser.getValue().getRelayAnalysisEnabled());
-        assertTrue(savedUser.getValue().getRenderAllRisksEnabled());
-        assertTrue(savedUser.getValue().getListingAllRisksEnabled());
+        assertFalse(savedUser.getValue().getRenderAllRisksEnabled());
+        assertFalse(savedUser.getValue().getListingAllRisksEnabled());
     }
 
     @Test
@@ -83,15 +84,30 @@ class SysUserServiceImplTest {
     }
 
     @Test
-    void nonAdminCannotDisableImageProcessingForNewUser() {
+    void nonAdminCannotConfigureImagePolicyForNewUser() {
         SysUser user = new SysUser();
         user.setRiskScanEnabled(false);
         user.setRelayAnalysisEnabled(false);
-        user.setRenderAllRisksEnabled(false);
-        user.setListingAllRisksEnabled(false);
+        user.setRenderAllRisksEnabled(true);
+        user.setListingAllRisksEnabled(true);
         SysUserServiceImpl.applyImagePolicy(user, false, true);
         assertTrue(user.getRiskScanEnabled());
         assertTrue(user.getRelayAnalysisEnabled());
+        assertFalse(user.getRenderAllRisksEnabled());
+        assertFalse(user.getListingAllRisksEnabled());
+    }
+
+    @Test
+    void adminDefaultsAllRiskPermissionsOffButCanEnableThem() {
+        SysUser user = new SysUser();
+        SysUserServiceImpl.applyImagePolicy(user, true, true);
+        assertTrue(user.getRiskScanEnabled());
+        assertTrue(user.getRelayAnalysisEnabled());
+        assertFalse(user.getRenderAllRisksEnabled());
+        assertFalse(user.getListingAllRisksEnabled());
+        user.setRenderAllRisksEnabled(true);
+        user.setListingAllRisksEnabled(true);
+        SysUserServiceImpl.applyImagePolicy(user, true, true);
         assertTrue(user.getRenderAllRisksEnabled());
         assertTrue(user.getListingAllRisksEnabled());
     }

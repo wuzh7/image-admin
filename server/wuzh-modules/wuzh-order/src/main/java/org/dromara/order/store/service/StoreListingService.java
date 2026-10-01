@@ -282,8 +282,6 @@ public class StoreListingService {
             for (StoreRenderItem item : items) grouped.computeIfAbsent(item.getImageId(), ignored -> new ArrayList<>()).add(item);
             if (batch == null) for (Long imageId : JsonUtils.parseArray(export.getImageIdsJson(), Long.class)) grouped.put(imageId, List.of());
             if (grouped.isEmpty()) throw new ServiceException("任务没有图片");
-            if ((long) grouped.size() * (workbook.skuCount() + 1) > workbook.capacity())
-                throw new ServiceException("上架表预留行不足，请扩展模板后重新上传");
             List<Long> imageIds = new ArrayList<>(grouped.keySet());
             Map<Long, ImageAsset> images = new HashMap<>();
             for (int offset = 0; offset < imageIds.size(); offset += 500)
@@ -306,8 +304,6 @@ public class StoreListingService {
                         throw new ServiceException("成品图片地址无效");
                     return key.startsWith("render-public/") ? storage.url(key, "image/*") : publicResultUrl(configuredBase, key);
                 }).toList();
-                if ((batch != null && settings.previewIndex > urls.size()) || urls.size() > workbook.carouselCount())
-                    throw new ServiceException("预览图序号或轮播图列与套图数量不匹配");
                 products.add(new StoreListingWorkbook.Product(String.valueOf(group.getKey()), settings.title(keyword), urls));
             }
             StoreListingWorkbook.Profile profile = settings.workbookProfile();

@@ -364,9 +364,14 @@ class ImageServiceTest {
     void createBatchUsesTheGeneratedUniqueIdAndDefaultThreshold() {
         ImageBatchMapper batchMapper = mock(ImageBatchMapper.class);
         ImageCategoryMapper categoryMapper = mock(ImageCategoryMapper.class);
+        UserService users = mock(UserService.class);
         ImageService service = new ImageService(new ImageProperties(), batchMapper, mock(ImageAssetMapper.class),
             categoryMapper, mock(LocalImageStorage.class), mock(QdrantVectorStore.class), mock(ImageTaskRunner.class),
-            mock(UserService.class), mock(InfringementService.class), mock(ImageRecordMapper.class));
+            users, mock(InfringementService.class), mock(ImageRecordMapper.class));
+        var policy = new org.dromara.system.api.domain.UserDTO();
+        policy.setRiskScanEnabled(false);
+        policy.setRelayAnalysisEnabled(false);
+        when(users.selectById(1L)).thenReturn(policy);
         ImageCategory category = new ImageCategory();
         category.setId(3L);
         category.setName("美妆工具");
@@ -384,6 +389,8 @@ class ImageServiceTest {
             assertEquals("美妆工具", batch.categoryName());
             assertEquals(new java.math.BigDecimal("0.60"), batch.similarityThreshold());
             assertEquals("RELAY", batch.infringementMode());
+            assertFalse(batch.riskScanEnabled());
+            assertFalse(batch.relayAnalysisEnabled());
         }
         verify(batchMapper, never()).updateById(any(ImageBatch.class));
     }

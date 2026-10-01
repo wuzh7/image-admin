@@ -9,8 +9,11 @@ import org.dromara.common.satoken.utils.LoginHelper;
 import org.dromara.image.domain.ImageAsset;
 import org.dromara.image.mapper.ImageAssetMapper;
 import org.dromara.image.storage.ImageStorage;
+import org.dromara.image.domain.InfringementScanItem;
+import org.dromara.image.service.InfringementService;
 import org.dromara.order.store.domain.*;
 import org.dromara.order.store.mapper.*;
+import org.dromara.system.api.UserService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -34,6 +37,8 @@ public class StoreListingService {
     private final StoreShopMapper shopMapper;
     private final ImageAssetMapper imageMapper;
     private final StoreObjectStorage storage;
+    private final InfringementService infringementService;
+    private final UserService users;
 
     @Value("${store.listing.public-base-url:}")
     private String publicBaseUrl;
@@ -71,15 +76,22 @@ public class StoreListingService {
             if (!Objects.equals(existing.getListingTemplateId(), template.getId()))
                 throw new ServiceException("该批次已绑定另一张上架表格，请新建渲染批次");
             if ("FAILED".equals(existing.getStatus())) {
+                List<Long> imageIds = itemMapper.selectList(Wrappers.<StoreRenderItem>lambdaQuery().eq(StoreRenderItem::getBatchId, batch.getId()))
+                    .stream().map(StoreRenderItem::getImageId).distinct().toList();
+                existing.setListingKeywordsJson(JsonUtils.toJsonString(snapshotKeywords(imageIds, owner())));
                 existing.setStatus("PENDING"); existing.setErrorMessage(null); exportMapper.updateById(existing);
             }
             return view(existing);
         }
         if (!Objects.equals(batch.getShopId(), shop.getId()) || !Objects.equals(batch.getListingTemplateId(), template.getId()))
             throw new ServiceException("该批次未绑定此店铺表格");
+        List<Long> imageIds = itemMapper.selectList(Wrappers.<StoreRenderItem>lambdaQuery().eq(StoreRenderItem::getBatchId, batch.getId()))
+            .stream().map(StoreRenderItem::getImageId).distinct().toList();
+        Map<String, String> keywords = snapshotKeywords(imageIds, owner());
         StoreListingExport result = new StoreListingExport();
         result.setId(Long.parseLong(IdGeneratorUtil.nextId())); result.setOwnerId(owner()); result.setBatchId(batch.getId());
         result.setShopId(shop.getId()); result.setListingTemplateId(template.getId()); result.setStatus("PENDING");
+        result.setListingKeywordsJson(JsonUtils.toJsonString(keywords));
         try { exportMapper.insert(result); } catch (DuplicateKeyException duplicate) {
             return view(exportMapper.selectOne(Wrappers.<StoreListingExport>lambdaQuery().eq(StoreListingExport::getBatchId, batch.getId()).eq(StoreListingExport::getShopId, shop.getId())));
         }
@@ -89,8 +101,43 @@ public class StoreListingService {
     public ExportView retry(long id) {
         StoreListingExport export = requireExport(id);
         if (!Set.of("FAILED", "COMPLETED").contains(export.getStatus())) throw new ServiceException("当前上架表格不能重新生成");
+        List<Long> imageIds = itemMapper.selectList(Wrappers.<StoreRenderItem>lambdaQuery().eq(StoreRenderItem::getBatchId, export.getBatchId()))
+            .stream().map(StoreRenderItem::getImageId).distinct().toList();
+        export.setListingKeywordsJson(JsonUtils.toJsonString(snapshotKeywords(imageIds, owner())));
         export.setStatus("PENDING"); export.setErrorMessage(null); exportMapper.updateById(export);
         return view(export);
+    }
+
+    Map<String, String> snapshotKeywords(List<Long> imageIds, long ownerId) {
+        if (imageIds.isEmpty()) throw new ServiceException("渲染批次没有图片");
+        var policy = users.selectById(ownerId);
+        if (policy == null) throw new ServiceException("用户不存在或已停用");
+        Map<String, String> result = new HashMap<>();
+        for (int start = 0; start < imageIds.size(); start += 500) {
+            List<ImageAsset> images = imageMapper.selectByIds(imageIds.subList(start, Math.min(start + 500, imageIds.size())));
+            List<Long> scanIds = images.stream().map(ImageAsset::getInfringementScanItemId).filter(Objects::nonNull).distinct().toList();
+            Map<Long, InfringementScanItem> scans = scanIds.isEmpty() ? Map.of() : infringementService.currentResults(scanIds);
+            for (ImageAsset image : images) {
+                if (!Objects.equals(image.getCreateBy(), ownerId) || !"APPROVED".equals(image.getStatus()))
+                    throw new ServiceException("原图不存在或无权限: " + image.getId());
+                InfringementScanItem scan = image.getInfringementScanItemId() == null ? null : scans.get(image.getInfringementScanItemId());
+                if (Boolean.FALSE.equals(policy.getListingAllRisksEnabled())
+                    && !("LOW".equals(image.getRiskLevel()) && scan != null && "SUCCESS".equals(scan.getStatus())))
+                    throw new ServiceException("仅低风险且分析完成的图片可以生成上架表格");
+                String keyword = listingKeyword(image, scan);
+                if (keyword == null) throw new ServiceException("原图 " + image.getId() + " 缺少可用的原文件名");
+                result.put(String.valueOf(image.getId()), keyword);
+            }
+        }
+        if (result.size() != imageIds.size()) throw new ServiceException("原图读取不完整");
+        return result;
+    }
+
+    static String listingKeyword(ImageAsset image, InfringementScanItem scan) {
+        String keywords = InfringementService.aiListingKeywords(scan);
+        if (keywords != null) return keywords;
+        String name = Objects.toString(image.getOriginalName(), "").replaceFirst("\\.[^.]+$", "").trim();
+        return name.isBlank() || name.equals(".") || name.equals("..") ? null : name;
     }
 
     public ImageStorage.LocalFile download(long id) {
@@ -177,8 +224,8 @@ public class StoreListingService {
                 ImageAsset image = images.get(group.getKey());
                 if (image == null || !Objects.equals(image.getCreateBy(), export.getOwnerId())) throw new ServiceException("原图不存在或无权限: " + group.getKey());
                 String keyword = Objects.toString(keywordSnapshot.get(String.valueOf(image.getId())), "").trim();
-                if (!keyword.matches("(?s).*[A-Za-z].*") || keyword.matches("(?i).*\\.(jpg|jpeg|png|webp)$"))
-                    throw new ServiceException("原图 " + group.getKey() + " 缺少侵权检测 AI 英文描述关键词快照");
+                if (keyword.isBlank()) keyword = listingKeyword(image, null);
+                if (keyword == null) throw new ServiceException("原图 " + group.getKey() + " 缺少可用的原文件名");
                 if (group.getValue().size() != templateCount) throw new ServiceException("原图 " + group.getKey() + " 的套图数量不完整");
                 List<String> urls = group.getValue().stream().map(item -> {
                     String key = item.getResultOssKey();
@@ -222,7 +269,7 @@ public class StoreListingService {
             if (json == null || json.isBlank()) throw new ServiceException("请先保存上架表标题词库和生成配置");
             Map<?, ?> values = JsonUtils.parseObject(json, Map.class);
             if (values == null || !"en".equals(values.get("titleLanguage")) || !"image".equals(values.get("keywordMode")))
-                throw new ServiceException("上架表仅支持英文标题和原图关键词");
+                throw new ServiceException("上架表仅支持英文词库和原图关键词模式");
             ProfileSettings settings = new ProfileSettings();
             Map<?, ?> words = values.get("words") instanceof Map<?, ?> map ? map : Map.of();
             Map<?, ?> selected = values.get("selected") instanceof Map<?, ?> map ? map : Map.of();
@@ -254,7 +301,7 @@ public class StoreListingService {
             parts.add(keyword);
             for (String field : List.of("hot", "holiday", "scene")) parts.add(selectedWords.get(field));
             String title = String.join(", ", parts.stream().filter(part -> part != null && !part.isBlank()).toList());
-            if (title.length() > 500) throw new ServiceException("商品英文标题超过 500 字符");
+            if (title.length() > 500) throw new ServiceException("商品标题超过 500 字符");
             return title;
         }
         StoreListingWorkbook.Profile workbookProfile() {

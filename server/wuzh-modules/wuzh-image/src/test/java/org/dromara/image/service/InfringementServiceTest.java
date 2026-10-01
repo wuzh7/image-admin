@@ -91,6 +91,14 @@ class InfringementServiceTest {
     }
 
     @Test
+    void relayDisabledBatchCreatesNoAnalysisTask() {
+        ImageBatch batch = new ImageBatch();
+        batch.setRelayAnalysisEnabled(false);
+        assertNull(service.createInitialTask(batch, List.of(image(10L, 8L))));
+        verify(tasks, never()).insert(any(InfringementScanTask.class));
+    }
+
+    @Test
     void newScansUseRelayEvenForHistoricalOfficialBatches() {
         ImageBatch batch = new ImageBatch();
         batch.setInfringementMode("OFFICIAL_HYBRID");

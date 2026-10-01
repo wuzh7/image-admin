@@ -70,7 +70,7 @@ class StoreRenderCleanupTimingTest {
                 ? jdbc.update("UPDATE store_render_item SET status='RESULT_DELETED', result_url=NULL WHERE batch_id=1")
                 : jdbc.update("UPDATE store_render_item SET result_oss_key=NULL WHERE batch_id=1"));
             var service = new StoreWorkflowService(null, null, null, null, batches, items, null, null,
-                null, null, null, null, storage, jdbc, null);
+                null, null, null, null, storage, jdbc, null, null, null);
             try (var login = mockStatic(LoginHelper.class)) {
                 login.when(LoginHelper::getUserIdStr).thenReturn("42");
                 service.confirmDownload(1L);

@@ -93,6 +93,12 @@ public class SysUserVo implements Serializable {
      */
     private String status;
 
+    /** 图片处理配置。 */
+    private Boolean riskScanEnabled;
+    private Boolean relayAnalysisEnabled;
+    private Boolean renderAllRisksEnabled;
+    private Boolean listingAllRisksEnabled;
+
     /**
      * 最后登录IP
      */

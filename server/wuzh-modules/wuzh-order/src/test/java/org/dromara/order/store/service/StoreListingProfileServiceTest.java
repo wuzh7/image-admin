@@ -20,8 +20,9 @@ import org.dromara.image.domain.ImageCategory;
 import org.dromara.image.domain.ImageAsset;
 import org.dromara.image.mapper.ImageCategoryMapper;
 import org.dromara.image.mapper.ImageAssetMapper;
-import org.dromara.image.domain.InfringementScanItem;
 import org.dromara.image.service.InfringementService;
+import org.dromara.system.api.UserService;
+import org.dromara.system.api.domain.UserDTO;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -69,6 +70,8 @@ class StoreListingProfileServiceTest {
     @Mock StoreListingExportMapper exportMapper;
     @Mock ImageAssetMapper imageMapper;
     @Mock InfringementService infringementService;
+    @Mock StoreListingService listingService;
+    @Mock UserService users;
     @Mock JdbcTemplate jdbcTemplate;
     @InjectMocks StoreWorkflowService service;
 
@@ -125,12 +128,9 @@ class StoreListingProfileServiceTest {
         when(groupMapper.selectById(9L)).thenReturn(group);
         when(storeTemplateMapper.selectList(any())).thenReturn(List.of(background));
         when(imageMapper.selectCount(any())).thenReturn(2L);
-        ImageAsset source = new ImageAsset(); source.setId(11L); source.setInfringementScanItemId(12L);
-        ImageAsset manual = new ImageAsset(); manual.setId(13L); manual.setInfringementScanItemId(14L); manual.setDisplayName("Display name must be ignored");
-        InfringementScanItem scan = new InfringementScanItem(); scan.setId(12L); scan.setStatus("SUCCESS"); scan.setImageDescription("Autumn wall art");
-        InfringementScanItem secondScan = new InfringementScanItem(); secondScan.setId(14L); secondScan.setStatus("SUCCESS"); secondScan.setImageDescription("AI canvas print");
-        when(imageMapper.selectByIds(anyList())).thenReturn(List.of(source, manual));
-        when(infringementService.currentResults(List.of(12L, 14L))).thenReturn(Map.of(12L, scan, 14L, secondScan));
+        when(users.selectById(42L)).thenReturn(new UserDTO());
+        when(listingService.snapshotKeywords(List.of(11L, 13L), 42L))
+            .thenReturn(Map.of("11", "Autumn wall art", "13", "AI canvas print"));
         when(itemMapper.selectList(any())).thenReturn(List.of());
         String profile = "{\"words\":{\"hot\":[{\"en\":\"A\"},{\"en\":\"B\"}]},\"selected\":{\"hot\":0}}";
         for (long shopId : List.of(3L, 7L)) {
@@ -156,6 +156,24 @@ class StoreListingProfileServiceTest {
         assertTrue(exports.getAllValues().get(0).getListingKeywordsJson().contains("AI canvas print"));
         assertTrue(!exports.getAllValues().get(0).getListingKeywordsJson().contains("Display name must be ignored"));
         verify(batchMapper, times(1)).insert(any(StoreRenderBatch.class));
+    }
+
+    @Test void renderRestrictionRejectsImageWithoutCompletedLowRiskAnalysis() {
+        UserDTO policy = new UserDTO(); policy.setRenderAllRisksEnabled(false);
+        when(users.selectById(42L)).thenReturn(policy);
+        StoreTemplateGroup group = new StoreTemplateGroup();
+        group.setId(9L); group.setOwnerId(42L); group.setCategoryId(4L); group.setStatus("ACTIVE");
+        when(groupMapper.selectById(9L)).thenReturn(group);
+        StoreTemplate template = new StoreTemplate(); template.setId(10L); template.setGroupId(9L); template.setStatus("ACTIVE");
+        when(storeTemplateMapper.selectList(any())).thenReturn(List.of(template));
+        when(imageMapper.selectCount(any())).thenReturn(1L, 0L);
+        var request = new StoreDtos.RenderBatchRequest(4L, 9L, List.of(11L), null, null, null, "jpg", 90, "restricted");
+        try (MockedStatic<LoginHelper> login = mockStatic(LoginHelper.class)) {
+            login.when(LoginHelper::getUserIdStr).thenReturn("42");
+            var error = assertThrows(org.dromara.common.core.exception.ServiceException.class, () -> service.createBatch(request));
+            assertEquals("仅低风险且分析完成的图片可以渲染", error.getMessage());
+        }
+        verify(batchMapper, never()).insert(any(StoreRenderBatch.class));
     }
 
     private static StoreListingTemplate template(long id) {

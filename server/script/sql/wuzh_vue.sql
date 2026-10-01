@@ -56,6 +56,11 @@ create table sys_user (
     avatar            bigint(20)                                 comment '头像地址',
     password          varchar(100)    default ''                 comment '密码',
     status            char(1)         default '0'                comment '账号状态（0正常 1停用）',
+    -- 图片处理配置：默认开启，只有超级管理员可在用户管理中修改。
+    risk_scan_enabled       tinyint(1) not null default 1 comment '是否进行侵权风险检测',
+    relay_analysis_enabled  tinyint(1) not null default 1 comment '是否调用中转站分析图片',
+    render_all_risks_enabled tinyint(1) not null default 1 comment '所有风险状态的正式图库图片可渲染',
+    listing_all_risks_enabled tinyint(1) not null default 1 comment '所有风险状态的正式图库图片可生成上架表格',
     del_flag          char(1)         default '0'                comment '删除标志（0代表存在 1代表删除）',
     login_ip          varchar(128)    default ''                 comment '最后登录IP',
     login_date        datetime                                   comment '最后登录时间',
@@ -75,7 +80,8 @@ create table sys_user (
 -- ----------------------------
 -- 初始化-用户信息表数据
 -- ----------------------------
-insert into sys_user values(1761100000000000001, null, 'admin', '疯狂的狮子Li', 'sys_user', 'crazyLionLi@163.com', '15888888888', '1', null, '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', '0', '0', '127.0.0.1', sysdate(), 1761000000000000103, 1761100000000000001, sysdate(), null, null, '管理员');
+insert into sys_user (user_id, dept_id, user_name, nick_name, user_type, email, phone_number, gender, avatar, password, status, del_flag, login_ip, login_date, create_dept, create_by, create_time, update_by, update_time, remark)
+values(1761100000000000001, null, 'admin', '疯狂的狮子Li', 'sys_user', 'crazyLionLi@163.com', '15888888888', '1', null, '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2', '0', '0', '127.0.0.1', sysdate(), 1761000000000000103, 1761100000000000001, sysdate(), null, null, '管理员');
 
 -- ----------------------------
 -- 3、岗位信息表

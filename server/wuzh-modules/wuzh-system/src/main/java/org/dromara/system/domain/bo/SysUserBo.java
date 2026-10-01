@@ -94,6 +94,12 @@ public class SysUserBo implements Serializable {
      */
     private String status;
 
+    /** 图片处理配置，仅超级管理员可修改。 */
+    private Boolean riskScanEnabled;
+    private Boolean relayAnalysisEnabled;
+    private Boolean renderAllRisksEnabled;
+    private Boolean listingAllRisksEnabled;
+
     /**
      * 备注
      */

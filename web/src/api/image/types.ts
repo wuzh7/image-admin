@@ -75,6 +75,8 @@ export interface BatchView {
   categoryName: string;
   status: BatchStatus;
   infringementMode: InfringementMode;
+  riskScanEnabled: boolean;
+  relayAnalysisEnabled: boolean;
   similarityThreshold: number | string;
   totalCount: number;
   processedCount: number;

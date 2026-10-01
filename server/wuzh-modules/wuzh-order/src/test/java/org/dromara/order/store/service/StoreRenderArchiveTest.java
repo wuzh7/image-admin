@@ -69,7 +69,8 @@ class StoreRenderArchiveTest {
             verify(imageStorage, never()).open(any());
             verify(storeStorage).stream("result-1", output);
             verify(storeStorage, never()).open(any());
-            assertThrows(org.dromara.common.core.exception.ServiceException.class, () -> service.archiveFiles(1L, "ENGLISH_KEYWORDS"));
+            assertEquals(List.of("a(1).png", "a(2).png"),
+                service.archiveFiles(1L, "ENGLISH_KEYWORDS").stream().map(file -> file.filename()).toList());
             InfringementScanItem scan = new InfringementScanItem(); scan.setId(5L); scan.setStatus("SUCCESS"); scan.setImageDescription("Blue Cat");
             when(infringementService.currentResults(any())).thenReturn(Map.of(5L, scan));
             assertEquals(List.of("Blue Cat(1).png", "Blue Cat(2).png"),

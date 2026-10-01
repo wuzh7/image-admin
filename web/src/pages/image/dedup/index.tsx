@@ -284,7 +284,7 @@ export default function ImageDedupPage() {
   const userInfo = useUserStore(state => state.userInfo);
   const canUpload = hasPermi(userInfo, ['image:dedup:upload']) && hasPermi(userInfo, ['image:dedup:start']);
   const canQuery = hasPermi(userInfo, ['image:dedup:query']);
-  const canExport = hasPermi(userInfo, ['image:dedup:list']);
+  const canExport = hasPermi(userInfo, ['image:dedup:export']);
   const canConfirm = hasPermi(userInfo, ['image:dedup:confirm']);
   const canRetry = hasPermi(userInfo, ['image:dedup:retry']);
   const canRender = hasPermi(userInfo, ['store:render:add']);
@@ -400,7 +400,8 @@ export default function ImageDedupPage() {
   const storeMissingKeywords = storeGenerateListing && selectedLibraryIds.some(id => {
     const image = library.find(item => String(item.id) === String(id));
     const keywords = image?.infringementDescriptionKeywords?.trim() || '';
-    return image && (!/[A-Za-z]/.test(keywords) || /\.(jpg|jpeg|png|webp)$/i.test(keywords));
+    const name = image?.originalName?.replace(/\.[^.]+$/, '').trim() || '';
+    return image && !(/[A-Za-z]/.test(keywords) && !/\.(jpg|jpeg|png|webp)$/i.test(keywords)) && (!name || name === '.' || name === '..');
   });
   const selectedLibraryIdSet = useMemo(() => new Set(selectedLibraryIds.map(String)), [selectedLibraryIds]);
   useLayoutEffect(() => {
@@ -433,8 +434,10 @@ export default function ImageDedupPage() {
     const pageIds = new Set(library.map(image => String(image.id)));
     setSelectedLibraryIds(current => current.filter(id => !pageIds.has(String(id))));
   };
-  const selectedRiskImages = library.filter(image => selectedLibraryIdSet.has(String(image.id)) && image.infringementRiskLevel !== 'LOW'
-    && !(image.infringementStatus === 'SUCCESS' && image.infringementPromptVersion === 'relay_image_analysis_v1' && image.infringementDescriptionKeywords));
+  const selectedRiskImages = userInfo?.user?.renderAllRisksEnabled === false ? library.filter(image => selectedLibraryIdSet.has(String(image.id))
+    && !(image.infringementRiskLevel === 'LOW' && image.infringementStatus === 'SUCCESS')) : [];
+  const selectedListingRiskImages = storeGenerateListing && userInfo?.user?.listingAllRisksEnabled === false ? library.filter(image => selectedLibraryIdSet.has(String(image.id))
+    && !(image.infringementRiskLevel === 'LOW' && image.infringementStatus === 'SUCCESS')) : [];
 
   const loadHealth = useCallback(async () => {
     const response = await getImageHealth();
@@ -678,9 +681,10 @@ export default function ImageDedupPage() {
     if (storeCategoryId == null || storeGroupId == null || !selectedLibraryIds.length) { message.warning('请选择类目、模板组和正式图库图片'); return; }
     const group = storeGroups.find(item => String(item.id) === String(storeGroupId));
     if (!group || String(group.categoryId) !== String(storeCategoryId)) { message.warning('模板组与图片类目不一致'); return; }
-    if (selectedRiskImages.length) { message.warning('仅分析完成或历史低风险图片可以渲染，请重新选择图片'); return; }
+    if (selectedRiskImages.length) { message.warning('仅低风险且分析完成的图片可以渲染'); return; }
+    if (selectedListingRiskImages.length) { message.warning('仅低风险且分析完成的图片可以生成上架表格'); return; }
     if (storeMissingListing) { message.warning('请选择目标店铺及各店铺已配置的上架表格'); return; }
-    if (storeMissingKeywords) { message.warning('选中的图片缺少 AI 英文描述，请查看分析结果'); return; }
+    if (storeMissingKeywords) { message.warning('选中的图片缺少可用的 AI 关键词和原文件名'); return; }
     const destinations = storeGenerateListing ? storeShopIds.map(shopId => ({
       shopId, listingTemplateId: storeListingByShop[String(shopId)]
     })).sort((left, right) => String(left.shopId).localeCompare(String(right.shopId))) : [];
@@ -759,7 +763,7 @@ export default function ImageDedupPage() {
     { title: '批次 ID', dataIndex: 'id', width: 210 },
     { title: '创建人', dataIndex: 'creatorName', width: 120 },
     { title: '类目', dataIndex: 'categoryName', width: 120 },
-    { title: 'AI 分析渠道', dataIndex: 'infringementMode', width: 110, render: value => infringementModeText[value as InfringementMode] },
+    { title: 'AI 分析渠道', dataIndex: 'infringementMode', width: 110, render: (value, row) => row.relayAnalysisEnabled === false ? '未启用' : infringementModeText[value as InfringementMode] },
     { title: '状态', dataIndex: 'status', width: 100, render: value => batchStatusTag(value) },
     {
       title: '进度',
@@ -1147,7 +1151,7 @@ export default function ImageDedupPage() {
       <Progress percent={taskProcessedPercent} status={taskBatch.status === 'FAILED' ? 'exception' : taskBatch.status === 'COMPLETED' ? 'success' : 'active'} />
       <Space wrap>
         <Tag color="cyan">类目 {taskBatch.categoryName}</Tag>
-        <Tag color="geekblue">AI 分析 {infringementModeText[taskBatch.infringementMode]}</Tag>
+        <Tag color="geekblue">AI 分析 {taskBatch.relayAnalysisEnabled === false ? '未启用' : infringementModeText[taskBatch.infringementMode]}</Tag>
         <Tag>总数 {taskBatch.totalCount}</Tag>
         <Tag color="blue">已处理 {taskBatch.processedCount}</Tag>
         <Tag color="green">唯一 {taskBatch.uniqueCount}</Tag>
@@ -1603,8 +1607,9 @@ export default function ImageDedupPage() {
                 </div>}
                 <div className="store-task-estimate"><div><Typography.Text type="secondary">已选原图</Typography.Text><strong>{selectedLibraryIds.length} 张</strong></div><span>×</span><div><Typography.Text type="secondary">背景模板</Typography.Text><strong>{storeGroup?.templates.length || 0} 个</strong></div><span>=</span><div><Typography.Text type="secondary">预计成品</Typography.Text><strong>{selectedLibraryIds.length * (storeGroup?.templates.length || 0)} 张</strong></div></div>
                 <Typography.Text type="secondary">{storeGenerateListing ? `${storeShopIds.length} 家店铺 · ${storeShopIds.length} 份表格 · 成品无需按店铺重复渲染` : '仅生成成品 · 不需要选择店铺或上架表格'}</Typography.Text>
-                {storeMissingKeywords && <Alert type="warning" showIcon message="选中的图片缺少 AI 英文描述，请查看分析结果" />}
-                {selectedRiskImages.length > 0 && <Alert type="warning" showIcon message="选中的图片包含未完成分析且非历史低风险的图片，请重新选择后再渲染" />}
+                {storeMissingKeywords && <Alert type="warning" showIcon message="选中的图片缺少可用的 AI 关键词和原文件名" />}
+                {selectedRiskImages.length > 0 && <Alert type="warning" showIcon message="仅低风险且分析完成的图片可以渲染" />}
+                {selectedListingRiskImages.length > 0 && <Alert type="warning" showIcon message="仅低风险且分析完成的图片可以生成上架表格" />}
                 {storeBatch && <>
                   <Typography.Text strong>批次 {String(storeBatch.id)} · {storeBatch.status === 'COMPLETED' ? '已完成' : storeBatch.status === 'PARTIAL_FAILURE' ? '部分失败' : storeBatch.status === 'FAILED' ? '失败' : storeBatch.status === 'STOPPING' ? '停止中' : storeBatch.status === 'STOPPED' ? '已停止' : '渲染中'}</Typography.Text>
                   <Progress percent={storeBatch.totalCount ? Math.round((storeBatch.completedCount + storeBatch.skippedCount + storeBatch.failedCount) / storeBatch.totalCount * 100) : 0} status={storeRendering ? 'active' : storeBatch.failedCount ? 'exception' : 'success'} />
@@ -1612,7 +1617,7 @@ export default function ImageDedupPage() {
                   {storeRendering ? <Button block danger onClick={() => Modal.confirm({ title: '停止当前渲染批次？', content: '正在渲染的图片完成后停止，其余图片不再开始。', onOk: async () => { const response = await stopRenderBatch(storeBatch.id); setStoreBatch(response.data); } })}>停止当前批次</Button> : <Button block onClick={() => history.push('/store-management/render-result')}>查看渲染结果</Button>}
                   {storePollFailed && <Button block onClick={async () => { const response = await getRenderBatch(storeBatch.id); setStoreBatch(response.data); setStorePollFailed(false); }}>重新获取进度</Button>}
                 </>}
-                <Button type="primary" block loading={storeSubmitting} disabled={storeRendering || !selectedLibraryIds.length || !storeGroup?.templates.length || storeMissingListing || storeMissingKeywords} onClick={() => void startStoreRender()}>{storeGenerateListing ? '开始渲染并生成表格' : '开始渲染成品'} →</Button>
+                <Button type="primary" block loading={storeSubmitting} disabled={storeRendering || !selectedLibraryIds.length || !storeGroup?.templates.length || storeMissingListing || storeMissingKeywords || !!selectedRiskImages.length || !!selectedListingRiskImages.length} onClick={() => void startStoreRender()}>{storeGenerateListing ? '开始渲染并生成表格' : '开始渲染成品'} →</Button>
                 <Typography.Text type="secondary">任务由后台处理，离开页面后仍可在“渲染结果”查看进度与下载。</Typography.Text>
               </Space>
             </ProCard>}

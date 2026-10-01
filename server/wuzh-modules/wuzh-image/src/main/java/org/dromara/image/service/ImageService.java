@@ -74,7 +74,8 @@ public class ImageService {
 
     @Transactional(rollbackFor = Exception.class)
     public ImageDtos.BatchView createBatch(ImageDtos.CreateBatchRequest request) {
-        requireCurrentUserId();
+        var user = userService.selectById(requireCurrentUserId());
+        if (user == null) throw new ServiceException("用户不存在或已停用");
         ImageCategory category = requireCategory(request.categoryId());
         if (!"0".equals(category.getStatus())) {
             throw new ServiceException("所选类目已停用，请重新选择");
@@ -84,6 +85,8 @@ public class ImageService {
         batch.setCategoryId(category.getId());
         batch.setStatus(BatchStatus.UPLOADING.name());
         batch.setInfringementMode(requireInfringementMode(request.infringementMode()));
+        batch.setRiskScanEnabled(user.getRiskScanEnabled());
+        batch.setRelayAnalysisEnabled(user.getRelayAnalysisEnabled());
         if (!LoginHelper.isAdmin() && request.similarityThreshold() != null
             && request.similarityThreshold().compareTo(properties.getSimilarityThreshold()) != 0) {
             throw new ServiceException("只有管理员可以修改重复阈值");
@@ -602,7 +605,7 @@ public class ImageService {
     private ImageDtos.BatchView toBatchView(ImageBatch batch, List<ImageAsset> assets) {
         return new ImageDtos.BatchView(batch.getId(), batch.getCategoryId(),
             categoryName(batch.getCategoryId()), batch.getStatus(),
-            batch.getInfringementMode(),
+            batch.getInfringementMode(), batch.getRiskScanEnabled(), batch.getRelayAnalysisEnabled(),
             batch.getSimilarityThreshold(), batch.getTotalCount(), batch.getProcessedCount(),
             uniqueCount(batch), batch.getDuplicateCount(), batch.getFailedCount(), batch.getDetectionCompletedAt(), batch.getErrorMessage(),
             batch.getCreateTime(), toImageViews(assets, false));
@@ -611,7 +614,7 @@ public class ImageService {
     private ImageDtos.BatchSummary toBatchSummary(ImageBatch batch, String creatorName) {
         return new ImageDtos.BatchSummary(batch.getId(), StringUtils.defaultIfBlank(creatorName, "未知用户"), batch.getCategoryId(),
             categoryName(batch.getCategoryId()), batch.getStatus(),
-            batch.getInfringementMode(),
+            batch.getInfringementMode(), batch.getRiskScanEnabled(), batch.getRelayAnalysisEnabled(),
             batch.getSimilarityThreshold(), batch.getTotalCount(), batch.getProcessedCount(), uniqueCount(batch),
             batch.getDuplicateCount(), batch.getFailedCount(), batch.getDetectionCompletedAt(), batch.getErrorMessage(), batch.getCreateTime());
     }

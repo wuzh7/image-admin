@@ -8,6 +8,10 @@ export interface UserInfo {
     nickName?: string;
     avatar?: string | number;
     avatarUrl?: string;
+    riskScanEnabled?: boolean;
+    relayAnalysisEnabled?: boolean;
+    renderAllRisksEnabled?: boolean;
+    listingAllRisksEnabled?: boolean;
   };
   roles: string[];
   permissions: string[];
@@ -26,6 +30,10 @@ export interface UserForm {
   remark?: string;
   avatar?: string | number;
   roleIds?: Array<string | number>;
+  riskScanEnabled?: boolean;
+  relayAnalysisEnabled?: boolean;
+  renderAllRisksEnabled?: boolean;
+  listingAllRisksEnabled?: boolean;
 }
 
 export interface UserProfileForm {
@@ -67,6 +75,10 @@ export interface UserVO extends BaseEntity {
   status?: string;
   roles?: RoleVO[];
   admin?: boolean;
+  riskScanEnabled?: boolean;
+  relayAnalysisEnabled?: boolean;
+  renderAllRisksEnabled?: boolean;
+  listingAllRisksEnabled?: boolean;
   loginIp?: string;
   loginDate?: string;
 }

@@ -158,7 +158,7 @@ public class ImageController {
     }
 
     @Log(title = "正式图库导出", businessType = BusinessType.EXPORT)
-    @SaCheckPermission("image:dedup:list")
+    @SaCheckPermission("image:dedup:export")
     @PostMapping("/images/export")
     public void exportImages(@Valid ImageDtos.ImageQuery query, HttpServletResponse response) {
         imageDataLock.read(() -> imageService.exportApproved(query, response));

@@ -82,6 +82,12 @@ public class SysUser extends BaseEntity {
      */
     private String status;
 
+    /** 图片处理配置，仅超级管理员可修改。 */
+    private Boolean riskScanEnabled;
+    private Boolean relayAnalysisEnabled;
+    private Boolean renderAllRisksEnabled;
+    private Boolean listingAllRisksEnabled;
+
     /**
      * 删除标志（0代表存在 1代表删除）
      */

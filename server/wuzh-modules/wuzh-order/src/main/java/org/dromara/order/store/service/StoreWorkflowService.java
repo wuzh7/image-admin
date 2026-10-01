@@ -15,6 +15,7 @@ import org.dromara.image.service.InfringementService;
 import org.dromara.image.storage.ImageStorage;
 import org.dromara.order.store.domain.*;
 import org.dromara.order.store.mapper.*;
+import org.dromara.system.api.UserService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -48,6 +49,8 @@ public class StoreWorkflowService {
     private final StoreObjectStorage storeStorage;
     private final JdbcTemplate jdbcTemplate;
     private final StoreReferenceService references;
+    private final StoreListingService listingService;
+    private final UserService users;
 
     public List<StoreDtos.CategoryView> catalog() {
         return categoryMapper.selectList(Wrappers.<org.dromara.image.domain.ImageCategory>lambdaQuery().eq(org.dromara.image.domain.ImageCategory::getStatus, "0").orderByAsc(org.dromara.image.domain.ImageCategory::getSortOrder))
@@ -364,6 +367,8 @@ public class StoreWorkflowService {
     @Transactional
     public StoreDtos.RenderBatchView createBatch(StoreDtos.RenderBatchRequest request) {
         long owner = owner();
+        var policy = users.selectById(owner);
+        if (policy == null) throw new ServiceException("用户不存在或已停用");
         StoreRenderBatch previous = batchMapper.selectOne(Wrappers.<StoreRenderBatch>lambdaQuery().eq(StoreRenderBatch::getOwnerId, owner).eq(StoreRenderBatch::getIdempotencyKey, request.idempotencyKey()).last("limit 1"));
         if (previous != null) return batchView(previous);
         StoreTemplateGroup group = requireGroup(request.templateGroupId());
@@ -398,25 +403,16 @@ public class StoreWorkflowService {
         for (int start = 0; start < imageIds.size(); start += 500)
             validImages += imageMapper.selectCount(Wrappers.<ImageAsset>lambdaQuery().in(ImageAsset::getId, imageIds.subList(start, Math.min(start + 500, imageIds.size()))).eq(ImageAsset::getStatus, ImageStatus.APPROVED.name()).eq(ImageAsset::getCategoryId, request.categoryId()).eq(ImageAsset::getCreateBy, owner));
         if (validImages != imageIds.size()) throw new ServiceException("存在无权限或未审核图片");
-        long analyzedImages = 0;
-        for (int start = 0; start < imageIds.size(); start += 500)
-            analyzedImages += imageMapper.selectCount(Wrappers.<ImageAsset>lambdaQuery().in(ImageAsset::getId, imageIds.subList(start, Math.min(start + 500, imageIds.size()))).eq(ImageAsset::getStatus, ImageStatus.APPROVED.name()).eq(ImageAsset::getCategoryId, request.categoryId()).eq(ImageAsset::getCreateBy, owner)
-                .apply("infringement_scan_item_id IN (SELECT id FROM infringement_scan_item WHERE status = 'SUCCESS' AND (risk_level = 'LOW' OR (prompt_version = 'relay_image_analysis_v1' AND risk_level IS NULL AND image_description IS NOT NULL)))"));
-        if (analyzedImages != imageIds.size()) throw new ServiceException("仅分析完成或历史低风险图片可以渲染，请重新选择图片");
-        Map<String, String> keywordSnapshot = new HashMap<>();
-        if (!destinations.isEmpty()) for (int start = 0; start < imageIds.size(); start += 500) {
-            List<ImageAsset> images = imageMapper.selectByIds(imageIds.subList(start, Math.min(start + 500, imageIds.size())));
-            List<Long> scanIds = images.stream().map(ImageAsset::getInfringementScanItemId).filter(Objects::nonNull).distinct().toList();
-            Map<Long, InfringementScanItem> scans = scanIds.isEmpty() ? Map.of() : infringementService.currentResults(scanIds);
-            for (ImageAsset image : images) {
-                Long scanId = image.getInfringementScanItemId();
-                String keywords = InfringementService.aiListingKeywords(scanId == null ? null : scans.get(scanId));
-                if (keywords == null)
-                    throw new ServiceException("原图 " + image.getId() + " 缺少侵权检测 AI 英文描述关键词");
-                keywordSnapshot.put(String.valueOf(image.getId()), keywords);
-            }
+        if (Boolean.FALSE.equals(policy.getRenderAllRisksEnabled())) {
+            long allowed = 0;
+            for (int start = 0; start < imageIds.size(); start += 500)
+                allowed += imageMapper.selectCount(Wrappers.<ImageAsset>lambdaQuery()
+                    .in(ImageAsset::getId, imageIds.subList(start, Math.min(start + 500, imageIds.size())))
+                    .eq(ImageAsset::getRiskLevel, "LOW")
+                    .apply("EXISTS (SELECT 1 FROM infringement_scan_item i WHERE i.id = img_asset.infringement_scan_item_id AND i.status = 'SUCCESS')"));
+            if (allowed != imageIds.size()) throw new ServiceException("仅低风险且分析完成的图片可以渲染");
         }
-        if (!destinations.isEmpty() && keywordSnapshot.size() != imageIds.size()) throw new ServiceException("原图关键词读取不完整");
+        Map<String, String> keywordSnapshot = destinations.isEmpty() ? Map.of() : listingService.snapshotKeywords(imageIds, owner);
         if (!Objects.equals(request.categoryId(), group.getCategoryId())) throw new ServiceException("图片类目与模板组不一致");
         String format = request.format() == null || request.format().isBlank() ? "jpg" : request.format().toLowerCase(Locale.ROOT);
         if (!Set.of("jpg", "jpeg", "png").contains(format)) throw new ServiceException("仅支持 JPG、PNG 格式");
@@ -621,7 +617,7 @@ public class StoreWorkflowService {
             ImageAsset image = images.get(group.getKey());
             if (image == null) throw new ServiceException("原图不存在");
             String name = "ORIGINAL_NAME".equals(nameMode) ? image.getOriginalName()
-                : InfringementService.aiListingKeywords(scans.get(image.getInfringementScanItemId()));
+                : StoreListingService.listingKeyword(image, scans.get(image.getInfringementScanItemId()));
             if (name == null || name.isBlank()) throw new ServiceException("原图 " + image.getId() + " 缺少可用的命名信息");
             String base = ("ORIGINAL_NAME".equals(nameMode) ? name.replaceFirst("\\.[^.]*$", "") : name)
                 .replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_").trim();

@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS img_batch (
     category_id           BIGINT          DEFAULT NULL COMMENT '图片类目ID',
     status                VARCHAR(20)     NOT NULL COMMENT '批次状态',
     infringement_mode     VARCHAR(20)     NOT NULL DEFAULT 'RELAY' COMMENT '侵权检测模式：RELAY、OFFICIAL_HYBRID或OFFICIAL_FLEX',
+    -- 创建批次时固定用户检测配置，避免后台处理期间规则改变。
+    risk_scan_enabled     TINYINT(1)      NOT NULL DEFAULT 1 COMMENT '是否进行侵权风险检测',
+    relay_analysis_enabled TINYINT(1)     NOT NULL DEFAULT 1 COMMENT '是否调用中转站分析图片',
     similarity_threshold  DECIMAL(5,4)    NOT NULL DEFAULT 0.6000 COMMENT '重复阈值',
     total_count           INT             NOT NULL DEFAULT 0 COMMENT '总图片数',
     processed_count       INT             NOT NULL DEFAULT 0 COMMENT '已处理数',

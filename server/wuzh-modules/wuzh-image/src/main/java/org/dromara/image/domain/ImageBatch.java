@@ -20,6 +20,8 @@ public class ImageBatch extends BaseEntity {
     private Long categoryId;
     private String status;
     private String infringementMode;
+    private Boolean riskScanEnabled;
+    private Boolean relayAnalysisEnabled;
     private BigDecimal similarityThreshold;
     private Integer totalCount;
     private Integer processedCount;

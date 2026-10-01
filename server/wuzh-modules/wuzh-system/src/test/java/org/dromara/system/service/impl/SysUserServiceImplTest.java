@@ -62,6 +62,12 @@ class SysUserServiceImplTest {
         verify(userRoleMapper).insert(captor.capture());
         assertEquals(100L, captor.getValue().getUserId());
         assertEquals(200L, captor.getValue().getRoleId());
+        ArgumentCaptor<SysUser> savedUser = ArgumentCaptor.forClass(SysUser.class);
+        verify(userMapper).insert(savedUser.capture());
+        assertTrue(savedUser.getValue().getRiskScanEnabled());
+        assertTrue(savedUser.getValue().getRelayAnalysisEnabled());
+        assertTrue(savedUser.getValue().getRenderAllRisksEnabled());
+        assertTrue(savedUser.getValue().getListingAllRisksEnabled());
     }
 
     @Test
@@ -74,6 +80,34 @@ class SysUserServiceImplTest {
 
         assertThrows(ServiceException.class, () -> service.registerUser(new SysUserBo()));
         verify(userMapper, never()).insert(any(SysUser.class));
+    }
+
+    @Test
+    void nonAdminCannotDisableImageProcessingForNewUser() {
+        SysUser user = new SysUser();
+        user.setRiskScanEnabled(false);
+        user.setRelayAnalysisEnabled(false);
+        user.setRenderAllRisksEnabled(false);
+        user.setListingAllRisksEnabled(false);
+        SysUserServiceImpl.applyImagePolicy(user, false, true);
+        assertTrue(user.getRiskScanEnabled());
+        assertTrue(user.getRelayAnalysisEnabled());
+        assertTrue(user.getRenderAllRisksEnabled());
+        assertTrue(user.getListingAllRisksEnabled());
+    }
+
+    @Test
+    void nonAdminCannotChangeImageProcessingOnEdit() {
+        SysUser user = new SysUser();
+        user.setRiskScanEnabled(false);
+        user.setRelayAnalysisEnabled(false);
+        user.setRenderAllRisksEnabled(false);
+        user.setListingAllRisksEnabled(false);
+        SysUserServiceImpl.applyImagePolicy(user, false, false);
+        assertEquals(null, user.getRiskScanEnabled());
+        assertEquals(null, user.getRelayAnalysisEnabled());
+        assertEquals(null, user.getRenderAllRisksEnabled());
+        assertEquals(null, user.getListingAllRisksEnabled());
     }
 
     @Test

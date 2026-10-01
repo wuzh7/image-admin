@@ -16,6 +16,7 @@ public interface ImageAssetMapper extends BaseMapper<ImageAsset> {
         SELECT a.id, a.id image_id, a.storage_key
         FROM img_asset a
         WHERE a.status = 'APPROVED' AND a.del_flag = '0' AND a.storage_key IS NOT NULL
+          AND EXISTS (SELECT 1 FROM img_batch b WHERE b.id = a.batch_id AND b.risk_scan_enabled = 1)
           AND a.external_completed_at IS NULL
           AND (a.external_claim_token IS NULL OR a.external_claimed_at < #{cutoff})
         ORDER BY a.id LIMIT 200 FOR UPDATE SKIP LOCKED

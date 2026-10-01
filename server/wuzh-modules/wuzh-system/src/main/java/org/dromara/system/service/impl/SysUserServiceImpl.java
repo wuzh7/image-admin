@@ -296,6 +296,7 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
     @Transactional(rollbackFor = Exception.class)
     public int insertUser(SysUserBo user) {
         SysUser sysUser = MapstructUtils.convert(user, SysUser.class);
+        applyImagePolicy(sysUser, LoginHelper.isAdmin(), true);
         // 新增用户信息
         int rows = userMapper.insert(sysUser);
         user.setUserId(sysUser.getUserId());
@@ -325,6 +326,7 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
         user.setCreateBy(0L);
         user.setUpdateBy(0L);
         SysUser sysUser = BeanUtil.copyProperties(user, SysUser.class);
+        applyImagePolicy(sysUser, false, true);
         if (userMapper.insert(sysUser) < 1) {
             return false;
         }
@@ -353,12 +355,27 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
         // 新增用户与岗位管理
         insertUserPost(user, true);
         SysUser sysUser = MapstructUtils.convert(user, SysUser.class);
+        applyImagePolicy(sysUser, LoginHelper.isAdmin(), false);
         // 防止错误更新后导致的数据误删除
         int flag = userMapper.updateById(sysUser);
         if (flag < 1) {
             throw new ServiceException("修改用户{}信息失败", user.getUserName());
         }
         return flag;
+    }
+
+    static void applyImagePolicy(SysUser user, boolean admin, boolean adding) {
+        if (adding) {
+            user.setRiskScanEnabled(admin && user.getRiskScanEnabled() != null ? user.getRiskScanEnabled() : true);
+            user.setRelayAnalysisEnabled(admin && user.getRelayAnalysisEnabled() != null ? user.getRelayAnalysisEnabled() : true);
+            user.setRenderAllRisksEnabled(admin && user.getRenderAllRisksEnabled() != null ? user.getRenderAllRisksEnabled() : true);
+            user.setListingAllRisksEnabled(admin && user.getListingAllRisksEnabled() != null ? user.getListingAllRisksEnabled() : true);
+        } else if (!admin) {
+            user.setRiskScanEnabled(null);
+            user.setRelayAnalysisEnabled(null);
+            user.setRenderAllRisksEnabled(null);
+            user.setListingAllRisksEnabled(null);
+        }
     }
 
     /**
@@ -669,6 +686,8 @@ public class SysUserServiceImpl implements ISysUserService, UserService {
             .select(SysUser::getUserId, SysUser::getDeptId, SysUser::getUserName,
                 SysUser::getNickName, SysUser::getUserType, SysUser::getEmail,
                 SysUser::getPhoneNumber, SysUser::getGender, SysUser::getStatus,
+                SysUser::getRiskScanEnabled, SysUser::getRelayAnalysisEnabled,
+                SysUser::getRenderAllRisksEnabled, SysUser::getListingAllRisksEnabled,
                 SysUser::getCreateTime)
             .eq(SysUser::getStatus, SystemConstants.NORMAL)
             .eq(SysUser::getUserId, userId)

@@ -148,9 +148,9 @@ export default function ListingConfigPage() {
         <Space><Button disabled={savingProfile} onClick={() => setConfigOpen(false)}>取消</Button><Button type="primary" loading={savingProfile} onClick={() => void saveProfile()}>保存生成配置</Button></Space>
       </div>}>
       <Card size="small" style={{ marginBottom: 20 }}>
-        <Typography.Text strong>只需维护英文</Typography.Text>
-        <Typography.Paragraph style={{ margin: '8px 0' }}>“商品名称”和“英文名称”两列均填写同一个英文标题。</Typography.Paragraph>
-        <Typography.Text type="secondary">顺序：平台强制词 → 材质词 → 原图英文关键词 → 平台热词 → 可选节假日 → 场景词。以下为 Mock 词库，请按实际类目维护。</Typography.Text>
+        <Typography.Text strong>维护英文词库</Typography.Text>
+        <Typography.Paragraph style={{ margin: '8px 0' }}>“商品名称”和“英文名称”两列填写同一个标题；图片缺少关键词时，标题可能包含中文原文件名。</Typography.Paragraph>
+        <Typography.Text type="secondary">顺序：平台强制词 → 材质词 → 原图关键词或文件名 → 平台热词 → 可选节假日 → 场景词。以下为 Mock 词库，请按实际类目维护。</Typography.Text>
       </Card>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 16 }}>
         {fields.map(([field, label]) => <div key={field}>
@@ -160,9 +160,9 @@ export default function ListingConfigPage() {
           <Typography.Text type="secondary">每行一个英文词条，新任务时选择使用哪一项。</Typography.Text>
         </div>)}
         <div>
-          <Typography.Text strong>图片英文关键词</Typography.Text>
-          <Input value="读取每张原图的 English keywords" disabled style={{ marginTop: 6 }} />
-          <Typography.Text type="secondary">取图片侵权检测 AI 返回的“英文描述关键词”，无需人工填写。</Typography.Text>
+          <Typography.Text strong>图片关键词或原文件名</Typography.Text>
+          <Input value="优先使用 AI 关键词，否则使用原文件名" disabled style={{ marginTop: 6 }} />
+          <Typography.Text type="secondary">优先使用图片分析生成的关键词；没有关键词时使用去掉扩展名的原文件名，可能包含中文。</Typography.Text>
         </div>
       </div>
       <Typography.Title level={5} style={{ marginTop: 24 }}>图片位置与 SKU 编号</Typography.Title>

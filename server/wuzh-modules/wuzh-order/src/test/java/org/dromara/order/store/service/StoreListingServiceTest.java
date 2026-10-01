@@ -14,6 +14,11 @@ import org.dromara.order.store.mapper.StoreListingTemplateMapper;
 import org.dromara.order.store.mapper.StoreRenderBatchMapper;
 import org.dromara.order.store.mapper.StoreShopMapper;
 import org.dromara.order.store.mapper.StoreRenderItemMapper;
+import org.dromara.image.domain.ImageAsset;
+import org.dromara.image.mapper.ImageAssetMapper;
+import org.dromara.image.service.InfringementService;
+import org.dromara.system.api.UserService;
+import org.dromara.system.api.domain.UserDTO;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -39,11 +44,27 @@ class StoreListingServiceTest {
     @Mock StoreListingExportMapper exportMapper;
     @Mock StoreRenderItemMapper itemMapper;
     @Mock StoreObjectStorage storage;
+    @Mock ImageAssetMapper imageMapper;
+    @Mock InfringementService infringementService;
+    @Mock UserService users;
     @InjectMocks StoreListingService service;
 
     @Test void completedRenderActivatesItsBoundListingExport() {
         service.processPending();
         verify(exportMapper).activateReady();
+    }
+
+    @Test void filenameFallbackStillRespectsListingRiskPolicy() {
+        ImageAsset image = new ImageAsset();
+        image.setId(1L); image.setCreateBy(42L); image.setStatus("APPROVED");
+        image.setRiskLevel("HIGH"); image.setOriginalName("花卉.jpg");
+        when(imageMapper.selectByIds(java.util.List.of(1L))).thenReturn(java.util.List.of(image));
+        UserDTO policy = new UserDTO();
+        policy.setListingAllRisksEnabled(false);
+        when(users.selectById(42L)).thenReturn(policy);
+        assertThrows(ServiceException.class, () -> service.snapshotKeywords(java.util.List.of(1L), 42L));
+        policy.setListingAllRisksEnabled(true);
+        assertEquals("花卉", service.snapshotKeywords(java.util.List.of(1L), 42L).get("1"));
     }
 
     @Test void generatedImageLinksHaveAnAbsolutePermanentAddress() {

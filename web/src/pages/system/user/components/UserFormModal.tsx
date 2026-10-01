@@ -1,5 +1,5 @@
 import type { FormInstance } from 'antd';
-import { ModalForm, ProFormSelect, ProFormText, ProFormTextArea, ProFormTreeSelect } from '@ant-design/pro-components';
+import { ModalForm, ProFormSelect, ProFormSwitch, ProFormText, ProFormTextArea, ProFormTreeSelect } from '@ant-design/pro-components';
 import { Form } from 'antd';
 import type { RoleVO } from '@/api/system/role/types';
 import type { UserForm } from '@/api/system/user/types';
@@ -11,6 +11,7 @@ interface UserFormModalProps {
   form: FormInstance<UserForm>;
   initialValues: UserForm;
   currentUserId?: string | number;
+  canConfigureImages: boolean;
   roleOptions: RoleVO[];
   deptOptions: DeptTreeOption[];
   onDeptChange: (deptId?: string | number) => Promise<void>;
@@ -25,6 +26,7 @@ export default function UserFormModal({
   form,
   initialValues,
   currentUserId,
+  canConfigureImages,
   roleOptions,
   deptOptions,
   onDeptChange,
@@ -121,6 +123,12 @@ export default function UserFormModal({
         )}
       </div>
       <ProFormTextArea name="remark" label="备注" fieldProps={{ rows: 3 }} placeholder="请输入内容" />
+      {canConfigureImages && <>
+        <ProFormSwitch name="riskScanEnabled" label="进行侵权风险检测" />
+        <ProFormSwitch name="relayAnalysisEnabled" label="调用中转站图片分析" />
+        <ProFormSwitch name="renderAllRisksEnabled" label="所有风险状态的正式图库图片可渲染" />
+        <ProFormSwitch name="listingAllRisksEnabled" label="所有风险状态的正式图库图片可生成上架表格" />
+      </>}
     </ModalForm>
   );
 }

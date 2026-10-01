@@ -34,14 +34,18 @@ import { useTableScroll } from '@/hooks/useTableScroll';
 import { useUserStore } from '@/stores/userStore';
 import { dictOptions } from '@/utils/dict';
 import { confirmAction } from '@/utils/modal';
-import { hasPermi } from '@/utils/permission';
+import { hasPermi, hasRole } from '@/utils/permission';
 import { toPageQuery, toTableData } from '@/utils/wuzh';
 import UserDetailDrawer from './components/UserDetailDrawer';
 import UserFormModal from './components/UserFormModal';
 
 const defaultForm: UserForm = {
   status: '0',
-  roleIds: []
+  roleIds: [],
+  riskScanEnabled: true,
+  relayAnalysisEnabled: true,
+  renderAllRisksEnabled: true,
+  listingAllRisksEnabled: true
 };
 const superAdminUserId = '1761100000000000001';
 
@@ -66,6 +70,7 @@ export default function SystemUserPage() {
   const [viewUserId, setViewUserId] = useState<string | number>();
   const { applyDateRange: applyCreateTimeDateRange } = useDateRangeQuery();
   const currentUserId = userInfo?.user?.userId;
+  const canConfigureImages = String(currentUserId) === superAdminUserId && hasRole(userInfo, ['superadmin']);
 
   const canAdd = hasPermi(userInfo, ['system:user:add']);
   const canEdit = hasPermi(userInfo, ['system:user:edit']);
@@ -353,6 +358,7 @@ export default function SystemUserPage() {
         form={form}
         initialValues={defaultForm}
         currentUserId={currentUserId}
+        canConfigureImages={canConfigureImages}
         roleOptions={roleOptions}
         deptOptions={deptOptions}
         onDeptChange={async deptId => {

@@ -65,6 +65,12 @@ public class UserDTO implements Serializable {
      */
     private String status;
 
+    /** 图片处理配置。 */
+    private Boolean riskScanEnabled;
+    private Boolean relayAnalysisEnabled;
+    private Boolean renderAllRisksEnabled;
+    private Boolean listingAllRisksEnabled;
+
     /**
      * 创建时间
      */

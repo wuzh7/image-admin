@@ -49,7 +49,7 @@ public class InfringementService {
 
     @Transactional(rollbackFor = Exception.class)
     public Long createInitialTask(ImageBatch batch, List<ImageAsset> selected) {
-        if (selected.isEmpty()) return null;
+        if (selected.isEmpty() || Boolean.FALSE.equals(batch.getRelayAnalysisEnabled())) return null;
         InfringementScanTask task = newTask("INITIAL", batch.getId(), batch.getCreateBy());
         String executionMode = executionMode(batch);
         for (ImageAsset image : selected) {
@@ -98,12 +98,13 @@ public class InfringementService {
         if (!LoginHelper.isAdmin()) throw new ServiceException("只有管理员可以重新检测图片");
         ImageAsset image = assets.selectById(imageId);
         if (image == null || !"APPROVED".equals(image.getStatus())) throw new ServiceException("仅正式图库图片可以重新检测");
-
         Long previousItemId = image.getInfringementScanItemId();
         InfringementScanItem previous = previousItemId == null ? null : items.selectById(previousItemId);
         if (previous != null && SUCCESS.equals(previous.getStatus())) {
             return new InfringementDtos.RetryResult(null, 0);
         }
+        ImageBatch batch = batches.selectById(image.getBatchId());
+        if (batch == null || Boolean.FALSE.equals(batch.getRelayAnalysisEnabled())) throw new ServiceException("该批次未启用中转站图片分析");
         InfringementScanTask task = newTask("MANUAL_RESCAN", image.getBatchId(), LoginHelper.getUserId());
         InfringementScanItem item = newItem(task.getId(), image, executionMode(image.getBatchId()));
         items.insert(item);

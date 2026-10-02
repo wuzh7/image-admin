@@ -104,7 +104,22 @@ class RelayImageClientTest {
     }
 
     @Test
-    void enforcesVisualOnlyResponseSchema() {
+    void acceptsChineseClothingTagsFromCompletedArkResponse() {
+        String description = "A person wears a black short-sleeved t-shirt with styled text graphics featuring patriotic flag patterns, visible tattoos on arms and neck.";
+        assertEquals(description, RelayImageClient.parseDescription("""
+            {"descriptionKeywords":"%s","subjects":["人物","T恤","文字","图案","纹身"],
+             "scenes":["纯色背景"],"themes":["文化","装饰"],"visualStyles":["摄影","写实"],"colors":["黑色"]}
+            """.formatted(description)));
+        assertEquals("A rendered t-shirt.", RelayImageClient.parseDescription("""
+            {"descriptionKeywords":"A rendered t-shirt.","subjects":["T恤"],"scenes":[],"themes":[],"visualStyles":["3D渲染"],"colors":[]}
+            """));
+        assertEquals("A t-shirt.", RelayImageClient.parseDescription("""
+            {"descriptionKeywords":"A t-shirt.","subjects":["T-shirt"],"scenes":[],"themes":[],"visualStyles":[],"colors":[]}
+            """));
+    }
+
+    @Test
+    void readsDescriptionWithoutValidatingClassificationOrLanguage() {
         assertEquals("A red flower.", RelayImageClient.parseDescription("""
             {"descriptionKeywords":"A red flower.","subjects":["花卉"],"scenes":[],"themes":[],"visualStyles":[],"colors":["红色"]}
             """));
@@ -112,15 +127,25 @@ class RelayImageClientTest {
         assertEquals(longDescription, RelayImageClient.parseDescription("""
             {"descriptionKeywords":"%s","subjects":[],"scenes":[],"themes":[],"visualStyles":[],"colors":[]}
             """.formatted(longDescription)));
-        assertEquals("UNPARSABLE_AI_RESPONSE", code("""
+        assertEquals("Flower", RelayImageClient.parseDescription("""
             {"descriptionKeywords":"Flower","subjects":[],"scenes":[],"themes":[],"visualStyles":[],"colors":[],"riskLevel":"LOW"}
             """));
-        assertEquals("INVALID_VISUAL_TAG", code("""
+        assertEquals("Flower", RelayImageClient.parseDescription("""
             {"descriptionKeywords":"Flower","subjects":["BrandName"],"scenes":[],"themes":[],"visualStyles":[],"colors":[]}
             """));
-        assertEquals("INVALID_IMAGE_DESCRIPTION", code("""
+        assertEquals("水彩花卉", RelayImageClient.parseDescription("""
             {"descriptionKeywords":"水彩花卉","subjects":[],"scenes":[],"themes":[],"visualStyles":[],"colors":[]}
             """));
+        assertEquals("A flower.", RelayImageClient.parseDescription("""
+            {"descriptionKeywords":" A flower. ","subjects":["1","2","3","4","5","6"],"colors":"red"}
+            """));
+        assertEquals("A flower.", RelayImageClient.parseDescription("""
+            {"descriptionKeywords":"A flower."}
+            """));
+        for (String raw : List.of("{}", "{\"descriptionKeywords\":\" \"}", "{\"descriptionKeywords\":null}",
+            "{\"descriptionKeywords\":123}", "[]")) {
+            assertEquals("INVALID_IMAGE_DESCRIPTION", code(raw));
+        }
     }
 
     private static String code(String raw) {

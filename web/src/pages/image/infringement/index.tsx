@@ -184,7 +184,7 @@ export default function ImageInfringementPage() {
     },
     { title: '风险', dataIndex: 'riskLevel', width: 90, search: false, render: (_, row) => riskTag(row.riskLevel, row.status === 'SUCCESS') },
     { title: '调用类型', dataIndex: 'callType', width: 100, search: false,
-      render: (_, row) => row.callType === 'CASE_LOOKUP' ? '案号补查' : row.status === 'SUCCESS' && !row.riskLevel ? '图片分析' : '风险检测' },
+      render: (_, row) => row.callType === 'CASE_LOOKUP' ? '案号补查' : row.callType === 'IMAGE_ANALYSIS' || row.status === 'SUCCESS' && !row.riskLevel ? '图片分析' : '风险检测' },
     {
       title: '执行方式', dataIndex: 'executionMode', width: 150,
       valueEnum: Object.fromEntries(Object.entries(executionModeLabel).map(([key, text]) => [key, { text }])),
@@ -226,7 +226,7 @@ export default function ImageInfringementPage() {
     {
       title: '失败原因', dataIndex: 'errorMessage', width: 240, search: false, hideInTable: !isSuperAdmin,
       render: value => value
-        ? <Text type="danger" style={{ display: 'block' }}>系统错误，请稍后重试</Text>
+        ? <Text type="danger" style={{ display: 'block' }}>{value}</Text>
         : '-'
     },
     { title: '模型', dataIndex: 'model', width: 140, search: false, ellipsis: true, hideInTable: !isSuperAdmin },
@@ -320,7 +320,7 @@ export default function ImageInfringementPage() {
               <Descriptions.Item label="批次ID">{selectedCall.batchId || '-'}</Descriptions.Item>
               <Descriptions.Item label="图片ID">{selectedCall.imageId}</Descriptions.Item>
               <Descriptions.Item label="执行方式">{selectedCall.executionMode ? executionModeLabel[selectedCall.executionMode] : '-'}</Descriptions.Item>
-              <Descriptions.Item label="调用类型">{selectedCall.callType === 'CASE_LOOKUP' ? '案号补查' : selectedCall.status === 'SUCCESS' && !selectedCall.riskLevel ? '图片分析' : '风险检测'}</Descriptions.Item>
+              <Descriptions.Item label="调用类型">{selectedCall.callType === 'CASE_LOOKUP' ? '案号补查' : selectedCall.callType === 'IMAGE_ANALYSIS' || selectedCall.status === 'SUCCESS' && !selectedCall.riskLevel ? '图片分析' : '风险检测'}</Descriptions.Item>
               <Descriptions.Item label="Batch作业ID">{selectedCall.providerJobId || '-'}</Descriptions.Item>
               <Descriptions.Item label="模型">{selectedCall.model || '-'}</Descriptions.Item>
               <Descriptions.Item label="Google搜索">{selectedCall.searchUsed == null ? '未记录' : selectedCall.searchUsed ? `已使用（${selectedCall.searchQueryCount || 0} 次）` : '未使用'}</Descriptions.Item>
@@ -328,7 +328,7 @@ export default function ImageInfringementPage() {
               <Descriptions.Item label="输出 / 思考 Token">{selectedCall.candidatesTokenCount ?? '-'} / {selectedCall.thoughtsTokenCount ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="工具输入 Token">{selectedCall.toolUsePromptTokenCount ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="总 Token">{selectedCall.totalTokenCount ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="错误">{selectedCall.errorMessage ? '系统错误，请稍后重试' : '-'}</Descriptions.Item>
+              <Descriptions.Item label="错误">{selectedCall.errorMessage ? `${selectedCall.errorCode || 'UNKNOWN'}：${selectedCall.errorMessage}` : '-'}</Descriptions.Item>
             </Descriptions>
             <ProviderResponsePanel call={selectedCall} />
             <div>
@@ -376,7 +376,7 @@ export default function ImageInfringementPage() {
               {isSuperAdmin && <Descriptions.Item label="执行方式">{selectedItem.executionMode ? executionModeLabel[selectedItem.executionMode] : '-'}</Descriptions.Item>}
               <Descriptions.Item label="Google 搜索">{selectedItem.searchUsed == null ? '未记录' : selectedItem.searchUsed ? `已使用（${selectedItem.searchQueryCount || 0} 次）` : '未使用'}</Descriptions.Item>
               <Descriptions.Item label="完成时间">{selectedItem.finishedAt || '-'}</Descriptions.Item>
-              {isSuperAdmin && selectedItem.errorMessage && <Descriptions.Item label="异常信息"><Text type="danger">系统错误，请稍后重试</Text></Descriptions.Item>}
+              {isSuperAdmin && selectedItem.errorMessage && <Descriptions.Item label="异常信息"><Text type="danger">{selectedItem.errorMessage}</Text></Descriptions.Item>}
             </Descriptions>
           </Space>
         )}

@@ -221,7 +221,7 @@ export interface InfringementCallLogView {
   model?: string;
   status: 'SUCCESS' | 'FAILED';
   riskLevel?: InfringementRiskLevel;
-  callType?: 'RISK_SCAN' | 'CASE_LOOKUP';
+  callType?: 'RISK_SCAN' | 'CASE_LOOKUP' | 'IMAGE_ANALYSIS';
   rawAiResponse?: string;
   usageMetadata?: string;
   promptTokenCount?: number;

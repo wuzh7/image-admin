@@ -25,7 +25,6 @@ public class RelayImageClient {
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String MODEL = "doubao-seed-2-0-lite-260428";
     private static final String PROMPT_VERSION = "relay_image_analysis_v1";
-    private static final Set<String> FIELDS = Set.of("descriptionKeywords", "subjects", "scenes", "themes", "visualStyles", "colors");
     private final RestClient client;
     private final String apiKey;
     private final Path promptFile;
@@ -117,27 +116,9 @@ public class RelayImageClient {
         } catch (RuntimeException exception) {
             throw new RelayException("UNPARSABLE_AI_RESPONSE", "AI 返回格式不可解析", true);
         }
-        if (!result.isObject() || result.size() != FIELDS.size() || !FIELDS.stream().allMatch(result::has)) {
-            throw new RelayException("UNPARSABLE_AI_RESPONSE", "AI 返回字段不符合图片分析格式", true);
-        }
         JsonNode description = result.path("descriptionKeywords");
-        if (!description.isTextual() || description.asText().isBlank()
-            || !description.asText().chars().allMatch(character -> character <= 127)
-            || !description.asText().matches(".*[A-Za-z].*")) {
-            throw new RelayException("INVALID_IMAGE_DESCRIPTION", "图片描述必须为英文句子", true);
-        }
-        for (String field : FIELDS) {
-            if ("descriptionKeywords".equals(field)) continue;
-            JsonNode tags = result.path(field);
-            int max = "colors".equals(field) ? 1 : 5;
-            if (!tags.isArray() || tags.size() > max) {
-                throw new RelayException("INVALID_VISUAL_TAG", "图片分类标签数量不正确", true);
-            }
-            for (JsonNode tag : tags) {
-                if (!tag.isTextual() || !tag.asText().matches("[\\p{IsHan}]+|3D渲染")) {
-                    throw new RelayException("INVALID_VISUAL_TAG", "图片分类标签必须为中文", true);
-                }
-            }
+        if (!description.isTextual() || description.asText().isBlank()) {
+            throw new RelayException("INVALID_IMAGE_DESCRIPTION", "AI 未返回图片描述", true);
         }
         return description.asText().trim();
     }

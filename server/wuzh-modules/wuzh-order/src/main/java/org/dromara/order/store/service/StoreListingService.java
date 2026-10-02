@@ -50,7 +50,7 @@ public class StoreListingService {
     private String publicBaseUrl;
 
     public record ExportView(Long id, Long batchId, Long shopId, Long listingTemplateId, String status,
-                             String errorMessage, String filename) {}
+                             String errorMessage, String filename, java.time.LocalDateTime createTime) {}
     public record GenerateRequest(Long batchId, Long shopId, Long listingTemplateId) {}
     public record ImageGenerateRequest(@NotNull Long categoryId,
                                        @NotEmpty @Size(max = 10000) List<@NotNull Long> imageIds,
@@ -215,7 +215,7 @@ public class StoreListingService {
             if (count == 0) throw new ServiceException("表格原图不存在");
             return storage.open(key);
         }
-        if (key == null || !key.matches("store/results/[0-9]+/[0-9a-f-]+\\.(jpg|jpeg|png|webp)"))
+        if (key == null || !key.matches("(store|render-public)/results/[0-9]+/[0-9a-f-]+\\.(jpg|jpeg|png|webp)"))
             throw new ServiceException("成品图片地址无效");
         Long count = itemMapper.selectCount(Wrappers.<StoreRenderItem>query()
             .eq("result_oss_key", key).in("status", "SUCCEEDED", "SKIPPED"));
@@ -297,12 +297,11 @@ public class StoreListingService {
                 if (keyword.isBlank()) keyword = listingKeyword(image, null);
                 if (keyword == null) throw new ServiceException("原图 " + group.getKey() + " 缺少可用的原文件名");
                 if (group.getValue().size() != templateCount) throw new ServiceException("原图 " + group.getKey() + " 的套图数量不完整");
-                List<String> urls = batch == null ? List.of(storage.renderInputUrl(image.getStorageKey())
-                    .orElseGet(() -> publicResultUrl(configuredBase, image.getStorageKey()))) : group.getValue().stream().map(item -> {
+                List<String> urls = batch == null ? List.of(publicResultUrl(configuredBase, image.getStorageKey())) : group.getValue().stream().map(item -> {
                     String key = item.getResultOssKey();
                     if (!key.matches("(store|render-public)/results/" + export.getOwnerId() + "/[0-9a-f-]+\\.(jpg|jpeg|png|webp)"))
                         throw new ServiceException("成品图片地址无效");
-                    return key.startsWith("render-public/") ? storage.url(key, "image/*") : publicResultUrl(configuredBase, key);
+                    return publicResultUrl(configuredBase, key);
                 }).toList();
                 products.add(new StoreListingWorkbook.Product(String.valueOf(group.getKey()), settings.title(keyword), urls));
             }
@@ -327,7 +326,7 @@ public class StoreListingService {
     }
     private ExportView view(StoreListingExport export) {
         return new ExportView(export.getId(), export.getBatchId(), export.getShopId(), export.getListingTemplateId(),
-            export.getStatus(), export.getErrorMessage(), "上架表格-" + (export.getBatchId() == null ? "原图-" + export.getId() : export.getBatchId()) + "-" + export.getShopId() + ".xlsx");
+            export.getStatus(), export.getErrorMessage(), "上架表格-" + (export.getBatchId() == null ? "原图-" + export.getId() : export.getBatchId()) + "-" + export.getShopId() + ".xlsx", export.getCreateTime());
     }
     private static long owner() { return Long.parseLong(LoginHelper.getUserIdStr()); }
 

@@ -85,7 +85,7 @@ export interface StoreListingTemplate {
   templateCode: string;
   createTime?: string;
 }
-export interface StoreListingExport { id: StoreId; batchId?: StoreId; shopId: StoreId; listingTemplateId: StoreId; status: string; errorMessage?: string; filename: string; }
+export interface StoreListingExport { id: StoreId; batchId?: StoreId; shopId: StoreId; listingTemplateId: StoreId; status: string; errorMessage?: string; filename: string; createTime?: string; }
 export interface StorePageData<T> { records: T[]; total: number; }
 
 export const listShops = () => request<R<StoreShop[]>>({ url: '/store/shops', method: 'get' });

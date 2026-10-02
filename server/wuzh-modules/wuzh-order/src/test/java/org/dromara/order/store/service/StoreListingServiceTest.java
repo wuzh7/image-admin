@@ -18,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.mockito.ArgumentCaptor;
 import org.dromara.order.store.mapper.StoreListingExportMapper;
 import org.dromara.order.store.mapper.StoreListingTemplateMapper;
@@ -229,16 +228,16 @@ class StoreListingServiceTest {
         when(imageMapper.selectByIds(List.of(11L))).thenReturn(List.of(image()));
         Path generated = directory.resolve("result.xlsx");
         when(storage.saveGenerated(eq(42L), any())).thenAnswer(call -> { Files.copy(call.getArgument(1, Path.class), generated, java.nio.file.StandardCopyOption.REPLACE_EXISTING); return "result.xlsx"; });
-        when(storage.renderInputUrl(image().getStorageKey())).thenReturn(Optional.of("https://cdn.example/original.jpg"));
         StoreListingExport export = new StoreListingExport(); export.setOwnerId(42L); export.setShopId(3L);
         export.setListingTemplateId(5L); export.setListingProfileJson(profile()); export.setImageIdsJson("[\"11\"]");
         export.setListingKeywordsJson("{\"11\":\"Flower\"}");
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "publicBaseUrl", "https://hytpod.com/prod-api/store/listing-exports/public-results?key=");
         service.generate(export);
         try (var result = new XSSFWorkbook(generated.toFile())) {
             var sheet = result.getSheetAt(0);
-            assertEquals("https://cdn.example/original.jpg", sheet.getRow(1).getCell(7).getStringCellValue());
+            assertEquals(StoreListingService.publicResultUrl("https://hytpod.com/prod-api/store/listing-exports/public-results?key=", image().getStorageKey()), sheet.getRow(1).getCell(7).getStringCellValue());
             assertEquals("", sheet.getRow(1).getCell(8).getStringCellValue());
-            assertEquals("https://cdn.example/original.jpg", sheet.getRow(2).getCell(5).getStringCellValue());
+            assertEquals(StoreListingService.publicResultUrl("https://hytpod.com/prod-api/store/listing-exports/public-results?key=", image().getStorageKey()), sheet.getRow(2).getCell(5).getStringCellValue());
         }
         verifyNoInteractions(batchMapper, itemMapper);
         StoreRenderBatch batch = new StoreRenderBatch(); batch.setId(1L); batch.setOwnerId(42L); batch.setCategoryId(4L);
@@ -249,17 +248,15 @@ class StoreListingServiceTest {
         StoreRenderItem second = new StoreRenderItem(); second.setImageId(11L); second.setStatus("SKIPPED");
         second.setResultOssKey("render-public/results/42/00000000-0000-0000-0000-000000000002.jpg");
         when(itemMapper.selectList(any())).thenReturn(List.of(first, second));
-        when(storage.url(first.getResultOssKey(), "image/*")).thenReturn("https://cdn.example/render-1.jpg");
-        when(storage.url(second.getResultOssKey(), "image/*")).thenReturn("https://cdn.example/render-2.jpg");
         export.setBatchId(1L); export.setImageIdsJson(null);
         service.generate(export);
         try (var result = new XSSFWorkbook(generated.toFile())) {
             var sheet = result.getSheetAt(0);
-            assertEquals("https://cdn.example/render-1.jpg", sheet.getRow(1).getCell(7).getStringCellValue());
-            assertEquals("https://cdn.example/render-2.jpg", sheet.getRow(1).getCell(8).getStringCellValue());
-            assertEquals("https://cdn.example/render-2.jpg", sheet.getRow(2).getCell(5).getStringCellValue());
+            assertEquals(StoreListingService.publicResultUrl("https://hytpod.com/prod-api/store/listing-exports/public-results?key=", first.getResultOssKey()), sheet.getRow(1).getCell(7).getStringCellValue());
+            assertEquals(StoreListingService.publicResultUrl("https://hytpod.com/prod-api/store/listing-exports/public-results?key=", second.getResultOssKey()), sheet.getRow(1).getCell(8).getStringCellValue());
+            assertEquals(StoreListingService.publicResultUrl("https://hytpod.com/prod-api/store/listing-exports/public-results?key=", second.getResultOssKey()), sheet.getRow(2).getCell(5).getStringCellValue());
         }
-        verify(storage, times(1)).renderInputUrl(anyString());
+        verify(storage, never()).renderInputUrl(anyString());
         batch.setStatus("PARTIAL_FAILURE");
         assertThrows(ServiceException.class, () -> service.generate(export));
     }
@@ -272,6 +269,17 @@ class StoreListingServiceTest {
         service.publicResult(key);
         verify(storage).open(key);
         assertThrows(ServiceException.class, () -> service.publicResult("library/2026/10/../../private.jpg"));
+    }
+
+    @Test void previewsOnlyExistingCompletedRenderResults() {
+        String key = "render-public/results/42/00000000-0000-0000-0000-000000000001.jpg";
+        when(itemMapper.selectCount(any())).thenReturn(0L, 1L);
+        assertThrows(ServiceException.class, () -> service.publicResult(key));
+        verify(storage, never()).open(anyString());
+        service.publicResult(key);
+        verify(storage).open(key);
+        assertThrows(ServiceException.class, () -> service.publicResult("render-public/results/42/../private.jpg"));
+        assertThrows(ServiceException.class, () -> service.publicResult("store/listing/42/private.xlsx"));
     }
 
     private static ImageAsset image() {

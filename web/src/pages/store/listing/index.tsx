@@ -7,6 +7,7 @@ import {
 import { StorePage, useStoreCategories } from '../common';
 import { useUserStore } from '@/stores/userStore';
 import { hasPermi } from '@/utils/permission';
+import { formatDateTimeValue } from '@/utils/wuzh';
 
 export default function ListingPage() {
   const userInfo = useUserStore(state => state.userInfo);
@@ -77,6 +78,7 @@ export default function ListingPage() {
     <Card title="上架表格列表" style={{ marginTop: 16 }}>
       {exports.length ? exports.map(row => <div key={String(row.id)} style={{ marginTop: 16 }}><Space wrap>
         <span>{row.filename}</span><span>{row.batchId == null ? '原图表格' : '渲染成品表格'}</span><span>{{ WAITING: '等待渲染', PENDING: '等待生成', GENERATING: '生成中', COMPLETED: '已完成', FAILED: '生成失败' }[row.status] || row.status}</span>
+        <Typography.Text type="secondary">创建时间：{row.createTime ? String(formatDateTimeValue(row.createTime)) : '—'}</Typography.Text>
         {row.errorMessage && <Typography.Text type="danger">系统错误，请稍后重试</Typography.Text>}
         {canDownload && row.status === 'COMPLETED' && <Button onClick={() => void download(row)}>下载</Button>}
       </Space></div>) : <Empty description="暂无上架表格记录" />}

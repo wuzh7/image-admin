@@ -63,7 +63,8 @@ public class StoreListingController {
     public ResponseEntity<StreamingResponseBody> publicResult(@RequestParam String key) {
         ImageStorage.LocalFile file = service.publicResult(key);
         String contentType = key.endsWith(".png") ? "image/png" : key.endsWith(".webp") ? "image/webp" : "image/jpeg";
-        return ResponseEntity.ok().contentType(MediaType.parseMediaType(contentType)).cacheControl(CacheControl.noCache())
+        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+            .contentType(MediaType.parseMediaType(contentType)).cacheControl(CacheControl.noCache())
             .body(output -> { try (file) { Files.copy(file.path(), output); } });
     }
 }

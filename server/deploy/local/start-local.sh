@@ -22,7 +22,12 @@ if [[ ! -f "$model" ]]; then
   echo "缺少 SSCD 模型：$model" >&2
   exit 1
 fi
-actual_hash="$(shasum -a 256 "$model" | awk '{print toupper($1)}')"
+# shasum 是 macOS 命令，Linux 上是 sha256sum，两者都要支持。
+if command -v shasum >/dev/null 2>&1; then
+  actual_hash="$(shasum -a 256 "$model" | awk '{print toupper($1)}')"
+else
+  actual_hash="$(sha256sum "$model" | awk '{print toupper($1)}')"
+fi
 [[ "$actual_hash" == "$expected_hash" ]] || {
   echo "SSCD 模型 SHA-256 不匹配：$actual_hash" >&2
   exit 1

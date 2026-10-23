@@ -75,10 +75,13 @@ prepare_env() {
   say "生成配置：$env_file（自动生成随机密钥）"
   cat > "$env_file" <<EOF
 # 由 start-public.sh 自动生成。请勿提交到版本库。
-MYSQL_ROOT_PASSWORD=$(rand_secret)
 MYSQL_DATABASE=wuzh-image-admin
 MYSQL_USER=root
+# MYSQL_USER=root 时两个密码必须是同一个值：root 账号的实际口令由
+# MYSQL_ROOT_PASSWORD 初始化，若 MYSQL_PASSWORD 另生成一串，migrate 与 backend
+# 会以 ERROR 1045 (28000) Access denied 失败。
 MYSQL_PASSWORD=$(rand_secret)
+MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
 REDIS_PASSWORD=$(rand_secret)
 BACKEND_JAVA_OPTS=${JAVA_OPTS}
 ORDER_DETAIL_API_KEY=$(rand_secret)

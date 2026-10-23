@@ -1,0 +1,7 @@
+# 在本地 127.0.0.1:8088 之外，额外把前端暴露到公网 80 端口。
+# 仅由 start-public.sh 通过 `-f compose.yml -f compose.public.yml` 组合使用，
+# 不改动任何人的本地开发流程。MySQL / Redis / Qdrant 仍只监听回环地址。
+services:
+  frontend:
+    ports:
+      - "80:8080"
